@@ -23,7 +23,10 @@ def run_symirc_test(symirc_path):
   temp_dir = "test_build_tmp"
   os.makedirs(temp_dir, exist_ok=True)
 
-  def test_func(file_path, expectation, args):
+  def test_func(file_path, expectation, args, skips):
+    if "COMPILER" in skips:
+      return TestResult.SKIP, "Skipped by COMPILER tag"
+
     base_name = os.path.basename(file_path)
     c_out = os.path.join(temp_dir, base_name + ".c")
     exe_out = os.path.join(temp_dir, base_name + ".exe")

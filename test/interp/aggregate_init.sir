@@ -1,0 +1,20 @@
+// EXPECT: PASS
+struct @Point { x: i32; y: i32; }
+fun @main() : i32 {
+  let %v1: [3] i32 = 10; // broadcast
+  let %v2: [2] i32 = {1, 2}; // brace init
+  let %p: @Point = {100, 200}; // struct brace init
+  let %pts: [2] @Point = { {1, 2}, {3, 4} }; // nested brace init
+
+^entry:
+  require %v1[0] == 10, "v1[0]";
+  require %v1[1] == 10, "v1[1]";
+  require %v1[2] == 10, "v1[2]";
+  require %v2[0] == 1, "v2[0]";
+  require %v2[1] == 2, "v2[1]";
+  require %p.x == 100, "p.x";
+  require %p.y == 200, "p.y";
+  require %pts[0].x == 1, "pts[0].x";
+  require %pts[1].y == 4, "pts[1].y";
+  ret 0;
+}

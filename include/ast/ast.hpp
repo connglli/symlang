@@ -304,9 +304,12 @@ namespace symir {
   };
 
   // let / let mut
+  struct InitVal;
+  using InitValPtr = std::shared_ptr<InitVal>;
+
   struct InitVal {
-    enum class Kind { Int, Sym, Local, Undef } kind;
-    std::variant<IntLit, SymId, LocalId> value; // for Int/Sym/Local
+    enum class Kind { Int, Sym, Local, Undef, Aggregate } kind;
+    std::variant<IntLit, SymId, LocalId, std::vector<InitValPtr>> value;
     SourceSpan span;
   };
 

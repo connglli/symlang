@@ -35,6 +35,7 @@ namespace symir {
   private:
     struct StructInfo {
       std::unordered_map<std::string, TypePtr> fields;
+      std::vector<std::pair<std::string, TypePtr>> fieldList;
       SourceSpan declSpan;
     };
 
@@ -55,6 +56,12 @@ namespace symir {
 
     void collectStructs(const Program &prog, DiagBag &diags);
     void checkFunction(const FunDecl &f, TypeAnnotations &ann, DiagBag &diags);
+
+    void checkInitVal(
+        const InitVal &iv, const TypePtr &targetType,
+        const std::unordered_map<std::string, VarInfo> &vars,
+        const std::unordered_map<std::string, SymInfo> &syms, DiagBag &diags
+    );
 
     Ty typeOfExpr(
         const Expr &e, const std::unordered_map<std::string, VarInfo> &vars,

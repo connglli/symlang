@@ -15,6 +15,7 @@ class TestResult:
 def get_metadata(file_path):
   expectation = "UNKNOWN"
   args = []
+  skips = []
   with open(file_path, "r") as f:
     for _ in range(10):
       line = f.readline()
@@ -27,7 +28,9 @@ def get_metadata(file_path):
       if "// ARGS:" in line:
         parts = line.split("ARGS:")[1].strip().split()
         args.extend(parts)
-  return expectation, args
+      if "// SKIP:" in line:
+        skips.append(line.split("SKIP:")[1].strip())
+  return expectation, args, skips
 
 
 def strip_sigil(name):
@@ -53,6 +56,7 @@ def run_test_suite(test_dir, test_func):
   passed_count = 0
   failed_count = 0
   timeout_count = 0
+  skipped_count = 0
   total_count = 0
   failures = []
 
@@ -66,16 +70,17 @@ def run_test_suite(test_dir, test_func):
 
   for file_path in test_files:
     total_count += 1
-    expectation, args = get_metadata(file_path)
+    expectation, args, skips = get_metadata(file_path)
 
     if expectation == "UNKNOWN":
       print(f"[{yellow('SKIP')}] {file_path}: No EXPECT tag")
+      skipped_count += 1
       continue
 
     print(f"Testing {file_path}...", end=" ", flush=True)
 
     start_time = time.time()
-    status, message = test_func(file_path, expectation, args)
+    status, message = test_func(file_path, expectation, args, skips)
     duration = time.time() - start_time
 
     if status == TestResult.PASS:
@@ -85,6 +90,9 @@ def run_test_suite(test_dir, test_func):
       timeout_count += 1
       print(yellow("TIMEOUT"))
       failures.append((file_path, "Timeout occurred"))
+    elif status == TestResult.SKIP:
+      skipped_count += 1
+      print(yellow("SKIP"))
     else:
       failed_count += 1
       print(red("FAIL"))
@@ -93,6 +101,8 @@ def run_test_suite(test_dir, test_func):
   print(f"\nSummary: {passed_count}/{total_count} passed", end="")
   if timeout_count > 0:
     print(f", {yellow(str(timeout_count) + ' timeouts')}", end="")
+  if skipped_count > 0:
+    print(f", {yellow(str(skipped_count) + ' skipped')}", end="")
   if failed_count > 0:
     print(f", {red(str(failed_count) + ' failed')}", end="")
   print(".")

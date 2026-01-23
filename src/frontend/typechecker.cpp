@@ -26,6 +26,7 @@ namespace symir {
           continue;
         }
         si.fields[fd.name] = fd.type;
+        si.fieldList.push_back({fd.name, fd.type});
       }
       structs_[sd.name.name] = std::move(si);
     }
@@ -45,6 +46,95 @@ namespace symir {
 
   static const StructType *asStructType(const TypePtr &t) {
     return t ? std::get_if<StructType>(&t->v) : nullptr;
+  }
+
+  void TypeChecker::checkInitVal(
+      const InitVal &iv, const TypePtr &targetType,
+      const std::unordered_map<std::string, VarInfo> &vars,
+      const std::unordered_map<std::string, SymInfo> &syms, DiagBag &diags
+  ) {
+    if (iv.kind == InitVal::Kind::Undef)
+      return;
+
+    auto at = asArrayType(targetType);
+    auto st = asStructType(targetType);
+
+    if (iv.kind == InitVal::Kind::Aggregate) {
+      const auto &elements = std::get<std::vector<InitValPtr>>(iv.value);
+      if (at) {
+        if (elements.size() != at->size) {
+          diags.error(
+              "Array initializer length mismatch: expected " + std::to_string(at->size) + ", got " +
+                  std::to_string(elements.size()),
+              iv.span
+          );
+          return;
+        }
+        for (const auto &elem: elements) {
+          checkInitVal(*elem, at->elem, vars, syms, diags);
+        }
+      } else if (st) {
+        auto sit = structs_.find(st->name.name);
+        if (sit == structs_.end())
+          return;
+        if (elements.size() != sit->second.fieldList.size()) {
+          diags.error(
+              "Struct initializer field count mismatch: expected " +
+                  std::to_string(sit->second.fieldList.size()) + ", got " +
+                  std::to_string(elements.size()),
+              iv.span
+          );
+          return;
+        }
+        for (size_t i = 0; i < elements.size(); ++i) {
+          checkInitVal(*elements[i], sit->second.fieldList[i].second, vars, syms, diags);
+        }
+      } else {
+        diags.error("Aggregate initializer for non-aggregate type", iv.span);
+      }
+      return;
+    }
+
+    // Scalar Init: Int, Sym, Local
+    // Broadcast check: scalar must be compatible with ALL leaf scalar elements.
+    std::vector<TypePtr> targetLeaves;
+    std::function<void(const TypePtr &)> collect = [&](const TypePtr &t) {
+      if (auto inner_at = asArrayType(t)) {
+        collect(inner_at->elem);
+      } else if (auto inner_st = asStructType(t)) {
+        auto sit = structs_.find(inner_st->name.name);
+        if (sit != structs_.end()) {
+          for (const auto &fld: sit->second.fieldList)
+            collect(fld.second);
+        }
+      } else {
+        targetLeaves.push_back(t);
+      }
+    };
+    collect(targetType);
+
+    TypePtr initType = nullptr;
+    if (iv.kind == InitVal::Kind::Int) {
+      // Literals are compatible with all integer BV types
+      return;
+    } else if (iv.kind == InitVal::Kind::Sym) {
+      auto it = syms.find(std::get<SymId>(iv.value).name);
+      if (it != syms.end())
+        initType = it->second.type;
+    } else if (iv.kind == InitVal::Kind::Local) {
+      auto it = vars.find(std::get<LocalId>(iv.value).name);
+      if (it != vars.end())
+        initType = it->second.type;
+    }
+
+    if (initType) {
+      for (const auto &leaf: targetLeaves) {
+        if (!typeEquals(leaf, initType)) {
+          diags.error("Type mismatch in initializer", iv.span);
+          return;
+        }
+      }
+    }
   }
 
   bool TypeChecker::typeEquals(const TypePtr &a, const TypePtr &b) {
@@ -107,6 +197,9 @@ namespace symir {
         diags.error("Duplicate name: " + l.name.name, l.span);
       }
       vars[l.name.name] = VarInfo{l.type, l.isMutable, false, l.span};
+      if (l.init) {
+        checkInitVal(*l.init, l.type, vars, syms, diags);
+      }
     }
 
     CFG::build(f, diags);

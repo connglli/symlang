@@ -168,57 +168,33 @@ namespace symir {
         out_ << " " << mangleName(l.name.name);
         for (auto d: dims)
           out_ << "[" << d << "]";
-        out_ << ";\n";
 
-        // Emit initialization
-        if (l.init || dims.empty()) {
-          // For arrays, we need to loop if it's not zero-init
-          if (!dims.empty()) {
-            // Simplified: use a loop for each dimension or a flat memset/loop
-            // For v0, let's assume 1D arrays mostly or just use a flat loop if we knew the total
-            // size. Better: if it's a constant 0, we can use memset. If it's a value, we use a
-            // loop.
-            uint64_t total_size = 1;
-            for (auto d: dims)
-              total_size *= d;
+        if (l.init && l.init->kind == InitVal::Kind::Aggregate) {
+          out_ << " = ";
+          emitInitVal(*l.init);
+          out_ << ";\n";
+        } else if (l.init && dims.empty()) {
+          out_ << " = ";
+          emitInitVal(*l.init);
+          out_ << ";\n";
+        } else if (!l.init && dims.empty()) {
+          out_ << " = 0;\n";
+        } else {
+          // Aggregate target with Scalar Init (broadcast) or no init
+          out_ << ";\n";
+          uint64_t total_size = 1;
+          for (auto d: dims)
+            total_size *= d;
 
-            indent();
-            out_ << "for (int i = 0; i < " << total_size << "; ++i) ((int32_t*)"
-                 << mangleName(l.name.name) << ")[i] = ";
-            if (l.init) {
-              if (l.init->kind == InitVal::Kind::Int) {
-                out_ << std::get<IntLit>(l.init->value).value;
-              } else if (l.init->kind == InitVal::Kind::Local) {
-                out_ << mangleName(std::get<LocalId>(l.init->value).name);
-              } else if (l.init->kind == InitVal::Kind::Sym) {
-                out_ << getMangledSymbolName(f.name.name, std::get<SymId>(l.init->value).name)
-                     << "()";
-              } else {
-                out_ << "0";
-              }
-            } else {
-              out_ << "0";
-            }
-            out_ << ";\n";
-          } else {
-            indent();
-            out_ << mangleName(l.name.name) << " = ";
-            if (l.init) {
-              if (l.init->kind == InitVal::Kind::Int) {
-                out_ << std::get<IntLit>(l.init->value).value;
-              } else if (l.init->kind == InitVal::Kind::Local) {
-                out_ << mangleName(std::get<LocalId>(l.init->value).name);
-              } else if (l.init->kind == InitVal::Kind::Sym) {
-                out_ << getMangledSymbolName(f.name.name, std::get<SymId>(l.init->value).name)
-                     << "()";
-              } else if (l.init->kind == InitVal::Kind::Undef) {
-                out_ << "0";
-              }
-            } else {
-              out_ << "0";
-            }
-            out_ << ";\n";
-          }
+          indent();
+          out_ << "for (int i = 0; i < " << total_size << "; ++i) ((";
+          emitType(cur);
+          out_ << "*)" << mangleName(l.name.name) << ")[i] = ";
+          if (l.init)
+            emitInitVal(*l.init);
+          else
+            out_ << "0";
+          out_ << ";\n";
         }
       }
 
@@ -422,6 +398,34 @@ namespace symir {
         },
         idx
     );
+  }
+
+  void CBackend::emitInitVal(const InitVal &iv) {
+    switch (iv.kind) {
+      case InitVal::Kind::Int:
+        out_ << std::get<IntLit>(iv.value).value;
+        break;
+      case InitVal::Kind::Sym:
+        out_ << getMangledSymbolName(curFuncName_, std::get<SymId>(iv.value).name) << "()";
+        break;
+      case InitVal::Kind::Local:
+        out_ << mangleName(std::get<LocalId>(iv.value).name);
+        break;
+      case InitVal::Kind::Undef:
+        out_ << "0";
+        break;
+      case InitVal::Kind::Aggregate: {
+        out_ << "{";
+        const auto &elements = std::get<std::vector<InitValPtr>>(iv.value);
+        for (size_t i = 0; i < elements.size(); ++i) {
+          emitInitVal(*elements[i]);
+          if (i + 1 < elements.size())
+            out_ << ", ";
+        }
+        out_ << "}";
+        break;
+      }
+    }
   }
 
 } // namespace symir

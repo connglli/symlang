@@ -6,7 +6,11 @@
 
 namespace symir {
 
-  Interpreter::Interpreter(const Program &prog) : prog_(prog) {}
+  Interpreter::Interpreter(const Program &prog) : prog_(prog) {
+    for (const auto &s: prog_.structs) {
+      structs_[s.name.name] = &s;
+    }
+  }
 
   void Interpreter::run(
       const std::string &entryFuncName,
@@ -25,6 +29,86 @@ namespace symir {
 
     std::vector<RuntimeValue> args;
     execFunction(*entry, args, symBindings);
+  }
+
+  Interpreter::RuntimeValue Interpreter::makeUndef(const TypePtr &t) {
+    RuntimeValue res;
+    if (auto at = std::get_if<ArrayType>(&t->v)) {
+      res.kind = RuntimeValue::Kind::Array;
+      for (size_t i = 0; i < at->size; ++i)
+        res.arrayVal.push_back(makeUndef(at->elem));
+    } else if (auto st = std::get_if<StructType>(&t->v)) {
+      res.kind = RuntimeValue::Kind::Struct;
+      auto it = structs_.find(st->name.name);
+      if (it != structs_.end()) {
+        for (const auto &f: it->second->fields)
+          res.structVal[f.name] = makeUndef(f.type);
+      }
+    } else {
+      res.kind = RuntimeValue::Kind::Undef;
+    }
+    return res;
+  }
+
+  Interpreter::RuntimeValue Interpreter::broadcast(const TypePtr &t, const RuntimeValue &v) {
+    if (std::holds_alternative<ArrayType>(t->v)) {
+      RuntimeValue res;
+      res.kind = RuntimeValue::Kind::Array;
+      const auto &at = std::get<ArrayType>(t->v);
+      for (size_t i = 0; i < at.size; ++i)
+        res.arrayVal.push_back(broadcast(at.elem, v));
+      return res;
+    } else if (std::holds_alternative<StructType>(t->v)) {
+      RuntimeValue res;
+      res.kind = RuntimeValue::Kind::Struct;
+      auto it = structs_.find(std::get<StructType>(t->v).name.name);
+      if (it != structs_.end()) {
+        for (const auto &f: it->second->fields)
+          res.structVal[f.name] = broadcast(f.type, v);
+      }
+      return res;
+    } else {
+      return v;
+    }
+  }
+
+  Interpreter::RuntimeValue
+  Interpreter::evalInit(const InitVal &iv, const TypePtr &t, const Store &store) {
+    if (iv.kind == InitVal::Kind::Undef)
+      return makeUndef(t);
+
+    if (iv.kind == InitVal::Kind::Aggregate) {
+      const auto &elements = std::get<std::vector<InitValPtr>>(iv.value);
+      if (auto at = std::get_if<ArrayType>(&t->v)) {
+        RuntimeValue res;
+        res.kind = RuntimeValue::Kind::Array;
+        for (size_t i = 0; i < elements.size(); ++i)
+          res.arrayVal.push_back(evalInit(*elements[i], at->elem, store));
+        return res;
+      } else if (auto st = std::get_if<StructType>(&t->v)) {
+        RuntimeValue res;
+        res.kind = RuntimeValue::Kind::Struct;
+        auto it = structs_.find(st->name.name);
+        if (it != structs_.end()) {
+          for (size_t i = 0; i < elements.size(); ++i)
+            res.structVal[it->second->fields[i].name] =
+                evalInit(*elements[i], it->second->fields[i].type, store);
+        }
+        return res;
+      }
+    }
+
+    // Scalar
+    RuntimeValue scalar;
+    if (iv.kind == InitVal::Kind::Int) {
+      scalar.kind = RuntimeValue::Kind::Int;
+      scalar.intVal = std::get<IntLit>(iv.value).value;
+    } else if (iv.kind == InitVal::Kind::Sym) {
+      scalar = store.at(std::get<SymId>(iv.value).name);
+    } else if (iv.kind == InitVal::Kind::Local) {
+      scalar = store.at(std::get<LocalId>(iv.value).name);
+    }
+    return broadcast(t, scalar);
   }
 
   void Interpreter::execFunction(
@@ -53,38 +137,11 @@ namespace symir {
 
     // Init locals
     for (const auto &l: f.lets) {
-      RuntimeValue val;
-      val.kind = RuntimeValue::Kind::Undef;
-
-      bool hasInit = false;
-      RuntimeValue initVal;
       if (l.init) {
-        hasInit = true;
-        if (l.init->kind == InitVal::Kind::Int) {
-          initVal.kind = RuntimeValue::Kind::Int;
-          initVal.intVal = std::get<IntLit>(l.init->value).value;
-        } else if (l.init->kind == InitVal::Kind::Local) {
-          initVal = store.at(std::get<LocalId>(l.init->value).name);
-        } else if (l.init->kind == InitVal::Kind::Sym) {
-          initVal = store.at(std::get<SymId>(l.init->value).name);
-        } else if (l.init->kind == InitVal::Kind::Undef) {
-          initVal.kind = RuntimeValue::Kind::Undef;
-        }
-      }
-
-      if (std::holds_alternative<ArrayType>(l.type->v)) {
-        val.kind = RuntimeValue::Kind::Array;
-        const auto &at = std::get<ArrayType>(l.type->v);
-        val.arrayVal.resize(
-            at.size, hasInit ? initVal : RuntimeValue{RuntimeValue::Kind::Undef, 0, {}, {}}
-        );
-      } else if (std::holds_alternative<StructType>(l.type->v)) {
-        val.kind = RuntimeValue::Kind::Struct;
+        store[l.name.name] = evalInit(*l.init, l.type, store);
       } else {
-        val = hasInit ? initVal : RuntimeValue{RuntimeValue::Kind::Undef, 0, {}, {}};
+        store[l.name.name] = makeUndef(l.type);
       }
-
-      store[l.name.name] = val;
     }
 
     CFG cfg = CFG::build(f, diags);
@@ -271,6 +328,8 @@ namespace symir {
         cur = &it->second;
       }
     }
+    if (cur->kind == RuntimeValue::Kind::Undef)
+      throw std::runtime_error("UB: Reading undef value");
     return *cur;
   }
 

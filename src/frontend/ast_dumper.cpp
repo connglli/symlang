@@ -286,6 +286,17 @@ namespace symir {
       case InitVal::Kind::Undef:
         out_ << "undef";
         break;
+      case InitVal::Kind::Aggregate: {
+        out_ << "{";
+        const auto &elements = std::get<std::vector<InitValPtr>>(iv.value);
+        for (size_t i = 0; i < elements.size(); ++i) {
+          dumpInitVal(*elements[i]);
+          if (i + 1 < elements.size())
+            out_ << ", ";
+        }
+        out_ << "}";
+        break;
+      }
     }
   }
 

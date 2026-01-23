@@ -1,0 +1,7 @@
+// EXPECT: FAIL
+// SKIP: COMPILER
+fun @main() : i32 {
+  let %v: [2] i32 = {1, undef};
+^entry:
+  ret %v[1]; // Should fail due to reading undef
+}

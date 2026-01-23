@@ -27,6 +27,7 @@ namespace symir {
     void emitCoef(const Coef &coef);
     void emitSelectVal(const SelectVal &sv);
     void emitIndex(const Index &idx);
+    void emitInitVal(const InitVal &iv);
 
     std::string getMangledSymbolName(const std::string &funcName, const std::string &symName);
     std::string mangleName(const std::string &name);

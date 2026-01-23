@@ -299,6 +299,24 @@ namespace symir {
   InitVal Parser::parseInitVal() {
     SourcePos b = peek().span.begin;
 
+    if (tryConsume(TokenKind::LBrace)) {
+      std::vector<InitValPtr> elements;
+      if (is(TokenKind::RBrace)) {
+        throw ParseError("Empty brace initializers '{}' are disallowed", peek().span);
+      }
+      while (true) {
+        elements.push_back(std::make_shared<InitVal>(parseInitVal()));
+        if (!tryConsume(TokenKind::Comma))
+          break;
+      }
+      consume(TokenKind::RBrace, "'}'");
+      InitVal iv;
+      iv.kind = InitVal::Kind::Aggregate;
+      iv.value = std::move(elements);
+      iv.span = SourceSpan{b, prevEnd()};
+      return iv;
+    }
+
     if (is(TokenKind::KwUndef)) {
       consume(TokenKind::KwUndef, "'undef'");
       InitVal iv;
@@ -335,7 +353,7 @@ namespace symir {
       return iv;
     }
 
-    errorHere("Expected initializer: IntLit, SymId, LocalId, or 'undef'");
+    errorHere("Expected initializer: IntLit, SymId, LocalId, 'undef', or '{...}'");
   }
 
   Block Parser::parseBlock() {

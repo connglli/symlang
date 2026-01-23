@@ -17,6 +17,7 @@ namespace symir {
 
   private:
     const Program &prog_;
+    std::unordered_map<std::string, const StructDecl *> structs_;
 
     struct RuntimeValue {
       enum class Kind { Int, Array, Struct, Undef } kind;
@@ -26,6 +27,10 @@ namespace symir {
     };
 
     using Store = std::unordered_map<std::string, RuntimeValue>;
+
+    RuntimeValue makeUndef(const TypePtr &t);
+    RuntimeValue broadcast(const TypePtr &t, const RuntimeValue &v);
+    RuntimeValue evalInit(const InitVal &iv, const TypePtr &t, const Store &store);
 
     void execFunction(
         const FunDecl &f, const std::vector<RuntimeValue> &args,
