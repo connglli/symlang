@@ -1,5 +1,6 @@
 CXX = g++
 CXXFLAGS = -std=c++20 -Iinclude -Wall -Wextra
+LDFLAGS =
 
 COMMON_SRCS = src/frontend/lexer.cpp src/frontend/parser.cpp src/frontend/ast_dumper.cpp \
               src/analysis/cfgbuilder.cpp src/analysis/definite_init.cpp \
@@ -22,10 +23,10 @@ TARGET_COMPILER = symirc
 all: $(TARGET_INTERP) $(TARGET_COMPILER)
 
 $(TARGET_INTERP): $(COMMON_OBJS) $(INTERP_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
 
 $(TARGET_COMPILER): $(COMMON_OBJS) $(COMPILER_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
@@ -33,10 +34,11 @@ $(TARGET_COMPILER): $(COMMON_OBJS) $(COMPILER_OBJS)
 clean:
 	rm -f $(COMMON_OBJS) $(TEST_OBJS) $(INTERP_OBJS) $(COMPILER_OBJS) $(TARGET_INTERP) $(TARGET_COMPILER)
 
-test: $(TARGET_INTERP)
+test: $(TARGET_INTERP) $(TARGET_COMPILER)
 	python3 run_tests.py test/lexer ./$(TARGET_INTERP) --check
 	python3 run_tests.py test/parser ./$(TARGET_INTERP) --check
 	python3 run_tests.py test/cfgbuilder ./$(TARGET_INTERP) --check
 	python3 run_tests.py test/typechecker ./$(TARGET_INTERP) --check
 	python3 run_tests.py test/semchecker ./$(TARGET_INTERP) --check
 	python3 run_tests.py test/interp ./$(TARGET_INTERP)
+	python3 run_compiler_tests.py test/ ./$(TARGET_COMPILER)

@@ -29,7 +29,7 @@ namespace symir {
     void emitIndex(const Index &idx);
 
     std::string getMangledSymbolName(const std::string &funcName, const std::string &symName);
-    std::string stripSigil(const std::string &name);
+    std::string mangleName(const std::string &name);
   };
 
 } // namespace symir
