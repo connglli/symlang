@@ -2,13 +2,15 @@
 
 This directory contains the regression test suite for the SymIR frontend, analysis pipeline, and reference interpreter.
 
-## Test Driver (`runner`)
+## Test Driver (`symiri --check`)
 
-The `runner` executable (compiled from `src/test/runner.cpp`) is the primary tool for validating SymIR files. It performs the following stages:
+The `symiri` executable with the `--check` flag is the primary tool for validating SymIR files' static semantics. It performs the following stages:
 1. **Lexing & Parsing**: Converts source to AST.
 2. **Semantic Analysis**: Enforces sigil scoping, duplicate checks, and structural well-formedness.
 3. **Type Checking**: Validates Bit-Vector widths and type compatibility.
 4. **Dataflow Analysis**: Runs Reachability and Definite Initialization passes.
+
+Without the `--check` flag, `symiri` also executes the program using the reference interpreter.
 
 ## Test Runner (`run_tests.py`)
 
@@ -27,7 +29,7 @@ Each `.sir` file should contain metadata tags in the first few lines to guide th
 ## Writing Tests
 
 ### 1. Frontend & Analysis Tests
-These tests validate that the compiler correctly identifies valid or invalid code. They are typically run using the `runner` binary.
+These tests validate that the compiler correctly identifies valid or invalid code. They are typically run using the `symiri --check` command.
 
 **Example: `test/typechecker/fail_mismatch.sir`**
 ```sir
@@ -41,7 +43,7 @@ fun @main() : i32 {
 ```
 
 ### 2. Interpreter Tests
-These tests validate the runtime semantics of the language. They are run using the `symiri` binary. To perform assertions in the interpreter, use the `require` instruction.
+These tests validate the runtime semantics of the language. They are run using the `symiri` binary without `--check`. To perform assertions in the interpreter, use the `require` instruction.
 
 **Example: `test/interp/math.sir`**
 ```sir
@@ -61,9 +63,12 @@ fun @main() : i32 {
 Use the provided `Makefile` targets:
 
 ```bash
-# Run all tests (Frontend, Analysis, and Interpreter)
+# Run all tests (Frontend, Analysis, Interpreter, and Compiler)
 make test
 
 # Run only the interpreter tests
 python3 run_tests.py test/interp ./symiri
+
+# Run only a specific analysis directory
+python3 run_tests.py test/typechecker ./symiri --check
 ```
