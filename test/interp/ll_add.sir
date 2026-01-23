@@ -1,0 +1,9 @@
+// EXPECT: PASS
+fun @main() : i64 {
+  let %v1: i64 = 5;
+  let %v2: i64 = 9;
+  let %exp: i64 = 14;
+^entry:
+  require %v1 + %v2 == %exp, "add.ll";
+  ret %v1 + %v2;
+}

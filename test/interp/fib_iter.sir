@@ -1,0 +1,27 @@
+// EXPECT: PASS
+fun @main() : i32 {
+  let %n: i32 = 10;
+  let mut %a: i32 = 0;
+  let mut %b: i32 = 1;
+  let mut %i: i32 = 0;
+  let mut %tmp: i32 = 0;
+  let %one: i32 = 1;
+  let %expected: i32 = 55;
+
+^entry:
+  br %n == 0, ^ret_a, ^loop;
+
+^loop:
+  br %i < %n, ^body, ^ret_a;
+
+^body:
+  %tmp = %a + %b;
+  %a = %b;
+  %b = %tmp;
+  %i = %i + %one;
+  br ^loop;
+
+^ret_a:
+  require %a == %expected, "fib(10) == 55";
+  ret %a;
+}

@@ -1,0 +1,6 @@
+// EXPECT: FAIL
+fun @main() : i32 {
+^entry:
+  require 1 == 0, "This should fail";
+  ret 0;
+}

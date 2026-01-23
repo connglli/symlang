@@ -1,0 +1,10 @@
+// EXPECT: PASS
+fun @main() : i64 {
+  let %zero: i64 = 0;
+^entry:
+  br %zero != 0, ^then, ^else;
+^then:
+  ret 7;
+^else:
+  ret 9;
+}

@@ -1,0 +1,14 @@
+// EXPECT: PASS
+fun @main() : i32 {
+  let mut %i: i32 = 0;
+  let %n: i32 = 5;
+  let %one: i32 = 1;
+^entry:
+  br %i < %n, ^body, ^exit;
+^body:
+  %i = %i + %one;
+  br ^entry;
+^exit:
+  require %i == 5, "Loop check";
+  ret 0;
+}

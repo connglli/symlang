@@ -1,0 +1,8 @@
+// EXPECT: PASS
+fun @main() : i32 {
+  let %a: i32 = 10;
+  let %b: i32 = 20;
+^entry:
+  require %a + %b == 30, "Math check";
+  ret 0;
+}

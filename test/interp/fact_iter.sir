@@ -1,0 +1,23 @@
+// EXPECT: PASS
+fun @main() : i32 {
+  let %n: i32 = 5;
+  let mut %res: i32 = 1;
+  let mut %i: i32 = 1;
+  let %one: i32 = 1;
+  let %expected: i32 = 120;
+
+^entry:
+  br ^loop;
+
+^loop:
+  br %i <= %n, ^body, ^exit;
+
+^body:
+  %res = %res * %i;
+  %i = %i + %one;
+  br ^loop;
+
+^exit:
+  require %res == %expected, "5! == 120";
+  ret %res;
+}

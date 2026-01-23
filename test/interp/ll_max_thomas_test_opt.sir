@@ -1,0 +1,5 @@
+// EXPECT: PASS
+fun @main() : i64 {
+^entry:
+  ret 120;
+}

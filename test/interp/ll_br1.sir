@@ -1,0 +1,9 @@
+// EXPECT: PASS
+fun @main() : i64 {
+  let %exp: i64 = 9;
+^entry:
+  br ^end;
+^end:
+  require %exp == 9, "br1.ll";
+  ret %exp;
+}

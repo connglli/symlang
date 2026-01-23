@@ -251,14 +251,19 @@ Ty TypeChecker::typeOfAtom(
       [&](auto &&arg) -> Ty {
         using T = std::decay_t<decltype(arg)>;
         if constexpr (std::is_same_v<T, OpAtom>) {
-          auto ct = typeOfCoef(arg.coef, vars, syms, diags, expectedBits);
           auto rt = typeOfLValue(arg.rval, vars, syms, diags);
-          auto cb = getBVWidth(ct, diags, arg.span);
           auto rb = getBVWidth(rt, diags, arg.rval.span);
+
+          // Use rb as expectation for coef if available, otherwise use incoming expectedBits
+          auto targetBits = rb ? rb : expectedBits;
+          auto ct = typeOfCoef(arg.coef, vars, syms, diags, targetBits);
+          auto cb = getBVWidth(ct, diags, arg.span);
+
           if (cb && rb && *cb != *rb)
             diags.error("Bitwidth mismatch in operation", arg.span);
           return Ty{Ty::BVTy{cb.value_or(32)}};
         } else if constexpr (std::is_same_v<T, SelectAtom>) {
+
           checkCond(*arg.cond, vars, syms, ann, diags);
           auto t1 = typeOfSelectVal(arg.vtrue, vars, syms, ann, diags, expectedBits);
           auto t2 = typeOfSelectVal(arg.vfalse, vars, syms, ann, diags, expectedBits);

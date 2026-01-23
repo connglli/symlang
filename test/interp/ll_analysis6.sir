@@ -1,0 +1,17 @@
+// EXPECT: PASS
+fun @main() : i64 {
+  let %a: i64 = 2;
+  let %b: i64 = 3;
+  let %c: i64 = 4;
+  let %zero: i64 = 0;
+  let mut %diff: i64 = 0;
+^entry:
+  br %zero != 0, ^then, ^else;
+^then:
+  ret %a;
+^else:
+  %diff = %c - %b;
+  br %diff != %zero, ^then, ^merge;
+^merge:
+  ret %c;
+}

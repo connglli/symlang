@@ -1,0 +1,14 @@
+// EXPECT: PASS
+fun @main() : i64 {
+  let %v1: i64 = 5;
+  let %v2: i64 = 12;
+  let mut %sum: i64 = 0;
+^entry:
+  %sum = %v1 + %v2;
+  br ^next;
+^next:
+  br ^end;
+^end:
+  require %sum == 17, "br2.ll";
+  ret %sum;
+}

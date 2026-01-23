@@ -3,15 +3,25 @@ import subprocess
 import sys
 
 
-def get_expectation(file_path):
+def get_expectation_and_args(file_path):
+  expectation = "UNKNOWN"
+  args = []
   with open(file_path, "r") as f:
     for _ in range(5):
       line = f.readline()
+      if not line:
+        break
       if "// EXPECT: PASS" in line:
-        return "PASS"
-      if "// EXPECT: FAIL" in line:
-        return "FAIL"
-  return "UNKNOWN"
+        expectation = "PASS"
+      elif "// EXPECT: FAIL" in line:
+        expectation = "FAIL"
+
+      if "// ARGS:" in line:
+        # Parse args
+        parts = line.split("ARGS:")[1].strip().split()
+        args.extend(parts)
+
+  return expectation, args
 
 
 def run_tests(test_dir, binary_path):
@@ -24,22 +34,27 @@ def run_tests(test_dir, binary_path):
       if file.endswith(".sir"):
         total_count += 1
         file_path = os.path.join(root, file)
-        expectation = get_expectation(file_path)
+        expectation, extra_args = get_expectation_and_args(file_path)
 
         if expectation == "UNKNOWN":
           print(f"[SKIP] {file_path}: No EXPECT tag")
           continue
 
         # Run binary
-        # The binary returns 0 if the test matched expectation, 1 otherwise
+        cmd = [binary_path, file_path] + extra_args
         result = subprocess.run(
-          [binary_path, file_path],
-          stdout=subprocess.PIPE,
-          stderr=subprocess.PIPE,
-          text=True,
+          cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
 
-        if result.returncode == 0:
+        passed = False
+        if expectation == "PASS":
+          if result.returncode == 0:
+            passed = True
+        elif expectation == "FAIL":
+          if result.returncode != 0:
+            passed = True
+
+        if passed:
           passed_count += 1
           print(f"[OK] {file_path}")
         else:
@@ -47,8 +62,8 @@ def run_tests(test_dir, binary_path):
           print(f"[FAIL] {file_path}")
           print("--- OUTPUT ---")
           print(result.stdout)
-          # print("--- STDERR ---")
-          # print(result.stderr) # Stdout usually contains the error message printed by sym_test
+          print("--- STDERR ---")
+          print(result.stderr)
 
   print(f"\nSummary: {passed_count}/{total_count} tests passed.")
   if failed_tests:

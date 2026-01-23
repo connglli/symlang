@@ -1,0 +1,10 @@
+// EXPECT: PASS
+fun @main() : i64 {
+  let %v1: i64 = 5; // Used if we need lvalue
+  let %v2: i64 = 9;
+^entry:
+  // 5 * 9 is not valid (Coef * IntLit not allowed)
+  // 5 * %v2 is valid (Coef * RValue)
+  require 5 * %v2 == 45, "mul.ll";
+  ret 5 * %v2;
+}

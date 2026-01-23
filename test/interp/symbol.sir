@@ -1,0 +1,8 @@
+// EXPECT: PASS
+// ARGS: --sym @?c=5
+fun @main() : i32 {
+  sym @?c: value i32;
+^entry:
+  require @?c == 5, "Symbol check";
+  ret 0;
+}

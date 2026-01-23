@@ -1,0 +1,11 @@
+// EXPECT: PASS
+fun @main() : i64 {
+  let %v1: i64 = 5;
+  let %v2: i64 = 2;
+  let mut %sum: i64 = 0;
+  let mut %prod: i64 = 0;
+^entry:
+  %sum = %v1 + %v2;
+  %prod = %sum * %v2;
+  ret %prod;
+}
