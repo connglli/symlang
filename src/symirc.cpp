@@ -7,6 +7,7 @@
 #include "analysis/pass_manager.hpp"
 #include "analysis/reachability.hpp"
 #include "analysis/unused_name.hpp"
+#include "ast/ast_dumper.hpp"
 #include "backend/c_backend.hpp"
 #include "cxxopts.hpp"
 #include "frontend/lexer.hpp"
@@ -24,6 +25,7 @@ int main(int argc, char **argv) {
     ("input", "Input .sir file", cxxopts::value<std::string>())
     ("o,output", "Output file (default: stdout)", cxxopts::value<std::string>())
     ("target", "Backend target (c, wasm)", cxxopts::value<std::string>()->default_value("c"))
+    ("dump-ast", "Dump AST to stdout and exit", cxxopts::value<bool>()->default_value("false"))
     ("w", "Inhibit all warning messages", cxxopts::value<bool>()->default_value("false"))
     ("Werror", "Make all warnings into errors", cxxopts::value<bool>()->default_value("false"))
     ("h,help", "Print usage");
@@ -60,6 +62,12 @@ int main(int argc, char **argv) {
     auto toks = lx.lexAll();
     Parser ps(std::move(toks));
     Program prog = ps.parseProgram();
+
+    if (result["dump-ast"].as<bool>()) {
+      ASTDumper dumper(std::cout);
+      dumper.dump(prog);
+      return 0;
+    }
 
     // 2. Analysis
     DiagBag diags;
