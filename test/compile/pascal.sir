@@ -1,0 +1,59 @@
+// EXPECT: PASS
+struct @Config { rows: i32; }
+struct @Stats { last_val: i32; }
+
+fun @main() : i32 {
+  let mut %tri: [5][5] i32 = 0;
+  let %cfg: @Config = {5};
+  let mut %stats: @Stats = {0};
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %prev_i: i32 = 0;
+  let mut %prev_j: i32 = 0;
+  let mut %v1: i32 = 0;
+  let mut %v2: i32 = 0;
+  let %one: i32 = 1;
+
+^entry:
+  br ^row_loop;
+
+^row_loop:
+  br %i < 5, ^col_init, ^exit;
+
+^col_init:
+  %j = 0;
+  br ^col_loop;
+
+^col_loop:
+  br %j <= %i, ^calc, ^row_inc;
+
+^calc:
+  br %j == 0, ^edge, ^check_end;
+
+^edge:
+  %tri[%i][%j] = 1;
+  br ^col_inc;
+
+^check_end:
+  br %j == %i, ^edge, ^middle;
+
+^middle:
+  %prev_i = %i - %one;
+  %prev_j = %j - %one;
+  %v1 = %tri[%prev_i][%prev_j];
+  %v2 = %tri[%prev_i][%j];
+  %tri[%i][%j] = %v1 + %v2;
+  br ^col_inc;
+
+^col_inc:
+  %j = %j + %one;
+  br ^col_loop;
+
+^row_inc:
+  %i = %i + %one;
+  br ^row_loop;
+
+^exit:
+  require %tri[4][2] == 6, "Pascal 4,2";
+  ret 0;
+}

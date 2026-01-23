@@ -1,0 +1,12 @@
+// EXPECT: PASS
+// ARGS: --sym %?val=42
+fun @main() : i32 {
+  sym %?val : value i32;
+  let mut %arr: [10] i32 = %?val;
+
+^entry:
+  require %arr[0] == 42, "arr[0]";
+  require %arr[5] == 42, "arr[5]";
+  require %arr[9] == 42, "arr[9]";
+  ret 0;
+}

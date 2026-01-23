@@ -1,0 +1,14 @@
+// EXPECT: PASS
+// ARGS: --sym %?return=10
+fun @main() : i32 {
+  sym %?return : value i32;
+  let %int: i32 = 5;
+  let %struct: i32 = 2;
+  let mut %if: i32 = 0;
+
+^entry:
+  %if = %?return * %int;
+  %if = %if + %struct;
+  require %if == 52, "keyword check";
+  ret 0;
+}

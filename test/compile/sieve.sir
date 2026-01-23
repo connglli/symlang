@@ -1,0 +1,53 @@
+// EXPECT: PASS
+struct @Config { limit: i32; }
+struct @State { current: i32; total: i32; }
+
+fun @main() : i32 {
+  let %cfg: @Config = {10};
+  let mut %state: @State = {2, 0};
+  let mut %is_prime: [11] i32 = 1;
+  let mut %multiple: i32 = 0;
+  let mut %p: i32 = 0;
+  let mut %curr: i32 = 0;
+  let mut %curr_mult: i32 = 0;
+  let %one: i32 = 1;
+  let %zero: i32 = 0;
+
+^entry:
+  %is_prime[0] = 0;
+  %is_prime[1] = 0;
+  br ^outer_loop;
+
+^outer_loop:
+  br %state.current < 11, ^check_prime, ^finalize;
+
+^check_prime:
+  %curr = %state.current;
+  %p = %is_prime[%curr];
+  br %p == %one, ^inner_init, ^outer_inc;
+
+^inner_init:
+  %multiple = 2 * %state.current;
+  br ^inner_loop;
+
+^inner_loop:
+  br %multiple < 11, ^mark, ^outer_inc;
+
+^mark:
+  %curr_mult = %multiple;
+  %is_prime[%curr_mult] = %zero;
+  %multiple = %multiple + %state.current;
+  br ^inner_loop;
+
+^outer_inc:
+  %state.current = %state.current + %one;
+  br ^outer_loop;
+
+^finalize:
+  require %is_prime[2] == 1, "2 is prime";
+  require %is_prime[3] == 1, "3 is prime";
+  require %is_prime[4] == 0, "4 not prime";
+  require %is_prime[7] == 1, "7 is prime";
+  require %is_prime[9] == 0, "9 not prime";
+  ret 0;
+}

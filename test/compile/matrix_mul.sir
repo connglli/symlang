@@ -1,0 +1,64 @@
+// EXPECT: PASS
+struct @MatrixDim { rows: i32; cols: i32; }
+struct @Cell { val: i32; }
+
+fun @main() : i32 {
+  let %A: [2][2] i32 = { {1, 2}, {3, 4} };
+  let %B: [2][2] i32 = { {5, 6}, {7, 8} };
+  let mut %C: [2][2] i32 = 0;
+  let %dim: @MatrixDim = {2, 2};
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %k: i32 = 0;
+  let mut %a_val: i32 = 0;
+  let mut %b_val: i32 = 0;
+  let mut %prod: i32 = 0;
+  let mut %old_c: i32 = 0;
+  let %one: i32 = 1;
+
+^entry:
+  br ^i_loop;
+
+^i_loop:
+  br %i < 2, ^j_init, ^exit;
+
+^j_init:
+  %j = 0;
+  br ^j_loop;
+
+^j_loop:
+  br %j < 2, ^k_init, ^i_inc;
+
+^k_init:
+  %k = 0;
+  br ^k_loop;
+
+^k_loop:
+  br %k < 2, ^calc, ^j_inc;
+
+^calc:
+  %a_val = %A[%i][%k];
+  %b_val = %B[%k][%j];
+  %prod = 1 * %a_val;
+  %prod = %prod * %b_val;
+  %old_c = %C[%i][%j];
+  %C[%i][%j] = %old_c + %prod;
+  br ^k_inc;
+
+^k_inc:
+  %k = %k + %one;
+  br ^k_loop;
+
+^j_inc:
+  %j = %j + %one;
+  br ^j_loop;
+
+^i_inc:
+  %i = %i + %one;
+  br ^i_loop;
+
+^exit:
+  require %C[0][0] == 19, "C[0][0]";
+  require %C[1][1] == 50, "C[1][1]";
+  ret 0;
+}

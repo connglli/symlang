@@ -1,0 +1,71 @@
+// EXPECT: PASS
+struct @Node { id: i32; neighbors: i32; }
+struct @Context { top: i32; current: i32; }
+
+fun @main() : i32 {
+  let %adj: [4][4] i32 = {
+    {0, 1, 0, 0},
+    {0, 0, 1, 0},
+    {0, 0, 0, 1},
+    {0, 0, 0, 0}
+  };
+  let mut %visited: [4] i32 = 0;
+  let mut %stack: [4] i32 = 0;
+  let mut %ctx: @Context = {0, 0};
+  let mut %neighbor_idx: i32 = 0;
+  let mut %edge: i32 = 0;
+  let mut %v: i32 = 0;
+  let mut %curr_node: i32 = 0;
+  let mut %curr_top: i32 = 0;
+  let %one: i32 = 1;
+
+^entry:
+  %stack[0] = 0;
+  %ctx.top = 1;
+  br ^loop;
+
+^loop:
+  br %ctx.top > 0, ^pop, ^exit;
+
+^pop:
+  %ctx.top = %ctx.top - %one;
+  %curr_top = %ctx.top;
+  %ctx.current = %stack[%curr_top];
+  br ^check_visited;
+
+^check_visited:
+  %curr_node = %ctx.current;
+  %v = %visited[%curr_node];
+  br %v == 0, ^mark_visited, ^loop;
+
+^mark_visited:
+  %curr_node = %ctx.current;
+  %visited[%curr_node] = 1;
+  br ^find_neighbors_init;
+
+^find_neighbors_init:
+  %neighbor_idx = 0;
+  br ^neighbor_loop;
+
+^neighbor_loop:
+  br %neighbor_idx < 4, ^check_edge, ^loop;
+
+^check_edge:
+  %curr_node = %ctx.current;
+  %edge = %adj[%curr_node][%neighbor_idx];
+  br %edge == 1, ^push_neighbor, ^next_neighbor;
+
+^push_neighbor:
+  %curr_top = %ctx.top;
+  %stack[%curr_top] = %neighbor_idx;
+  %ctx.top = %ctx.top + %one;
+  br ^next_neighbor;
+
+^next_neighbor:
+  %neighbor_idx = %neighbor_idx + %one;
+  br ^neighbor_loop;
+
+^exit:
+  require %visited[3] == 1, "reachable";
+  ret 0;
+}

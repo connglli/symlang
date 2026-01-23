@@ -1,0 +1,57 @@
+// EXPECT: PASS
+struct @GridMeta { size: i32; steps: i32; }
+struct @Window { l: i32; r: i32; }
+
+fun @main() : i32 {
+  let mut %grid: [10] i32 = {0, 0, 0, 0, 1, 0, 0, 0, 0, 0};
+  let mut %next: [10] i32 = 0;
+  let %meta: @GridMeta = {10, 1};
+  let mut %i: i32 = 1;
+  let mut %l_idx: i32 = 0;
+  let mut %r_idx: i32 = 0;
+  let mut %left: i32 = 0;
+  let mut %right: i32 = 0;
+  let %one: i32 = 1;
+  let %nine: i32 = 9;
+
+^entry:
+  br ^step_loop;
+
+^step_loop:
+  br ^cell_init;
+
+^cell_init:
+  %i = 1;
+  br ^cell_loop;
+
+^cell_loop:
+  br %i < %nine, ^update, ^finalize;
+
+^update:
+  %l_idx = %i - %one;
+  %r_idx = %i + %one;
+  %left = %grid[%l_idx];
+  %right = %grid[%r_idx];
+  br ^calc_rule;
+
+^calc_rule:
+  br %left != %right, ^set_one, ^set_zero;
+
+^set_one:
+  %next[%i] = 1;
+  br ^inc;
+
+^set_zero:
+  %next[%i] = 0;
+  br ^inc;
+
+^inc:
+  %i = %i + %one;
+  br ^cell_loop;
+
+^finalize:
+  require %next[3] == 1, "spread left";
+  require %next[5] == 1, "spread right";
+  require %next[4] == 0, "center cleared";
+  ret 0;
+}

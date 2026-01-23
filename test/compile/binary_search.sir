@@ -1,0 +1,55 @@
+// EXPECT: PASS
+// ARGS: --sym %?target=7
+struct @SearchRange { lo: i32; hi: i32; }
+struct @SearchResult { found: i32; index: i32; }
+
+fun @main() : i32 {
+  sym %?target : value i32;
+  let %haystack: [10] i32 = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  let mut %range: @SearchRange = {0, 9};
+  let mut %res: @SearchResult = {0, -1};
+  let mut %mid: i32 = 0;
+  let mut %val: i32 = 0;
+  let %two: i32 = 2;
+  let %one: i32 = 1;
+
+^entry:
+  br ^loop_cond;
+
+^loop_cond:
+  br %range.lo <= %range.hi, ^calc_mid, ^not_found;
+
+^calc_mid:
+  %mid = %range.lo + %range.hi;
+  %mid = %mid / %two;
+  br ^check_match;
+
+^check_match:
+  %val = %haystack[%mid];
+  br %val == %?target, ^found, ^check_less;
+
+^check_less:
+  br %val < %?target, ^move_lo, ^move_hi;
+
+^move_lo:
+  %range.lo = %mid + %one;
+  br ^loop_cond;
+
+^move_hi:
+  %range.hi = %mid - %one;
+  br ^loop_cond;
+
+^found:
+  %res.found = 1;
+  %res.index = %mid;
+  br ^exit;
+
+^not_found:
+  %res.found = 0;
+  br ^exit;
+
+^exit:
+  require %res.found == 1, "found it";
+  require %res.index == 6, "correct index";
+  ret 0;
+}

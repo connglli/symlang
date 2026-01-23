@@ -1,0 +1,56 @@
+// EXPECT: PASS
+struct @SortInfo { n: i32; current_i: i32; }
+struct @KeyInfo { val: i32; pos: i32; }
+
+fun @main() : i32 {
+  let mut %data: [5] i32 = {5, 2, 4, 6, 1};
+  let mut %info: @SortInfo = {5, 1};
+  let mut %key: @KeyInfo = {0, 0};
+  let mut %v: i32 = 0;
+  let mut %next_pos: i32 = 0;
+  let mut %final_pos: i32 = 0;
+  let mut %curr_i: i32 = 0;
+  let mut %curr_pos: i32 = 0;
+  let %one: i32 = 1;
+
+^entry:
+  br ^outer_loop;
+
+^outer_loop:
+  br %info.current_i < 5, ^inner_init, ^exit;
+
+^inner_init:
+  %curr_i = %info.current_i;
+  %key.val = %data[%curr_i];
+  %key.pos = %info.current_i - %one;
+  br ^inner_loop;
+
+^inner_loop:
+  br %key.pos >= 0, ^check_val, ^insert;
+
+^check_val:
+  %curr_pos = %key.pos;
+  %v = %data[%curr_pos];
+  br %v > %key.val, ^move, ^insert;
+
+^move:
+  %next_pos = %key.pos + %one;
+  %curr_pos = %key.pos;
+  %data[%next_pos] = %data[%curr_pos];
+  %key.pos = %key.pos - %one;
+  br ^inner_loop;
+
+^insert:
+  %final_pos = %key.pos + %one;
+  %data[%final_pos] = %key.val;
+  br ^outer_inc;
+
+^outer_inc:
+  %info.current_i = %info.current_i + %one;
+  br ^outer_loop;
+
+^exit:
+  require %data[0] == 1, "sort 0";
+  require %data[4] == 6, "sort 4";
+  ret 0;
+}

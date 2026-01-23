@@ -1,0 +1,63 @@
+// EXPECT: PASS
+// ARGS: --sym %?input=9
+struct @ArrayMeta { size: i32; is_sorted: i32; }
+struct @SwapStats { count: i32; temp: i32; }
+
+fun @main() : i32 {
+  sym %?input : value i32;
+  let mut %data: [5] i32 = {5, 4, 3, 2, 1};
+  let mut %meta: @ArrayMeta = {5, 0};
+  let mut %stats: @SwapStats = {0, 0};
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %val1: i32 = 0;
+  let mut %val2: i32 = 0;
+  let mut %next_j: i32 = 0;
+  let %one: i32 = 1;
+  let %four: i32 = 4;
+
+^entry:
+  %data[0] = %?input;
+  br ^outer_init;
+
+^outer_loop:
+  br %i < %meta.size, ^inner_init, ^check_exit;
+
+^outer_init:
+  %i = 0;
+  br ^outer_loop;
+
+^inner_init:
+  %j = 0;
+  br ^inner_loop;
+
+^inner_loop:
+  br %j < %four, ^compare, ^outer_inc;
+
+^compare:
+  %val1 = %data[%j];
+  %next_j = %j + %one;
+  %val2 = %data[%next_j];
+  br %val1 > %val2, ^swap, ^inner_inc;
+
+^swap:
+  %stats.temp = %data[%j];
+  %next_j = %j + %one;
+  %data[%j] = %data[%next_j];
+  %data[%next_j] = %stats.temp;
+  %stats.count = %stats.count + %one;
+  br ^inner_inc;
+
+^inner_inc:
+  %j = %j + %one;
+  br ^inner_loop;
+
+^outer_inc:
+  %i = %i + %one;
+  br ^outer_loop;
+
+^check_exit:
+  require %data[0] == 1, "min check";
+  require %data[4] == 9, "max check";
+  ret 0;
+}

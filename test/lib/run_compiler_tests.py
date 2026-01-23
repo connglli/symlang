@@ -38,14 +38,14 @@ def run_symirc_test(symirc_path):
     if err == "TIMEOUT":
       return TestResult.TIMEOUT, "Compiler timeout"
 
-    is_interp_test = "test/interp" in file_path
+    is_runnable_test = "test/interp" in file_path or "test/compile" in file_path
 
     if result.returncode != 0:
       if expectation == "FAIL":
         return TestResult.PASS, ""
       return TestResult.FAIL, f"symirc failed:\n{result.stderr}"
 
-    if not is_interp_test:
+    if not is_runnable_test:
       if expectation == "FAIL":
         return TestResult.FAIL, "Expected compile error but succeeded"
       return TestResult.PASS, ""

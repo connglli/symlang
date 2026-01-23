@@ -1,0 +1,16 @@
+// EXPECT: PASS
+fun @main() : i32 {
+  let mut %i: i32 = 0;
+^entry:
+  br ^b1;
+^b1:
+  br ^b2;
+^b2:
+  br ^b3;
+^b3:
+  %i = 1;
+  br ^exit;
+^exit:
+  require %i == 1, "i is 1";
+  ret 0;
+}

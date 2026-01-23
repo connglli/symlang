@@ -1,0 +1,46 @@
+// EXPECT: PASS
+struct @FibParams { n: i32; }
+struct @FibState { current: i32; }
+
+fun @main() : i32 {
+  let mut %memo: [11] i32 = 0;
+  let mut %calls: [11] i32 = 0;
+  let %params: @FibParams = {10};
+  let mut %state: @FibState = {2};
+  let mut %idx1: i32 = 0;
+  let mut %idx2: i32 = 0;
+  let mut %v1: i32 = 0;
+  let mut %v2: i32 = 0;
+  let mut %curr: i32 = 0;
+  let %one: i32 = 1;
+  let %two: i32 = 2;
+
+^entry:
+  %memo[0] = 0;
+  %memo[1] = 1;
+  br ^loop;
+
+^loop:
+  br %state.current <= 10, ^body, ^exit;
+
+^body:
+  %idx1 = %state.current - %one;
+  %idx2 = %state.current - %two;
+  %v1 = %memo[%idx1];
+  %v2 = %memo[%idx2];
+  br ^store;
+
+^store:
+  %curr = %state.current;
+  %memo[%curr] = %v1 + %v2;
+  %calls[%curr] = 1;
+  br ^inc;
+
+^inc:
+  %state.current = %state.current + %one;
+  br ^loop;
+
+^exit:
+  require %memo[10] == 55, "Fib 10";
+  ret 0;
+}
