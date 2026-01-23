@@ -7,20 +7,16 @@ COMMON_SRCS = src/frontend/lexer.cpp src/frontend/parser.cpp src/frontend/ast_du
               src/analysis/pass_manager.cpp src/analysis/reachability.cpp \
               src/analysis/unused_name.cpp
 
-TEST_SRCS = src/test/runner.cpp
+TEST_SRCS =
 INTERP_SRCS = src/symiri.cpp src/interp/interpreter.cpp
 
 COMMON_OBJS = $(COMMON_SRCS:.cpp=.o)
 TEST_OBJS = $(TEST_SRCS:.cpp=.o)
 INTERP_OBJS = $(INTERP_SRCS:.cpp=.o)
 
-TARGET_TEST = runner
 TARGET_INTERP = symiri
 
-all: $(TARGET_TEST) $(TARGET_INTERP)
-
-$(TARGET_TEST): $(COMMON_OBJS) $(TEST_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^
+all: $(TARGET_INTERP)
 
 $(TARGET_INTERP): $(COMMON_OBJS) $(INTERP_OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^
@@ -29,12 +25,12 @@ $(TARGET_INTERP): $(COMMON_OBJS) $(INTERP_OBJS)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 clean:
-	rm -f $(COMMON_OBJS) $(TEST_OBJS) $(INTERP_OBJS) $(TARGET_TEST) $(TARGET_INTERP)
+	rm -f $(COMMON_OBJS) $(TEST_OBJS) $(INTERP_OBJS) $(TARGET_INTERP)
 
-test: $(TARGET_TEST) $(TARGET_INTERP)
-	python3 run_tests.py test/lexer ./$(TARGET_TEST)
-	python3 run_tests.py test/parser ./$(TARGET_TEST)
-	python3 run_tests.py test/cfgbuilder ./$(TARGET_TEST)
-	python3 run_tests.py test/typechecker ./$(TARGET_TEST)
-	python3 run_tests.py test/semchecker ./$(TARGET_TEST)
+test: $(TARGET_INTERP)
+	python3 run_tests.py test/lexer ./$(TARGET_INTERP) --check
+	python3 run_tests.py test/parser ./$(TARGET_INTERP) --check
+	python3 run_tests.py test/cfgbuilder ./$(TARGET_INTERP) --check
+	python3 run_tests.py test/typechecker ./$(TARGET_INTERP) --check
+	python3 run_tests.py test/semchecker ./$(TARGET_INTERP) --check
 	python3 run_tests.py test/interp ./$(TARGET_INTERP)

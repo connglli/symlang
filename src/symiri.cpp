@@ -27,6 +27,7 @@ int main(int argc, char **argv) {
     ("main", "Entry function to execute", cxxopts::value<std::string>()->default_value("@main"))
     ("sym", "Bind a symbol (name=value)", cxxopts::value<std::vector<std::string>>())
     ("trace", "Print execution trace", cxxopts::value<bool>()->default_value("false"))
+    ("check", "Check semantics only (do not execute)", cxxopts::value<bool>()->default_value("false"))
     ("h,help", "Print usage");
   // clang-format on
 
@@ -108,6 +109,10 @@ int main(int argc, char **argv) {
         std::cout << "Warning: " << d.message << " at " << d.span.begin.line << ":"
                   << d.span.begin.col << "\n";
       }
+    }
+
+    if (result["check"].as<bool>()) {
+      return 0;
     }
 
     // 4. Interpret

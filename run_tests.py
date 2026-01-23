@@ -24,7 +24,7 @@ def get_expectation_and_args(file_path):
   return expectation, args
 
 
-def run_tests(test_dir, binary_path):
+def run_tests(test_dir, binary_cmd_parts):
   failed_tests = []
   passed_count = 0
   total_count = 0
@@ -41,7 +41,7 @@ def run_tests(test_dir, binary_path):
           continue
 
         # Run binary
-        cmd = [binary_path, file_path] + extra_args
+        cmd = binary_cmd_parts + [file_path] + extra_args
         result = subprocess.run(
           cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
@@ -74,6 +74,6 @@ def run_tests(test_dir, binary_path):
 
 if __name__ == "__main__":
   if len(sys.argv) < 3:
-    print("Usage: python3 run_tests.py <test_dir> <binary_path>")
+    print("Usage: python3 run_tests.py <test_dir> <binary_path> [args...]")
     sys.exit(1)
-  run_tests(sys.argv[1], sys.argv[2])
+  run_tests(sys.argv[1], sys.argv[2:])
