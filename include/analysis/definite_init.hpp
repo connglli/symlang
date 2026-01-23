@@ -1,28 +1,28 @@
-#pragma once
-
 #include <unordered_map>
-#include "analysis/cfg.hpp"
-#include "ast/ast.hpp"
-#include "frontend/diagnostics.hpp"
+#include "analysis/dataflow.hpp"
+#include "analysis/pass_manager.hpp"
 
-class DefiniteInitAnalysis {
+class DefiniteInitAnalysis : public symir::FunctionPass {
 public:
-  static void run(const FunDecl &f, const CFG &cfg, DiagBag &diags);
+  std::string name() const override { return "DefiniteInitAnalysis"; }
+
+  symir::PassResult run(FunDecl &f, DiagBag &diags) override;
 
 private:
   using InitSet = std::unordered_map<std::string, bool>;
 
-  struct Context {
-    const FunDecl &f;
-    const CFG &cfg;
-    DiagBag &diags;
-    std::unordered_map<std::string, bool> isParam;
-    std::unordered_map<std::string, bool> hasInit;
-  };
+  class Problem : public symir::DataflowProblem<InitSet> {
+  public:
+    Problem(const FunDecl &f, DiagBag &diags);
 
-  static InitSet makeAllFalse(const FunDecl &f);
-  static InitSet makeAllTrue(const FunDecl &f);
-  static bool sameInitSet(const InitSet &a, const InitSet &b);
-  static InitSet meetAND(const InitSet &a, const InitSet &b);
-  static InitSet transferBlock(const Block &b, InitSet state, Context &ctx);
+    InitSet bottom() override;
+    InitSet entryState() override;
+    InitSet meet(const InitSet &lhs, const InitSet &rhs) override;
+    InitSet transfer(const Block &block, const InitSet &in) override;
+    bool equal(const InitSet &lhs, const InitSet &rhs) override;
+
+  private:
+    const FunDecl &f_;
+    DiagBag &diags_;
+  };
 };

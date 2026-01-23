@@ -1,8 +1,5 @@
-#pragma once
-
 #include <unordered_map>
-#include "ast/ast.hpp"
-#include "frontend/diagnostics.hpp"
+#include "analysis/pass_manager.hpp"
 
 struct Ty {
   struct BoolTy {};
@@ -25,15 +22,13 @@ struct TypeAnnotations {
   std::unordered_map<NodeId, Ty> nodeTy;
 };
 
-class TypeChecker {
+class TypeChecker : public symir::ModulePass {
 public:
-  explicit TypeChecker(const Program &p) : prog_(p) {}
+  std::string name() const override { return "TypeChecker"; }
 
-  std::unordered_map<std::string, TypeAnnotations> runAll(DiagBag &diags);
+  symir::PassResult run(Program &prog, DiagBag &diags) override;
 
 private:
-  const Program &prog_;
-
   struct StructInfo {
     std::unordered_map<std::string, TypePtr> fields;
     SourceSpan declSpan;
@@ -54,7 +49,7 @@ private:
     SourceSpan declSpan;
   };
 
-  void collectStructs(DiagBag &diags);
+  void collectStructs(const Program &prog, DiagBag &diags);
   void checkFunction(const FunDecl &f, TypeAnnotations &ann, DiagBag &diags);
 
   Ty typeOfExpr(

@@ -1,10 +1,10 @@
 #include "frontend/semchecker.hpp"
 #include <algorithm>
 
-void SemChecker::run(DiagBag &diags) {
+symir::PassResult SemChecker::run(Program &prog, DiagBag &diags) {
   std::unordered_set<std::string> globalNames;
 
-  for (const auto &s: prog_.structs) {
+  for (const auto &s: prog.structs) {
     if (globalNames.count(s.name.name)) {
       diags.error("Duplicate global name (struct): " + s.name.name, s.span);
     }
@@ -12,13 +12,14 @@ void SemChecker::run(DiagBag &diags) {
     checkStruct(s, diags);
   }
 
-  for (const auto &f: prog_.funs) {
+  for (const auto &f: prog.funs) {
     if (globalNames.count(f.name.name)) {
       diags.error("Duplicate global name (function): " + f.name.name, f.span);
     }
     globalNames.insert(f.name.name);
     checkFunction(f, diags);
   }
+  return diags.hasErrors() ? symir::PassResult::Error : symir::PassResult::Success;
 }
 
 void SemChecker::checkStruct(const StructDecl &s, DiagBag &diags) {

@@ -32,33 +32,35 @@ int main(int argc, char **argv) {
     auto toks = lx.lexAll();
 
     Parser ps(std::move(toks));
+
     Program prog = ps.parseProgram();
 
+
     DiagBag diags;
-    SemChecker sc(prog);
-    sc.run(diags);
 
-    if (!diags.hasErrors()) {
-      TypeChecker tc(prog);
-      tc.runAll(diags);
-    }
+    symir::PassManager pm(diags);
 
-    if (!diags.hasErrors()) {
-      for (const auto &f: prog.funs) {
-        CFG cfg = CFG::build(f, diags);
-        DefiniteInitAnalysis::run(f, cfg, diags);
-      }
-    }
+    pm.addModulePass(std::make_unique<SemChecker>());
 
-    if (diags.hasErrors()) {
+    pm.addModulePass(std::make_unique<TypeChecker>());
+
+    pm.addFunctionPass(std::make_unique<DefiniteInitAnalysis>());
+
+
+    if (pm.run(prog) == symir::PassResult::Error) {
+
       for (const auto &d: diags.diags) {
+
         if (d.level == DiagLevel::Error) {
+
           std::cerr << "Error: " << d.message << " at " << d.span.begin.line << ":"
                     << d.span.begin.col << "\n";
         }
       }
-      return 1; // Analysis Error
+
+      return 1;
     }
+
 
   } catch (const ParseError &e) {
     std::cerr << "ParseError: " << e.what() << " at " << e.span.begin.line << ":"

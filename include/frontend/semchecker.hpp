@@ -2,18 +2,15 @@
 
 #include <string>
 #include <unordered_set>
-#include "ast/ast.hpp"
-#include "frontend/diagnostics.hpp"
+#include "analysis/pass_manager.hpp"
 
-class SemChecker {
+class SemChecker : public symir::ModulePass {
 public:
-  explicit SemChecker(const Program &p) : prog_(p) {}
+  std::string name() const override { return "SemChecker"; }
 
-  void run(DiagBag &diags);
+  symir::PassResult run(Program &prog, DiagBag &diags) override;
 
 private:
-  const Program &prog_;
-
   void checkStruct(const StructDecl &s, DiagBag &diags);
   void checkFunction(const FunDecl &f, DiagBag &diags);
   void checkSigils(const FunDecl &f, DiagBag &diags);

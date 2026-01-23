@@ -63,17 +63,14 @@ int main(int argc, char **argv) {
     Parser ps(std::move(toks));
     Program prog = ps.parseProgram();
 
-    // 2. Analysis: Semcheck, Typecheck & Definite Init
+    // 2. Analysis: Pass Manager orchestration
     DiagBag diags;
-    SemChecker sc(prog);
-    sc.run(diags);
+    symir::PassManager pm(diags);
+    pm.addModulePass(std::make_unique<SemChecker>());
+    pm.addModulePass(std::make_unique<TypeChecker>());
+    pm.addFunctionPass(std::make_unique<DefiniteInitAnalysis>());
 
-    if (!diags.hasErrors()) {
-      TypeChecker tc(prog);
-      tc.runAll(diags);
-    }
-
-    if (diags.hasErrors()) {
+    if (pm.run(prog) == symir::PassResult::Error) {
       std::cerr << "Errors:\n";
       for (const auto &d: diags.diags) {
         if (d.level == DiagLevel::Error) {

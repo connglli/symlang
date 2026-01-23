@@ -1,106 +1,70 @@
 #include "analysis/definite_init.hpp"
 
-void DefiniteInitAnalysis::run(const FunDecl &f, const CFG &cfg, DiagBag &diags) {
-  Context ctx{f, cfg, diags, {}, {}};
-  for (const auto &p: f.params)
-    ctx.isParam[p.name.name] = true;
-  for (const auto &l: f.lets) {
-    if (l.init && l.init->kind != InitVal::Kind::Undef) {
-      ctx.hasInit[l.name.name] = true;
-    }
-  }
+symir::PassResult DefiniteInitAnalysis::run(FunDecl &f, DiagBag &diags) {
+  CFG cfg = CFG::build(f, diags);
+  if (diags.hasErrors())
+    return symir::PassResult::Error;
 
-  std::unordered_map<std::string, InitSet> in, out;
-  InitSet top = makeAllFalse(f);
+  Problem p(f, diags);
+  symir::DataflowSolver<InitSet>::solve(f, cfg, p);
 
-  for (const auto &bname: cfg.blocks) {
-    in[bname] = top;
-    out[bname] = top;
-  }
-
-  // Seed entry
-  InitSet start = makeAllFalse(f);
-  for (const auto &p: f.params)
-    start[p.name.name] = true;
-  for (const auto &l: f.lets) {
-    if (l.init && l.init->kind != InitVal::Kind::Undef) {
-      start[l.name.name] = true;
-    }
-  }
-
-  in[cfg.blocks[cfg.entry]] = start;
-
-  std::vector<std::size_t> rpo = cfg.rpo();
-  bool changed = true;
-  int iter = 0;
-  while (changed && iter++ < 100) {
-    changed = false;
-    for (std::size_t idx: rpo) {
-      const std::string &name = cfg.blocks[idx];
-      const Block &b = f.blocks[idx];
-
-      if (idx != cfg.entry && !cfg.pred[idx].empty()) {
-        InitSet meet = makeAllTrue(f);
-        for (std::size_t pidx: cfg.pred[idx]) {
-          meet = meetAND(meet, out[cfg.blocks[pidx]]);
-        }
-        if (!sameInitSet(in[name], meet)) {
-          in[name] = meet;
-          changed = true;
-        }
-      }
-
-      InitSet newOut = transferBlock(b, in[name], ctx);
-      if (!sameInitSet(out[name], newOut)) {
-        out[name] = newOut;
-        changed = true;
-      }
-    }
-  }
+  return diags.hasErrors() ? symir::PassResult::Error : symir::PassResult::Success;
 }
 
-DefiniteInitAnalysis::InitSet DefiniteInitAnalysis::makeAllFalse(const FunDecl &f) {
-  InitSet s;
-  for (const auto &p: f.params)
-    s[p.name.name] = false;
-  for (const auto &l: f.lets)
-    s[l.name.name] = false;
-  return s;
-}
+DefiniteInitAnalysis::Problem::Problem(const FunDecl &f, DiagBag &diags) : f_(f), diags_(diags) {}
 
-DefiniteInitAnalysis::InitSet DefiniteInitAnalysis::makeAllTrue(const FunDecl &f) {
+DefiniteInitAnalysis::InitSet DefiniteInitAnalysis::Problem::bottom() {
   InitSet s;
-  for (const auto &p: f.params)
+  for (const auto &p: f_.params)
     s[p.name.name] = true;
-  for (const auto &l: f.lets)
+  for (const auto &l: f_.lets)
     s[l.name.name] = true;
+  for (const auto &sy: f_.syms)
+    s[sy.name.name] = true;
   return s;
 }
 
-bool DefiniteInitAnalysis::sameInitSet(const InitSet &a, const InitSet &b) {
-  if (a.size() != b.size())
+DefiniteInitAnalysis::InitSet DefiniteInitAnalysis::Problem::entryState() {
+  InitSet s;
+  // Params and symbols are initialized
+  for (const auto &p: f_.params)
+    s[p.name.name] = true;
+  for (const auto &sy: f_.syms)
+    s[sy.name.name] = true;
+  // Locals are initialized only if they have a non-undef initializer
+  for (const auto &l: f_.lets) {
+    s[l.name.name] = (l.init && l.init->kind != InitVal::Kind::Undef);
+  }
+  return s;
+}
+
+DefiniteInitAnalysis::InitSet
+DefiniteInitAnalysis::Problem::meet(const InitSet &lhs, const InitSet &rhs) {
+  InitSet r;
+  for (auto const &[key, val]: lhs) {
+    r[key] = val && rhs.at(key);
+  }
+  return r;
+}
+
+bool DefiniteInitAnalysis::Problem::equal(const InitSet &lhs, const InitSet &rhs) {
+  if (lhs.size() != rhs.size())
     return false;
-  for (auto const &[key, val]: a) {
-    auto it = b.find(key);
-    if (it == b.end() || it->second != val)
+  for (auto const &[key, val]: lhs) {
+    auto it = rhs.find(key);
+    if (it == rhs.end() || it->second != val)
       return false;
   }
   return true;
 }
 
-DefiniteInitAnalysis::InitSet DefiniteInitAnalysis::meetAND(const InitSet &a, const InitSet &b) {
-  InitSet r;
-  for (auto const &[key, val]: a) {
-    r[key] = val && b.at(key);
-  }
-  return r;
-}
-
 DefiniteInitAnalysis::InitSet
-DefiniteInitAnalysis::transferBlock(const Block &b, InitSet state, Context &ctx) {
+DefiniteInitAnalysis::Problem::transfer(const Block &b, const InitSet &in) {
+  InitSet state = in;
+
   auto checkLValue = [&](const LValue &lv) {
     if (state.count(lv.base.name) && !state.at(lv.base.name)) {
-      ctx.diags.error("Read of possibly uninitialized local: " + lv.base.name, lv.base.span);
+      diags_.error("Read of possibly uninitialized local: " + lv.base.name, lv.base.span);
     }
   };
 
@@ -113,7 +77,7 @@ DefiniteInitAnalysis::transferBlock(const Block &b, InitSet state, Context &ctx)
               if (auto lsid = std::get_if<LocalOrSymId>(&arg.coef)) {
                 if (auto lid = std::get_if<LocalId>(lsid)) {
                   if (state.count(lid->name) && !state.at(lid->name))
-                    ctx.diags.error("Read of uninitialized local in coef: " + lid->name, lid->span);
+                    diags_.error("Read of uninitialized local in coef: " + lid->name, lid->span);
                 }
               }
               checkLValue(arg.rval);
@@ -126,7 +90,7 @@ DefiniteInitAnalysis::transferBlock(const Block &b, InitSet state, Context &ctx)
               if (auto lsid = std::get_if<LocalOrSymId>(&arg.coef)) {
                 if (auto lid = std::get_if<LocalId>(lsid)) {
                   if (state.count(lid->name) && !state.at(lid->name))
-                    ctx.diags.error("Read of uninitialized local: " + lid->name, lid->span);
+                    diags_.error("Read of uninitialized local: " + lid->name, lid->span);
                 }
               }
             }

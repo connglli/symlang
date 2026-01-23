@@ -1,19 +1,18 @@
 #include "frontend/typechecker.hpp"
 #include "analysis/cfg.hpp"
 
-std::unordered_map<std::string, TypeAnnotations> TypeChecker::runAll(DiagBag &diags) {
-  collectStructs(diags);
-  std::unordered_map<std::string, TypeAnnotations> out;
-  for (const auto &f: prog_.funs) {
+symir::PassResult TypeChecker::run(Program &prog, DiagBag &diags) {
+  collectStructs(prog, diags);
+  for (const auto &f: prog.funs) {
     TypeAnnotations ann;
     checkFunction(f, ann, diags);
-    out[f.name.name] = std::move(ann);
   }
-  return out;
+  return diags.hasErrors() ? symir::PassResult::Error : symir::PassResult::Success;
 }
 
-void TypeChecker::collectStructs(DiagBag &diags) {
-  for (const auto &sd: prog_.structs) {
+void TypeChecker::collectStructs(const Program &prog, DiagBag &diags) {
+  for (const auto &sd: prog.structs) {
+
     if (structs_.count(sd.name.name)) {
       diags.error("Duplicate struct declaration: " + sd.name.name, sd.span);
       continue;
@@ -288,22 +287,37 @@ TypePtr TypeChecker::typeOfCoef(
     const std::unordered_map<std::string, SymInfo> &syms, [[maybe_unused]] DiagBag &diags,
     std::optional<std::uint32_t> expectedBits
 ) {
+
   if (auto lit = std::get_if<IntLit>(&c)) {
+
     auto t = std::make_shared<Type>();
+
     t->v = IntType{
         expectedBits && *expectedBits == 64 ? IntType::Kind::I64 : IntType::Kind::I32, std::nullopt,
         lit->span
     };
+
     return t;
   }
+
   auto id = std::get<LocalOrSymId>(c);
+
   if (auto lid = std::get_if<LocalId>(&id)) {
+
     auto it = vars.find(lid->name);
+
     return it != vars.end() ? it->second.type : nullptr;
+
   } else {
+
     auto sid = std::get_if<SymId>(&id);
+
     auto it = syms.find(sid->name);
-    return it != syms.end() ? it->second.type : nullptr;
+
+    if (it == syms.end())
+      return nullptr;
+
+    return it->second.type;
   }
 }
 
