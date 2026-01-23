@@ -1,0 +1,9 @@
+// EXPECT: FAIL
+// ARGS: --main @main --path '^entry' --sym %?a=-2147483648
+// 32-bit: MIN_INT - 1 -> Overflow
+fun @main() : i32 {
+  sym %?a : value i32;
+^entry:
+  let %b: i32 = %?a - 1;
+  ret 0;
+}

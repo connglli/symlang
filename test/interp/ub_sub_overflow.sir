@@ -1,0 +1,9 @@
+// EXPECT: FAIL
+// ARGS: --sym %?a=-9223372036854775808
+// MIN_INT64 - 1 -> Overflow
+fun @main() : i32 {
+  sym %?a : value i64;
+^entry:
+  let %c: i64 = %?a - 1;
+  ret 0;
+}

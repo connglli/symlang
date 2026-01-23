@@ -1,0 +1,7 @@
+// EXPECT: FAIL
+// ARGS: --main @main --path '^entry'
+fun @main() : i32 {
+^entry:
+  let %a: i32 = 10 % 0;
+  ret 0;
+}
