@@ -1,0 +1,6 @@
+// EXPECT: FAIL
+fun @main() : i32 {
+  let %arr: [2] i32 = undef;
+^entry:
+  ret %arr[2]; // OOB
+}

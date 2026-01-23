@@ -40,8 +40,7 @@ void Interpreter::execFunction(
       store[f.params[i].name.name] = RuntimeValue{RuntimeValue::Kind::Int, 0, {}, {}};
   }
 
-  // Init Symbols (Global and Local)
-  // Check if all declared symbols in the function are bound
+  // Init Symbols
   for (const auto &s: f.syms) {
     auto it = symBindings.find(s.name.name);
     if (it == symBindings.end()) {
@@ -49,29 +48,40 @@ void Interpreter::execFunction(
     }
     store[s.name.name] = RuntimeValue{RuntimeValue::Kind::Int, it->second, {}, {}};
   }
-  // Also check for extra bindings? (Warning maybe, but stick to required)
 
   // Init locals
   for (const auto &l: f.lets) {
     RuntimeValue val;
-    val.kind = RuntimeValue::Kind::Int; // Default 0
+    val.kind = RuntimeValue::Kind::Undef;
+
+    bool hasInit = false;
+    RuntimeValue initVal;
     if (l.init) {
+      hasInit = true;
       if (l.init->kind == InitVal::Kind::Int) {
-        val.intVal = std::get<IntLit>(l.init->value).value;
+        initVal.kind = RuntimeValue::Kind::Int;
+        initVal.intVal = std::get<IntLit>(l.init->value).value;
       } else if (l.init->kind == InitVal::Kind::Local) {
-        val = store.at(std::get<LocalId>(l.init->value).name);
+        initVal = store.at(std::get<LocalId>(l.init->value).name);
       } else if (l.init->kind == InitVal::Kind::Sym) {
-        // Symbols must have been inited above
-        val = store.at(std::get<SymId>(l.init->value).name);
+        initVal = store.at(std::get<SymId>(l.init->value).name);
+      } else if (l.init->kind == InitVal::Kind::Undef) {
+        initVal.kind = RuntimeValue::Kind::Undef;
       }
     }
 
     if (std::holds_alternative<ArrayType>(l.type->v)) {
       val.kind = RuntimeValue::Kind::Array;
       const auto &at = std::get<ArrayType>(l.type->v);
-      val.arrayVal.resize(at.size, RuntimeValue{RuntimeValue::Kind::Int, 0, {}, {}});
+      val.arrayVal.resize(
+          at.size, hasInit ? initVal : RuntimeValue{RuntimeValue::Kind::Undef, 0, {}, {}}
+      );
     } else if (std::holds_alternative<StructType>(l.type->v)) {
       val.kind = RuntimeValue::Kind::Struct;
+      // Structs in v0 are init to empty map; fields added on assign or remain undef
+    } else {
+      // Scalar
+      val = hasInit ? initVal : RuntimeValue{RuntimeValue::Kind::Undef, 0, {}, {}};
     }
 
     store[l.name.name] = val;
@@ -124,6 +134,8 @@ void Interpreter::execFunction(
           } else if constexpr (std::is_same_v<T, RetTerm>) {
             if (t.value) {
               RuntimeValue res = evalExpr(*t.value, store);
+              if (res.kind == RuntimeValue::Kind::Undef)
+                throw std::runtime_error("UB: Reading undef in ret");
               std::cout << "Result: " << res.intVal << "\n";
             } else {
               std::cout << "Result: void\n";
@@ -145,6 +157,8 @@ Interpreter::RuntimeValue Interpreter::evalExpr(const Expr &e, const Store &stor
   RuntimeValue v = evalAtom(e.first, store);
   for (const auto &tail: e.rest) {
     RuntimeValue right = evalAtom(tail.atom, store);
+    if (v.kind == RuntimeValue::Kind::Undef || right.kind == RuntimeValue::Kind::Undef)
+      throw std::runtime_error("UB: Reading undef in expr");
     if (v.kind != RuntimeValue::Kind::Int || right.kind != RuntimeValue::Kind::Int)
       throw std::runtime_error("Expr ops only on ints");
 
@@ -163,6 +177,8 @@ Interpreter::RuntimeValue Interpreter::evalAtom(const Atom &a, const Store &stor
         if constexpr (std::is_same_v<T, OpAtom>) {
           RuntimeValue c = evalCoef(arg.coef, store);
           RuntimeValue r = evalLValue(arg.rval, store);
+          if (c.kind == RuntimeValue::Kind::Undef || r.kind == RuntimeValue::Kind::Undef)
+            throw std::runtime_error("UB: Reading undef in op");
           if (c.kind != RuntimeValue::Kind::Int || r.kind != RuntimeValue::Kind::Int)
             throw std::runtime_error("OpAtom requires ints");
 
@@ -172,11 +188,11 @@ Interpreter::RuntimeValue Interpreter::evalAtom(const Atom &a, const Store &stor
             res.intVal = c.intVal * r.intVal;
           else if (arg.op == AtomOpKind::Div) {
             if (r.intVal == 0)
-              throw std::runtime_error("Division by zero");
+              throw std::runtime_error("UB: Division by zero");
             res.intVal = c.intVal / r.intVal;
           } else if (arg.op == AtomOpKind::Mod) {
             if (r.intVal == 0)
-              throw std::runtime_error("Modulo by zero");
+              throw std::runtime_error("UB: Modulo by zero");
             res.intVal = c.intVal % r.intVal;
           }
           return res;
@@ -201,11 +217,9 @@ Interpreter::RuntimeValue Interpreter::evalCoef(const Coef &c, const Store &stor
   const auto &id = std::get<LocalOrSymId>(c);
   if (auto lid = std::get_if<LocalId>(&id))
     return store.at(lid->name);
-  // SymId
   auto sid = std::get_if<SymId>(&id);
   if (store.count(sid->name))
     return store.at(sid->name);
-  // Should not happen if all symbols bound
   throw std::runtime_error("Internal error: Unbound symbol " + sid->name);
 }
 
@@ -220,10 +234,11 @@ Interpreter::RuntimeValue Interpreter::evalLValue(const LValue &lv, const Store 
 
   for (const auto &acc: lv.accesses) {
     if (auto ai = std::get_if<AccessIndex>(&acc)) {
+      if (cur->kind == RuntimeValue::Kind::Undef)
+        throw std::runtime_error("UB: Reading field of undef");
       if (cur->kind != RuntimeValue::Kind::Array)
         throw std::runtime_error("Indexing non-array");
 
-      // Eval index
       RuntimeValue idxVal;
       const auto &idx = ai->index;
       if (std::holds_alternative<IntLit>(idx))
@@ -237,22 +252,22 @@ Interpreter::RuntimeValue Interpreter::evalLValue(const LValue &lv, const Store 
           idxVal = store.at(sid->name);
         }
       }
+      if (idxVal.kind == RuntimeValue::Kind::Undef)
+        throw std::runtime_error("UB: Undef index");
 
       if (idxVal.intVal < 0 || (size_t) idxVal.intVal >= cur->arrayVal.size())
-        throw std::runtime_error("Array index out of bounds");
+        throw std::runtime_error("UB: Array index out of bounds");
 
       cur = &cur->arrayVal[idxVal.intVal];
     } else if (auto af = std::get_if<AccessField>(&acc)) {
+      if (cur->kind == RuntimeValue::Kind::Undef)
+        throw std::runtime_error("UB: Reading field of undef");
       if (cur->kind != RuntimeValue::Kind::Struct)
         throw std::runtime_error("Accessing field of non-struct");
-      if (!cur->structVal.count(af->field)) {
-        auto it = cur->structVal.find(af->field);
-        if (it == cur->structVal.end())
-          throw std::runtime_error("Field not found (uninitialized?)");
-        cur = &it->second;
-      } else {
-        cur = &cur->structVal.at(af->field);
-      }
+      auto it = cur->structVal.find(af->field);
+      if (it == cur->structVal.end())
+        throw std::runtime_error("UB: Uninitialized field read");
+      cur = &it->second;
     }
   }
   return *cur;
@@ -265,7 +280,6 @@ void Interpreter::setLValue(const LValue &lv, RuntimeValue val, Store &store) {
     if (auto ai = std::get_if<AccessIndex>(&acc)) {
       if (cur->kind != RuntimeValue::Kind::Array)
         throw std::runtime_error("Indexing non-array");
-
       RuntimeValue idxVal;
       const auto &idx = ai->index;
       if (std::holds_alternative<IntLit>(idx))
@@ -274,15 +288,13 @@ void Interpreter::setLValue(const LValue &lv, RuntimeValue val, Store &store) {
         const auto &id = std::get<LocalOrSymId>(idx);
         if (auto lid = std::get_if<LocalId>(&id))
           idxVal = store.at(lid->name);
-        else { // SymId
+        else {
           auto sid = std::get_if<SymId>(&id);
           idxVal = store.at(sid->name);
         }
       }
-
       if (idxVal.intVal < 0 || (size_t) idxVal.intVal >= cur->arrayVal.size())
-        throw std::runtime_error("Array index out of bounds");
-
+        throw std::runtime_error("UB: Array index out of bounds");
       cur = &cur->arrayVal[idxVal.intVal];
     } else if (auto af = std::get_if<AccessField>(&acc)) {
       if (cur->kind != RuntimeValue::Kind::Struct)
@@ -297,6 +309,8 @@ bool Interpreter::evalCond(const Cond &c, const Store &store) {
   RuntimeValue l = evalExpr(c.lhs, store);
   RuntimeValue r = evalExpr(c.rhs, store);
 
+  if (l.kind == RuntimeValue::Kind::Undef || r.kind == RuntimeValue::Kind::Undef)
+    throw std::runtime_error("UB: Reading undef in cond");
   if (l.kind != RuntimeValue::Kind::Int || r.kind != RuntimeValue::Kind::Int)
     throw std::runtime_error("Cond operands must be int");
 

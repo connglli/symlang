@@ -1,0 +1,7 @@
+// EXPECT: FAIL
+fun @main() : i32 {
+  let %arr: [2] i32 = undef;
+  let %idx: i32 = -1;
+^entry:
+  ret %arr[%idx]; // OOB
+}
