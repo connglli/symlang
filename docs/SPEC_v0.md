@@ -76,6 +76,7 @@ StructName  := GlobalId ;     (* recommended: use @TypeName for struct names *)
 Notes:
 - Arrays are fixed-size.
 - `Nat` is a literal (no symbolic sizes in v0).
+- **Multidimensional arrays** are supported by nesting `ArrayType`. For example, `[3][4] i32` represents a 3x4 grid of integers. Whitespace between brackets is optional.
 
 ### 3.3 Program structure
 ```ebnf
@@ -109,11 +110,18 @@ Domains are strongly recommended (especially for `coef` and `index`) to keep sol
 #### 3.4.2 Locals (`let` and `let mut`)
 ```ebnf
 LetDecl     := "let" ("mut")? LocalId ":" Type ("=" InitVal)? ";" ;
-InitVal     := IntLit | SymId | LocalId | "undef" ;
+InitVal     := ScalarInit | "undef" | BraceInit ;
+ScalarInit  := IntLit | SymId | LocalId ;
+BraceInit   := "{" InitVal ("," InitVal)* "}" ;
 ```
 
 Local initialization:
-- Locals may be initialized by an integer literal, a symbol of the same type, or a parameter/local of the same type.
+- **Broadcast:** If a `ScalarInit` is provided for an array or struct type, the value is broadcast to all leaf scalar elements. For example, `let mut %v: [4] i32 = -1;` initializes every element to `-1`.
+- **Brace Initialization:** `BraceInit` allows positional initialization of arrays and structs.
+  - **Arrays:** `{v0, v1, ..., vN-1}` initializes an array of size `N`. The number of elements in the braces must **exactly match** the array size.
+  - **Structs:** `{f0, f1, ..., fK-1}` initializes a struct with `K` fields in the order they were declared. The number of elements must **exactly match** the field count.
+  - **Recursive:** Braces can be nested to initialize multidimensional arrays or nested structs (e.g., `let %m: [2][2] i32 = { {1, 2}, {3, 4} };`).
+- **Empty Braces:** `{}` is **disallowed**.
 - `undef` indicates an uninitialized value; **reading** `undef` is UB in v0.
 
 Mutability:
