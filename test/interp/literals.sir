@@ -1,0 +1,15 @@
+// EXPECT: PASS
+fun @main() : i32 {
+  let %h: i32 = 0xFF;   // 255
+  let %o: i32 = 0o377; // 255
+  let %b: i32 = 0b11111111; // 255
+  let %neg_h: i32 = -0x1;
+
+^entry:
+  require %h == 255;
+  require %o == 255;
+  require %b == 255;
+  require %neg_h == -1;
+
+  ret 0;
+}

@@ -311,7 +311,7 @@ namespace symir {
         auto term = store.at(s.name.name).term;
         auto val_term = solver.get_value(term);
         auto val_str = val_term.value<std::string>(10);
-        finalRes.model[s.name.name] = std::stoll(val_str, nullptr, 0);
+        finalRes.model[s.name.name] = parseIntegerLiteral(val_str);
       }
     } else if (res == bitwuzla::Result::UNSAT) {
       finalRes.unsat = true;

@@ -212,8 +212,8 @@ namespace symir {
       const Token &hiT = consume(TokenKind::IntLit, "domain interval upper bound");
       consume(TokenKind::RBracket, "']'");
       DomainInterval di;
-      di.lo = std::stoll(loT.lexeme, nullptr, 0);
-      di.hi = std::stoll(hiT.lexeme, nullptr, 0);
+      di.lo = parseIntegerLiteral(loT.lexeme);
+      di.hi = parseIntegerLiteral(hiT.lexeme);
       di.span = SourceSpan{b, prevEnd()};
       return Domain{di};
     }
@@ -224,7 +224,7 @@ namespace symir {
       if (!is(TokenKind::RBrace)) {
         while (true) {
           const Token &v = consume(TokenKind::IntLit, "domain set element");
-          ds.values.push_back(std::stoll(v.lexeme, nullptr, 0));
+          ds.values.push_back(parseIntegerLiteral(v.lexeme));
           if (!tryConsume(TokenKind::Comma))
             break;
         }
@@ -300,7 +300,7 @@ namespace symir {
 
     if (is(TokenKind::IntLit)) {
       const Token &t = consume(TokenKind::IntLit, "integer literal");
-      IntLit lit{std::stoll(t.lexeme, nullptr, 0), t.span};
+      IntLit lit{parseIntegerLiteral(t.lexeme), t.span};
       InitVal iv;
       iv.kind = InitVal::Kind::Int;
       iv.value = lit;
@@ -471,7 +471,7 @@ namespace symir {
   Index Parser::parseIndex() {
     if (is(TokenKind::IntLit)) {
       const Token &t = consume(TokenKind::IntLit, "index");
-      return Index{IntLit{std::stoll(t.lexeme, nullptr, 0), t.span}};
+      return Index{IntLit{parseIntegerLiteral(t.lexeme), t.span}};
     }
     if (is(TokenKind::LocalId)) {
       return Index{LocalOrSymId{parseLocalId()}};
@@ -485,7 +485,7 @@ namespace symir {
   Coef Parser::parseCoef() {
     if (is(TokenKind::IntLit)) {
       const Token &t = consume(TokenKind::IntLit, "coefficient");
-      return Coef{IntLit{std::stoll(t.lexeme, nullptr, 0), t.span}};
+      return Coef{IntLit{parseIntegerLiteral(t.lexeme), t.span}};
     }
     if (is(TokenKind::LocalId)) {
       return Coef{LocalOrSymId{parseLocalId()}};

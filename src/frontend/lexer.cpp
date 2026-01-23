@@ -169,6 +169,16 @@ namespace symir {
         num.push_back(get()); // 'x'
         while (std::isxdigit(static_cast<unsigned char>(peek())))
           num.push_back(get());
+      } else if (peek() == '0' && (peek(1) == 'o' || peek(1) == 'O')) {
+        num.push_back(get()); // '0'
+        num.push_back(get()); // 'o'
+        while (peek() >= '0' && peek() <= '7')
+          num.push_back(get());
+      } else if (peek() == '0' && (peek(1) == 'b' || peek(1) == 'B')) {
+        num.push_back(get()); // '0'
+        num.push_back(get()); // 'b'
+        while (peek() == '0' || peek() == '1')
+          num.push_back(get());
       } else {
         while (std::isdigit(static_cast<unsigned char>(peek())))
           num.push_back(get());

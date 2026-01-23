@@ -362,4 +362,19 @@ namespace symir {
     SourceSpan span;
   };
 
+  // ---------------------------
+  // Utilities
+  // ---------------------------
+  inline int64_t parseIntegerLiteral(const std::string &s) {
+    if (s.size() >= 2 && s[0] == '0') {
+      if (s[1] == 'x' || s[1] == 'X')
+        return std::stoll(s, nullptr, 16);
+      if (s[1] == 'o' || s[1] == 'O')
+        return std::stoll(s.substr(2), nullptr, 8);
+      if (s[1] == 'b' || s[1] == 'B')
+        return std::stoll(s.substr(2), nullptr, 2);
+    }
+    return std::stoll(s, nullptr, 0);
+  }
+
 } // namespace symir

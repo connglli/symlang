@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
       std::string name = bind.substr(0, eq);
       std::string valStr = bind.substr(eq + 1);
       try {
-        symBindings[name] = std::stoll(valStr, nullptr, 0);
+        symBindings[name] = parseIntegerLiteral(valStr);
       } catch (...) {
         std::cerr << "Error: Invalid integer value for symbol " << name << ": " << valStr << "\n";
         return 1;

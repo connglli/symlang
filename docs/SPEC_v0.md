@@ -62,7 +62,11 @@ SymIR uses **strict UB** on the chosen path:
 ### 3.1 Lexical
 - `Ident` : `[A-Za-z_][A-Za-z0-9_]*`
 - `Nat` : `[0-9]+`
-- `IntLit` : `"-"? Nat`
+- `IntLit` :
+  - Decimal: `"-"? [0-9]+`
+  - Hexadecimal: `"-"? "0x" [0-9A-Fa-f]+`
+  - Octal: `"-"? "0o" [0-7]+`
+  - Binary: `"-"? "0b" [01]+`
 - `StringLit` : double-quoted string (implementation-defined escapes)
 
 ### 3.2 Types
