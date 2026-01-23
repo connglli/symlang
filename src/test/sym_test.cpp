@@ -3,12 +3,14 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
 #include "analysis/cfg.hpp"
 #include "analysis/definite_init.hpp"
 #include "analysis/pass_manager.hpp"
 #include "analysis/reachability.hpp"
 #include "analysis/unused_name.hpp"
 #include "ast/ast_dumper.hpp"
+#include "cxxopts.hpp"
 #include "frontend/lexer.hpp"
 #include "frontend/parser.hpp"
 #include "frontend/semchecker.hpp"
@@ -17,12 +19,30 @@
 int main(int argc, char **argv) {
   using namespace symir;
 
-  if (argc < 2) {
-    std::cerr << "Usage: " << argv[0] << " <input.sir>\n";
+  cxxopts::Options options("sym_test", "SymIR Frontend/Analysis Test Driver");
+
+  // clang-format off
+  options.add_options()
+    ("input", "Input .sir file", cxxopts::value<std::string>())
+    ("h,help", "Print usage");
+  // clang-format on
+
+  options.parse_positional({"input"});
+
+  auto result = options.parse(argc, argv);
+
+  if (result.count("help")) {
+    std::cout << options.help() << std::endl;
+    return 0;
+  }
+
+  if (!result.count("input")) {
+    std::cerr << "Error: No input file specified." << std::endl;
+    std::cerr << options.help() << std::endl;
     return 1;
   }
 
-  std::string path = argv[1];
+  std::string path = result["input"].as<std::string>();
   std::ifstream ifs(path);
   if (!ifs) {
     std::cerr << "Could not open file: " << path << "\n";
