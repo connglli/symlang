@@ -1,24 +1,20 @@
 # SymIR Testing Infrastructure
 
-This directory contains the regression test suite for the SymIR frontend, analysis pipeline, and reference interpreter.
-
-## Test Driver (`symiri --check`)
-
-The `symiri` executable with the `--check` flag is the primary tool for validating SymIR files' static semantics. It performs the following stages:
-1. **Lexing & Parsing**: Converts source to AST.
-2. **Semantic Analysis**: Enforces sigil scoping, duplicate checks, and structural well-formedness.
-3. **Type Checking**: Validates Bit-Vector widths and type compatibility.
-4. **Dataflow Analysis**: Runs Reachability and Definite Initialization passes.
-
-Without the `--check` flag, `symiri` also executes the program using the reference interpreter.
+This directory contains the regression test suite for the SymIR frontend, analysis pipeline, reference interpreter, and C compiler.
 
 ## Unified Testing Framework
 
-The SymIR test suite is managed by a unified Python-based testing framework located in `test/lib/`. It features:
+The SymIR test suite is managed by a unified Python-based testing framework located in `test/lib/`. It orchestrates the following tools:
+
+- **`symiri --check`**: Validates static semantics (lexing, parsing, duplicate checks, type checking, and dataflow analysis).
+- **`symiri`**: Executes SymIR programs using the reference interpreter.
+- **`symirc`**: Compiles SymIR programs to C and verifies them by linking with a test harness.
+
+### Framework Features
 - **Automatic Discovery**: Recursively finds all `.sir` files in a given directory.
 - **Colored Output**: Uses ANSI colors for clear status reporting (**Green for OK**, **Red for FAIL**, **Yellow for TIMEOUT/SKIP**).
 - **Timeouts**: Enforces execution limits (default 5s for tools, 1s for compiled binaries) to detect infinite loops.
-- **Sanitization**: Compiler tests are linked with AddressSanitizer and UB Saniziter to catch memory and semantic errors.
+- **Sanitization**: Compiler tests are linked with AddressSanitizer and UB Sanitizer to catch memory and semantic errors.
 
 ### Metadata Tags
 
@@ -29,6 +25,7 @@ Each `.sir` file should contain metadata tags in the first few lines to guide th
 | `// EXPECT: PASS` | The tool is expected to succeed (exit code 0). |
 | `// EXPECT: FAIL` | The tool is expected to report an error (non-zero exit code). |
 | `// ARGS: <args>` | Additional CLI arguments passed to the tool (e.g., `--sym %?x=10`). |
+| `// SKIP: <TOOL>` | Skip this test for a specific tool (`INTERPRETER` or `COMPILER`). |
 
 ## Writing Tests
 
