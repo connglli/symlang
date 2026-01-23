@@ -35,6 +35,13 @@ namespace symir {
           return true;
       return false;
     }
+
+    bool hasWarnings() const {
+      for (const auto &d: diags)
+        if (d.level == DiagLevel::Warning)
+          return true;
+      return false;
+    }
   };
 
 } // namespace symir

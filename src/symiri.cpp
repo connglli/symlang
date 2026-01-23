@@ -28,6 +28,8 @@ int main(int argc, char **argv) {
     ("sym", "Bind a symbol (name=value)", cxxopts::value<std::vector<std::string>>())
     ("trace", "Print execution trace", cxxopts::value<bool>()->default_value("false"))
     ("check", "Check semantics only (do not execute)", cxxopts::value<bool>()->default_value("false"))
+    ("w", "Inhibit all warning messages", cxxopts::value<bool>()->default_value("false"))
+    ("Werror", "Make all warnings into errors", cxxopts::value<bool>()->default_value("false"))
     ("h,help", "Print usage");
   // clang-format on
 
@@ -93,21 +95,26 @@ int main(int argc, char **argv) {
     pm.addFunctionPass(std::make_unique<DefiniteInitAnalysis>());
     pm.addFunctionPass(std::make_unique<UnusedNameAnalysis>());
 
-    if (pm.run(prog) == symir::PassResult::Error) {
+    bool werror = result["Werror"].as<bool>();
+    bool nowarn = result["w"].as<bool>();
+
+    if (pm.run(prog) == symir::PassResult::Error || (werror && diags.hasWarnings())) {
       std::cerr << "Errors:\n";
       for (const auto &d: diags.diags) {
-        if (d.level == DiagLevel::Error) {
-          std::cerr << "  " << d.message << " at " << d.span.begin.line << ":" << d.span.begin.col
-                    << "\n";
+        if (d.level == DiagLevel::Error || (werror && d.level == DiagLevel::Warning)) {
+          std::cerr << "  " << (d.level == DiagLevel::Warning ? "error (warning): " : "")
+                    << d.message << " at " << d.span.begin.line << ":" << d.span.begin.col << "\n";
         }
       }
       return 1;
     }
 
-    for (const auto &d: diags.diags) {
-      if (d.level == DiagLevel::Warning) {
-        std::cout << "Warning: " << d.message << " at " << d.span.begin.line << ":"
-                  << d.span.begin.col << "\n";
+    if (!nowarn) {
+      for (const auto &d: diags.diags) {
+        if (d.level == DiagLevel::Warning) {
+          std::cout << "Warning: " << d.message << " at " << d.span.begin.line << ":"
+                    << d.span.begin.col << "\n";
+        }
       }
     }
 
