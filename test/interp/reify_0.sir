@@ -1,5 +1,8 @@
 // EXPECT: PASS
+// ARGS: --sym @?s2=-1 --sym @?s3=-1
 fun @main() : i32 {
+  sym @?s2 : value i32;
+  sym @?s3 : value i32;
   let mut %v0: i32 = -1;
   let mut %v1: i32 = -1;
   let mut %v2: i32 = -1;
@@ -11,6 +14,8 @@ fun @main() : i32 {
   let %cm1: i32 = -1;
 
 ^entry:
+  %v2 = @?s2;
+  %v3 = @?s3;
   br ^BB0;
 
 ^BB0:
@@ -22,9 +27,9 @@ fun @main() : i32 {
 ^BB2: unreachable;
 ^BB3: unreachable;
 ^BB4:
-  %v5[-1599] = -964 * %v6 + 528 * %v7 + 549;
+  %v5[0] = -964 * %v6 + 528 * %v7 + 549;
   %v1 = 99 * %v6 + -205 * %v1 + 618;
-  br 282 * %v5[-3448] + -946 * %v1 + -767 * %v6 + -618 > 0, ^BB2, ^BB10;
+  br 282 * %v5[0] + -946 * %v1 + -767 * %v6 + -618 > 0, ^BB2, ^BB10;
 ^BB5: unreachable;
 ^BB6: unreachable;
 ^BB7: unreachable;

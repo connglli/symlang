@@ -1,5 +1,8 @@
 // EXPECT: PASS
+// ARGS: --sym @?s1=-1 --sym @?s2=-2
 fun @main() : i32 {
+  sym @?s1 : value i32;
+  sym @?s2 : value i32;
   let mut %v0: [3] i32 = -1;
   let mut %v1: i32 = -1;
   let mut %v2: i32 = -2;
@@ -10,7 +13,10 @@ fun @main() : i32 {
   let mut %v7: i32 = 0;
   let %cm1: i32 = -1;
 
-^entry: br ^BB0;
+^entry:
+  %v1 = @?s1;
+  %v2 = @?s2;
+  br ^BB0;
 
 ^BB0:
   %v4 = -1 * %v2 + -1 * %v3 + %cm1;
@@ -19,7 +25,6 @@ fun @main() : i32 {
 
 ^BB1:
   %v6 = -383 * %v1 + -639 * %v5 + -42;
-  // OOB access var_0[-550][-848] skipped in logic trace
   br ^BB4;
 
 ^BB2:
@@ -30,7 +35,6 @@ fun @main() : i32 {
 
 ^BB4:
   %v3 = -772 * %v6 + -993 * %v5 + -861;
-  // br cond, ^BB1, ^BB5
   br ^BB5;
 
 ^BB5:
