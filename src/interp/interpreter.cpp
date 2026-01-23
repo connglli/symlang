@@ -264,10 +264,13 @@ namespace symir {
       if (v.kind != RuntimeValue::Kind::Int || right.kind != RuntimeValue::Kind::Int)
         throw std::runtime_error("Expr ops only on ints");
 
-      if (tail.op == AddOp::Plus)
-        v.intVal += right.intVal;
-      else
-        v.intVal -= right.intVal;
+      if (tail.op == AddOp::Plus) {
+        if (__builtin_add_overflow(v.intVal, right.intVal, &v.intVal))
+          throw std::runtime_error("UB: Signed integer overflow in addition");
+      } else {
+        if (__builtin_sub_overflow(v.intVal, right.intVal, &v.intVal))
+          throw std::runtime_error("UB: Signed integer overflow in subtraction");
+      }
     }
     return v;
   }
@@ -286,15 +289,20 @@ namespace symir {
 
             RuntimeValue res;
             res.kind = RuntimeValue::Kind::Int;
-            if (arg.op == AtomOpKind::Mul)
-              res.intVal = c.intVal * r.intVal;
-            else if (arg.op == AtomOpKind::Div) {
+            if (arg.op == AtomOpKind::Mul) {
+              if (__builtin_mul_overflow(c.intVal, r.intVal, &res.intVal))
+                throw std::runtime_error("UB: Signed integer overflow in multiplication");
+            } else if (arg.op == AtomOpKind::Div) {
               if (r.intVal == 0)
                 throw std::runtime_error("UB: Division by zero");
+              if (c.intVal == INT64_MIN && r.intVal == -1)
+                throw std::runtime_error("UB: Signed integer overflow in division");
               res.intVal = c.intVal / r.intVal;
             } else if (arg.op == AtomOpKind::Mod) {
               if (r.intVal == 0)
                 throw std::runtime_error("UB: Modulo by zero");
+              if (c.intVal == INT64_MIN && r.intVal == -1)
+                throw std::runtime_error("UB: Signed integer overflow in modulo");
               res.intVal = c.intVal % r.intVal;
             }
             return res;

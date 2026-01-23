@@ -33,11 +33,12 @@ In the Solver (`symirsolve`), UB generates constraints that negate the path cond
 ## 4. Integer Overflow
 **Definition:** Signed integer arithmetic resulting in a value not representable in the target bit-width.
 
-- **Status:** **NOT UB** (Defined as wrapping).
-- **Semantics:** SymIR integers (`i32`, `i64`) follow standard **Two's Complement Modular Arithmetic**.
-  - `MAX_INT + 1` wraps to `MIN_INT`.
-  - This matches the behavior of SMT Bit-Vector theory (`(_ BitVec N)`).
-  - *Note:* This differs from C/C++ strict aliasing rules but aligns with hardware behavior and SMT solvers.
+- **Status:** **Enforced.**
+- **Semantics:**
+  - Arithmetic operations (`+`, `-`, `*`) on signed integers must not overflow.
+  - **Dynamic:** Interpreter checks for signed overflow on every operation.
+  - **Solver:** Generates `(bv ssubo/saddo/smulo)` checks to ensure no overflow occurs.
+  - *Note:* This aligns SymIR with strict C/C++ signed integer semantics.
 
 ## 5. Shift Operators
 **Definition:** Shifting by a value greater than or equal to the bit-width.

@@ -234,6 +234,9 @@ UB is checked during symbolic execution along the chosen path. Any UB makes the 
 3. **Reading `undef`**
    Reading a location whose current stored value is `undef` is UB.
 
+4. **Signed Integer Overflow**
+   Signed arithmetic operations (`+`, `-`, `*`) that result in a value outside the representable range of the target bit-width cause UB. Division/modulo overflow (`INT_MIN / -1`) is also UB.
+
 ### 7.2 `select` and strict UB (lazy)
 For `select c, a, b`:
 - Evaluate `c` first. UB in `c` makes the path infeasible.

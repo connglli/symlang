@@ -437,10 +437,15 @@ namespace symir {
     bitwuzla::Term res = evalAtom(e.first, tm, solver, store, pc);
     for (const auto &tail: e.rest) {
       bitwuzla::Term right = evalAtom(tail.atom, tm, solver, store, pc);
-      if (tail.op == AddOp::Plus)
+      if (tail.op == AddOp::Plus) {
+        auto overflow = tm.mk_term(bitwuzla::Kind::BV_SADDO, {res, right});
+        pc.push_back(tm.mk_term(bitwuzla::Kind::NOT, {overflow}));
         res = tm.mk_term(bitwuzla::Kind::BV_ADD, {res, right});
-      else
+      } else {
+        auto overflow = tm.mk_term(bitwuzla::Kind::BV_SSUBO, {res, right});
+        pc.push_back(tm.mk_term(bitwuzla::Kind::NOT, {overflow}));
         res = tm.mk_term(bitwuzla::Kind::BV_SUB, {res, right});
+      }
     }
     return res;
   }
@@ -459,12 +464,31 @@ namespace symir {
               auto zero = tm.mk_bv_zero(r.sort());
               pc.push_back(tm.mk_term(bitwuzla::Kind::DISTINCT, {r, zero}));
             }
-            if (arg.op == AtomOpKind::Mul)
+            if (arg.op == AtomOpKind::Mul) {
+              auto overflow = tm.mk_term(bitwuzla::Kind::BV_SMULO, {c, r});
+              pc.push_back(tm.mk_term(bitwuzla::Kind::NOT, {overflow}));
               return tm.mk_term(bitwuzla::Kind::BV_MUL, {c, r});
-            if (arg.op == AtomOpKind::Div)
+            }
+            if (arg.op == AtomOpKind::Div) {
+              // Check overflow: c == INT_MIN && r == -1
+              auto min_signed = tm.mk_bv_min_signed(c.sort());
+              auto minus_one = tm.mk_bv_value_int64(r.sort(), -1);
+              auto is_min = tm.mk_term(bitwuzla::Kind::EQUAL, {c, min_signed});
+              auto is_minus_one = tm.mk_term(bitwuzla::Kind::EQUAL, {r, minus_one});
+              auto div_overflow = tm.mk_term(bitwuzla::Kind::AND, {is_min, is_minus_one});
+              pc.push_back(tm.mk_term(bitwuzla::Kind::NOT, {div_overflow}));
               return tm.mk_term(bitwuzla::Kind::BV_SDIV, {c, r});
-            if (arg.op == AtomOpKind::Mod)
+            }
+            if (arg.op == AtomOpKind::Mod) {
+              // Check overflow for mod? Yes, if div overflows, mod is problematic/UB in C.
+              auto min_signed = tm.mk_bv_min_signed(c.sort());
+              auto minus_one = tm.mk_bv_value_int64(r.sort(), -1);
+              auto is_min = tm.mk_term(bitwuzla::Kind::EQUAL, {c, min_signed});
+              auto is_minus_one = tm.mk_term(bitwuzla::Kind::EQUAL, {r, minus_one});
+              auto mod_overflow = tm.mk_term(bitwuzla::Kind::AND, {is_min, is_minus_one});
+              pc.push_back(tm.mk_term(bitwuzla::Kind::NOT, {mod_overflow}));
               return tm.mk_term(bitwuzla::Kind::BV_SREM, {c, r});
+            }
             return {};
           } else if constexpr (std::is_same_v<T, SelectAtom>) {
             bitwuzla::Term cond = evalCond(*arg.cond, tm, solver, store, pc);
