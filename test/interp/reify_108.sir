@@ -1,0 +1,42 @@
+// EXPECT: PASS
+fun @main() : i32 {
+  let mut %v0: i32 = 23314456;
+  let mut %v1: i32 = -5201758;
+  let mut %v2: i32 = -2242717;
+  let mut %v3: i32 = -2147483646;
+  let mut %v4: i32 = -2147483646;
+  let mut %v5: i32 = 276426;
+  let mut %v6: i32 = -297;
+  let mut %v7: [18] i32 = 0;
+
+^entry: br ^BB0;
+
+^BB0:
+  %v0 = -19 * %v0 + -242 * %v5 + -246;
+  %v3 = -651 * %v2 + -357 * %v5 + 0;
+  br ^BB13;
+
+^BB1:
+  %v7[-4059] = 256 * %v1 + -93 * %v6 + -536;
+  %v3 = 619 * %v6 + -112 * %v0 + 550;
+  br ^BB10;
+^BB2: unreachable;
+^BB3: unreachable;
+^BB4: unreachable;
+^BB5: unreachable;
+^BB6: unreachable;
+^BB7: unreachable;
+^BB8: unreachable;
+^BB9: unreachable;
+^BB10: unreachable;
+^BB11: unreachable;
+^BB12: unreachable;
+
+^BB13:
+  %v3 = 18 * %v6 + 279 * %v1 + -502;
+  %v1 = 319 * %v1 + 952 * %v5 + 24;
+  require %v0 == -509870002, "v0 final";
+  require %v1 == -1396203226, "v1 final";
+  require %v3 == -1451296330, "v3 final";
+  ret 0;
+}

@@ -1,0 +1,50 @@
+// EXPECT: PASS
+fun @main() : i32 {
+  let mut %v0: i32 = -1;
+  let mut %v1: i32 = -1;
+  let mut %v2: i32 = -1;
+  let mut %v3: i32 = -1;
+  let mut %v4: [3] i32 = -1;
+  let mut %v5: [3] i32 = -1;
+  let mut %v6: i32 = 0;
+  let mut %v7: [6] i32 = -1;
+  let %cm1: i32 = -1;
+
+^entry:
+  br ^BB0;
+
+^BB0:
+  %v4[1] = -1 * %v0 + -1 * %v1 + -1;
+  %v0 = -1 * %v2 + -1 * %v1 + -1;
+  br -1 * %v4[1] + -1 * %v0 + -1 * %v7[3] + -1 > 0, ^BB1, ^BB6;
+
+^BB1:
+  %v0 = -122 * %v3 + -245 * %v1 + -498;
+  %v5[720] = -592 * %v2 + -861 * %v7[-2004] + 285;
+  br ^BB4;
+^BB2: unreachable;
+^BB3: unreachable;
+^BB4: unreachable;
+^BB5: unreachable;
+
+^BB6:
+  %v1 = -1 * %v2 + -1 * %v1 + 1;
+  %v2 = -1 * %v4[2] + -1 * %v6 + -1;
+  br -1 * %v1 + -1 * %v2 + -1 * %v5[0] + -1 > 0, ^BB11, ^BB13;
+
+^BB7: unreachable;
+^BB8: unreachable;
+^BB9: unreachable;
+^BB10: unreachable;
+^BB11: unreachable;
+^BB12: unreachable;
+
+^BB13:
+  %v0 = -1 * %v2 + -1 * %v4[0] + -1;
+  %v1 = -1 * %v5[2] + -1 * %v0 + -1;
+  require %v0 == 0, "v0 final";
+  require %v1 == 0, "v1 final";
+  require %v2 == 0, "v2 final";
+  require %v3 == -1, "v3 final";
+  ret 0;
+}

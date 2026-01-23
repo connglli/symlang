@@ -1,0 +1,55 @@
+// EXPECT: PASS
+fun @main() : i32 {
+  let mut %v0: i32 = -1;
+  let mut %v1: [2] i32 = -1;
+  let mut %v2: i32 = -1;
+  let mut %v3: i32 = -1;
+  let mut %v4: i32 = -1;
+  let mut %v5: i32 = -1;
+  let mut %v6: i32 = 0;
+  let mut %v7: i32 = 0;
+  let %cm1: i32 = -1;
+
+^entry: br ^BB0;
+
+^BB0:
+  %v6 = -1 * %v7 + -1 * %v5 + %cm1;
+  %v0 = -1 * %v6 + -1 * %v1[1] + %cm1;
+  br ^BB16;
+
+^BB1:
+  %v1[1318] = -841 * %v5 + -506 * %v0 + -601;
+  %v3 = -981 * %v2 + -526 * %v7 + -121;
+  br ^BB4;
+^BB2: unreachable;
+^BB3: unreachable;
+^BB4: unreachable;
+^BB5: unreachable;
+^BB6: unreachable;
+^BB7: unreachable;
+^BB8: unreachable;
+^BB9: unreachable;
+^BB10: unreachable;
+^BB11: unreachable;
+^BB12: unreachable;
+
+^BB13:
+  %v6 = -1 * %v2 + -1 * %v1[1] + %cm1;
+  %v0 = -1 * %v2 + -1 * %v5 + %cm1;
+  br -1 * %v6 + -1 * %v0 + -1 * %v1[1] + %cm1 > 0, ^BB14, ^BB17;
+
+^BB14: unreachable;
+^BB15: unreachable;
+
+^BB16:
+  %v5 = -1 * %v1[0] + -1 * %v3 + %cm1;
+  %v2 = -1 * %v1[1] + -1 * %v5 + %cm1;
+  br ^BB13;
+
+^BB17:
+  %v1[0] = -1 * %v1[0] + -1 * %v0 + %cm1;
+  %v0 = -1 * %v0 + -1 * %v4 + %cm1;
+  require %v0 == 1, "v0 final";
+  require %v1[0] == 1, "v1[0] final";
+  ret 0;
+}
