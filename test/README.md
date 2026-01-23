@@ -12,9 +12,13 @@ The `symiri` executable with the `--check` flag is the primary tool for validati
 
 Without the `--check` flag, `symiri` also executes the program using the reference interpreter.
 
-## Test Runner (`run_tests.py`)
+## Unified Testing Framework
 
-The Python script `run_tests.py` automates the execution of the test suite. It discovers all `.sir` files in a directory, parses their metadata tags, and compares the tool's exit code against the expected outcome.
+The SymIR test suite is managed by a unified Python-based testing framework located in `test/lib/`. It features:
+- **Automatic Discovery**: Recursively finds all `.sir` files in a given directory.
+- **Colored Output**: Uses ANSI colors for clear status reporting (**Green for OK**, **Red for FAIL**, **Yellow for TIMEOUT/SKIP**).
+- **Timeouts**: Enforces execution limits (default 5s for tools, 1s for compiled binaries) to detect infinite loops.
+- **Sanitization**: Compiler tests are linked with AddressSanitizer and UB Saniziter to catch memory and semantic errors.
 
 ### Metadata Tags
 
@@ -45,30 +49,27 @@ fun @main() : i32 {
 ### 2. Interpreter Tests
 These tests validate the runtime semantics of the language. They are run using the `symiri` binary without `--check`. To perform assertions in the interpreter, use the `require` instruction.
 
-**Example: `test/interp/math.sir`**
-```sir
-// EXPECT: PASS
-// ARGS: --sym %?input=5
-fun @main() : i32 {
-  sym %?input : value i32;
-^entry:
-  let %res: i32 = %?input * 2;
-  require %res == 10, "5 * 2 must be 10";
-  ret %res;
-}
-```
+### 3. Compiler Tests
+These tests validate the C backend by compiling `.sir` files to C, linking them with a generated test harness, and executing them. They are managed by `test/lib/run_compiler_tests.py`.
 
 ## Running Tests
 
-Use the provided `Makefile` targets:
+The recommended way to run tests is via the `Makefile` targets:
 
 ```bash
 # Run all tests (Frontend, Analysis, Interpreter, and Compiler)
 make test
+```
 
+Alternatively, you can run specific suites using the Python module syntax:
+
+```bash
 # Run only the interpreter tests
-python3 run_tests.py test/interp ./symiri
+python3 -m test.lib.run_tests test/interp ./symiri
+
+# Run only the compiler tests
+python3 -m test.lib.run_compiler_tests test/ ./symirc
 
 # Run only a specific analysis directory
-python3 run_tests.py test/typechecker ./symiri --check
+python3 -m test.lib.run_tests test/typechecker ./symiri --check
 ```

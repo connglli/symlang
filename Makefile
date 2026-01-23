@@ -20,50 +20,29 @@ COMPILER_OBJS = $(COMPILER_SRCS:.cpp=.o)
 TARGET_INTERP = symiri
 TARGET_COMPILER = symirc
 
+PY := $(shell command -v python3 >/dev/null 2>&1 && echo python3 || echo python)
+
 .PHONY: all clean test
-
-
 
 all: $(TARGET_INTERP) $(TARGET_COMPILER)
 
-
-
 $(TARGET_INTERP): $(COMMON_OBJS) $(INTERP_OBJS)
-
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
-
-
 
 $(TARGET_COMPILER): $(COMMON_OBJS) $(COMPILER_OBJS)
-
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
 
-
-
 %.o: %.cpp
-
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-
-
 clean:
-
 	rm -f $(COMMON_OBJS) $(TEST_OBJS) $(INTERP_OBJS) $(COMPILER_OBJS) $(TARGET_INTERP) $(TARGET_COMPILER)
 
-
-
 test: $(TARGET_INTERP) $(TARGET_COMPILER)
-
-	PYTHONPATH=. python3 run_tests.py test/lexer ./$(TARGET_INTERP) --check
-
-	PYTHONPATH=. python3 run_tests.py test/parser ./$(TARGET_INTERP) --check
-
-	PYTHONPATH=. python3 run_tests.py test/cfgbuilder ./$(TARGET_INTERP) --check
-
-	PYTHONPATH=. python3 run_tests.py test/typechecker ./$(TARGET_INTERP) --check
-
-	PYTHONPATH=. python3 run_tests.py test/semchecker ./$(TARGET_INTERP) --check
-
-	PYTHONPATH=. python3 run_tests.py test/interp ./$(TARGET_INTERP)
-
-	PYTHONPATH=. python3 run_compiler_tests.py test/ ./$(TARGET_COMPILER)
+	$(PY) -m test.lib.run_tests test/lexer ./$(TARGET_INTERP) --check
+	$(PY) -m test.lib.run_tests test/parser ./$(TARGET_INTERP) --check
+	$(PY) -m test.lib.run_tests test/cfgbuilder ./$(TARGET_INTERP) --check
+	$(PY) -m test.lib.run_tests test/typechecker ./$(TARGET_INTERP) --check
+	$(PY) -m test.lib.run_tests test/semchecker ./$(TARGET_INTERP) --check
+	$(PY) -m test.lib.run_tests test/interp ./$(TARGET_INTERP)
+	$(PY) -m test.lib.run_compiler_tests test/ ./$(TARGET_COMPILER)
