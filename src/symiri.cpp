@@ -5,6 +5,7 @@
 #include <vector>
 #include "analysis/cfg.hpp"
 #include "analysis/definite_init.hpp"
+#include "analysis/pass_manager.hpp"
 #include "frontend/lexer.hpp"
 #include "frontend/parser.hpp"
 #include "frontend/semchecker.hpp"
@@ -16,6 +17,8 @@ void print_usage(const char *prog_name) {
 }
 
 int main(int argc, char **argv) {
+  using namespace symir;
+
   if (argc < 2) {
     print_usage(argv[0]);
     return 1;
@@ -80,10 +83,6 @@ int main(int argc, char **argv) {
       }
       return 1;
     }
-
-    // 3. CFG Construction (needed for interp)
-    // We'll rebuild CFGs on demand or store them. For now, let the interpreter handle it or build
-    // strictly for the main function.
 
     // 4. Interpret
     Interpreter interp(prog);

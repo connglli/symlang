@@ -6,21 +6,25 @@
 #include "ast/ast.hpp"
 #include "frontend/diagnostics.hpp"
 
-struct CFG {
-  // Block order as in function
-  std::vector<std::string> blocks; // "^entry", "^b1", ...
-  std::unordered_map<std::string, std::size_t> indexOf;
+namespace symir {
 
-  // Adjacency by indices
-  std::vector<std::vector<std::size_t>> succ;
-  std::vector<std::vector<std::size_t>> pred;
+  struct CFG {
+    // Block order as in function
+    std::vector<std::string> blocks; // "^entry", "^b1", ...
+    std::unordered_map<std::string, std::size_t> indexOf;
 
-  std::size_t entry = 0; // index into blocks
+    // Adjacency by indices
+    std::vector<std::vector<std::size_t>> succ;
+    std::vector<std::vector<std::size_t>> pred;
 
-  static std::string labelKey(const BlockLabel &b) { return b.name; }
+    std::size_t entry = 0; // index into blocks
 
-  static CFG build(const FunDecl &f, DiagBag &diags);
+    static std::string labelKey(const BlockLabel &b) { return b.name; }
 
-  // Reverse postorder from entry (useful for forward dataflow)
-  std::vector<std::size_t> rpo() const;
-};
+    static CFG build(const FunDecl &f, DiagBag &diags);
+
+    // Reverse postorder from entry (useful for forward dataflow)
+    std::vector<std::size_t> rpo() const;
+  };
+
+} // namespace symir

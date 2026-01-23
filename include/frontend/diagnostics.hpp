@@ -4,33 +4,37 @@
 #include <vector>
 #include "ast/ast.hpp"
 
-enum class DiagLevel { Error, Warning, Note };
+namespace symir {
 
-struct Diagnostic {
-  DiagLevel level;
-  std::string message;
-  SourceSpan span;
-};
+  enum class DiagLevel { Error, Warning, Note };
 
-struct DiagBag {
-  std::vector<Diagnostic> diags;
+  struct Diagnostic {
+    DiagLevel level;
+    std::string message;
+    SourceSpan span;
+  };
 
-  void error(const std::string &msg, SourceSpan sp) {
-    diags.push_back(Diagnostic{DiagLevel::Error, msg, sp});
-  }
+  struct DiagBag {
+    std::vector<Diagnostic> diags;
 
-  void warn(const std::string &msg, SourceSpan sp) {
-    diags.push_back(Diagnostic{DiagLevel::Warning, msg, sp});
-  }
+    void error(const std::string &msg, SourceSpan sp) {
+      diags.push_back(Diagnostic{DiagLevel::Error, msg, sp});
+    }
 
-  void note(const std::string &msg, SourceSpan sp) {
-    diags.push_back(Diagnostic{DiagLevel::Note, msg, sp});
-  }
+    void warn(const std::string &msg, SourceSpan sp) {
+      diags.push_back(Diagnostic{DiagLevel::Warning, msg, sp});
+    }
 
-  bool hasErrors() const {
-    for (const auto &d: diags)
-      if (d.level == DiagLevel::Error)
-        return true;
-    return false;
-  }
-};
+    void note(const std::string &msg, SourceSpan sp) {
+      diags.push_back(Diagnostic{DiagLevel::Note, msg, sp});
+    }
+
+    bool hasErrors() const {
+      for (const auto &d: diags)
+        if (d.level == DiagLevel::Error)
+          return true;
+      return false;
+    }
+  };
+
+} // namespace symir
