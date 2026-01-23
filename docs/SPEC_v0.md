@@ -68,7 +68,7 @@ SymIR uses **strict UB** on the chosen path:
 ### 3.2 Types
 ```ebnf
 Type        := IntType | StructName | ArrayType ;
-IntType     := "i32" | "i64" | "i" Nat ;
+IntType     := "i" Nat ;
 ArrayType   := "[" Nat "]" Type ;
 StructName  := GlobalId ;     (* recommended: use @TypeName for struct names *)
 ```
@@ -77,6 +77,7 @@ Notes:
 - Arrays are fixed-size.
 - `Nat` is a literal (no symbolic sizes in v0).
 - **Multidimensional arrays** are supported by nesting `ArrayType`. For example, `[3][4] i32` represents a 3x4 grid of integers. Whitespace between brackets is optional.
+- **Integer Types:** Common bit-widths like `i1`, `i8`, `i16`, `i32`, `i64` are all supported via the `i<Nat>` syntax.
 
 ### 3.3 Program structure
 ```ebnf
@@ -183,11 +184,14 @@ Atom        := Coef "*" RValue
             | Coef "/" RValue
             | Coef "%" RValue
             | Select
+            | Cast
             | Coef
             | RValue ;
 
 Select      := "select" Cond "," SelectVal "," SelectVal ;
 SelectVal   := RValue | Coef ;     (* v0 restriction: no nested expressions *)
+
+Cast        := RValue "as" Type ;
 
 Coef        := IntLit | LocalId | SymId ;
 RValue      := LValue ;
@@ -196,7 +200,7 @@ RValue      := LValue ;
 Evaluation order:
 - `Expr` is evaluated strictly left-to-right: `(((a0 op a1) op a2) ...)`.
 - `select` evaluates its `Cond` first, then evaluates only the chosen arm.
-
+- `as` performs integer casting.
 
 ## 6. Typing and well-formedness (v0)
 
@@ -214,7 +218,17 @@ Arithmetic (`Expr`) is defined only over **scalar integer leaves**. Arrays and s
 - `a` and `b` have the same integer type.
 The result has that type.
 
-### 6.4 Mutability rules
+### 6.4 `as` typing
+`rval as T` is well-typed iff:
+- `rval` is a scalar integer.
+- `T` is a scalar integer type.
+
+**Semantics:**
+- **Extension (src < dst):** Sign-extend to the target width.
+- **Truncation (src > dst):** Discard high bits (keep LSBs).
+- **Identity (src == dst):** No-op.
+
+### 6.5 Mutability rules
 - The LHS of `=` must be an lvalue rooted at a `let mut` local.
 - `sym` identifiers and `let` (immutable) locals cannot appear on the LHS.
 - Parameters are immutable and cannot appear on the LHS.

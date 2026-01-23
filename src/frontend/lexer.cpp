@@ -279,16 +279,22 @@ namespace symir {
         return make(TokenKind::KwIn, name, b, pos());
       if (name == "select")
         return make(TokenKind::KwSelect, name, b, pos());
-      if (name == "i32")
-        return make(TokenKind::KwI32, name, b, pos());
-      if (name == "i64")
-        return make(TokenKind::KwI64, name, b, pos());
-      if (name == "int")
-        return make(TokenKind::KwInt, name, b, pos());
       if (name == "undef")
         return make(TokenKind::KwUndef, name, b, pos());
-      if (name == "i")
-        return make(TokenKind::KwI, name, b, pos());
+      if (name == "as")
+        return make(TokenKind::KwAs, name, b, pos());
+
+      if (name.size() >= 2 && name[0] == 'i' && std::isdigit(static_cast<unsigned char>(name[1]))) {
+        bool allDigits = true;
+        for (size_t k = 1; k < name.size(); ++k) {
+          if (!std::isdigit(static_cast<unsigned char>(name[k]))) {
+            allDigits = false;
+            break;
+          }
+        }
+        if (allDigits)
+          return make(TokenKind::IntType, name, b, pos());
+      }
 
       return make(TokenKind::Ident, name, b, pos());
     }

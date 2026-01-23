@@ -77,8 +77,8 @@ namespace symir {
   // ---------------------------
 
   struct IntType {
-    // "i32", "i64", "i<N>", or "int"
-    enum class Kind { I32, I64, ICustom, IntKeyword } kind = Kind::I32;
+    // "i32", "i64", or "i<N>"
+    enum class Kind { I32, I64, ICustom } kind = Kind::I32;
     std::optional<int> bits; // for ICustom
     SourceSpan span;
   };
@@ -184,8 +184,15 @@ namespace symir {
     SourceSpan span;
   };
 
+  struct CastAtom {
+    using Variant = std::variant<IntLit, SymId, LValue>;
+    Variant src;
+    TypePtr dstType;
+    SourceSpan span;
+  };
+
   struct Atom {
-    using Variant = std::variant<OpAtom, SelectAtom, CoefAtom, RValueAtom>;
+    using Variant = std::variant<OpAtom, SelectAtom, CoefAtom, RValueAtom, CastAtom>;
     Variant v;
     SourceSpan span;
   };

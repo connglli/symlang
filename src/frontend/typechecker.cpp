@@ -175,8 +175,6 @@ namespace symir {
           return 64;
         case IntType::Kind::ICustom:
           return it->bits.value_or(0);
-        case IntType::Kind::IntKeyword:
-          return 32;
       }
     }
     return std::nullopt;
@@ -368,6 +366,33 @@ namespace symir {
           } else if constexpr (std::is_same_v<T, RValueAtom>) {
             auto rt = typeOfLValue(arg.rval, vars, syms, diags);
             return Ty{Ty::BVTy{getBVWidth(rt, diags, arg.rval.span).value_or(32)}};
+          } else if constexpr (std::is_same_v<T, CastAtom>) {
+            auto st = std::visit(
+                [&](auto &&src) -> Ty {
+                  using S = std::decay_t<decltype(src)>;
+                  if constexpr (std::is_same_v<S, IntLit>) {
+                    return Ty{Ty::BVTy{32}};
+                  } else if constexpr (std::is_same_v<S, SymId>) {
+                    auto it = syms.find(src.name);
+                    if (it != syms.end())
+                      return Ty{Ty::BVTy{getBVWidth(it->second.type, diags, src.span).value_or(32)}
+                      };
+                    return Ty{std::monostate{}};
+                  } else {
+                    return Ty{
+                        Ty::BVTy{getBVWidth(typeOfLValue(src, vars, syms, diags), diags, src.span)
+                                     .value_or(32)}
+                    };
+                  }
+                },
+                arg.src
+            );
+            auto db = getBVWidth(arg.dstType, diags, arg.dstType->span);
+            if (std::holds_alternative<std::monostate>(st.v))
+              diags.error("Source of 'as' must be an integer type", arg.span);
+            if (!db)
+              diags.error("Destination of 'as' must be an integer type", arg.dstType->span);
+            return Ty{Ty::BVTy{db.value_or(32)}};
           }
           return Ty{std::monostate{}};
         },

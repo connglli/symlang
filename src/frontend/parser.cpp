@@ -73,64 +73,37 @@ namespace symir {
 
   TypePtr Parser::parseType() {
     SourcePos b = peek().span.begin;
-
-    if (is(TokenKind::KwI32) || is(TokenKind::KwI64) || is(TokenKind::KwInt) ||
-        is(TokenKind::KwI)) {
+    if (is(TokenKind::IntType)) {
+      std::string lex = consume(TokenKind::IntType, "integer type").lexeme;
+      int bits = std::stoi(lex.substr(1));
       IntType it;
-      it.span.begin = b;
-
-      if (tryConsume(TokenKind::KwI32)) {
+      if (bits == 32)
         it.kind = IntType::Kind::I32;
-      } else if (tryConsume(TokenKind::KwI64)) {
+      else if (bits == 64)
         it.kind = IntType::Kind::I64;
-      } else if (tryConsume(TokenKind::KwInt)) {
-        it.kind = IntType::Kind::IntKeyword;
-      } else if (tryConsume(TokenKind::KwI)) {
-        const Token &n = consume(TokenKind::IntLit, "bit-width after 'i'");
-        if (!n.lexeme.empty() && n.lexeme[0] == '-') {
-          throw ParseError("Bit-width after 'i' must be non-negative", n.span);
-        }
+      else {
         it.kind = IntType::Kind::ICustom;
-        it.bits = std::stoi(n.lexeme);
+        it.bits = bits;
       }
-      TypePtr tp = std::make_shared<Type>();
-      tp->v = it;
-      tp->span = SourceSpan{b, prevEnd()};
-      return tp;
+      it.span = SourceSpan{b, prevEnd()};
+      return std::make_shared<Type>(it, SourceSpan{b, prevEnd()});
     }
-
-    if (is(TokenKind::LBracket)) {
-      SourcePos bb = peek().span.begin;
-      consume(TokenKind::LBracket, "'['");
-      const Token &n = consume(TokenKind::IntLit, "array size literal");
-      if (!n.lexeme.empty() && n.lexeme[0] == '-') {
-        throw ParseError("Array size must be non-negative", n.span);
-      }
-      std::uint64_t size = std::stoull(n.lexeme);
-      consume(TokenKind::RBracket, "']'");
-      TypePtr elem = parseType();
-
-      ArrayType at;
-      at.size = size;
-      at.elem = elem;
-      at.span = SourceSpan{bb, prevEnd()};
-
-      TypePtr tp = std::make_shared<Type>();
-      tp->v = at;
-      tp->span = at.span;
-      return tp;
-    }
-
     if (is(TokenKind::GlobalId)) {
-      GlobalId gid = parseGlobalId();
-      StructType st{gid, gid.span};
-      TypePtr tp = std::make_shared<Type>();
-      tp->v = st;
-      tp->span = st.span;
-      return tp;
+      GlobalId name = parseGlobalId();
+      return std::make_shared<Type>(
+          StructType{std::move(name), SourceSpan{b, prevEnd()}}, SourceSpan{b, prevEnd()}
+      );
     }
-
-    errorHere("Expected a type (i32/i64/i N/int, array type, or struct type @Name)");
+    if (tryConsume(TokenKind::LBracket)) {
+      Token t = consume(TokenKind::IntLit, "array size");
+      std::size_t size = std::stoull(t.lexeme);
+      consume(TokenKind::RBracket, "]' after array size");
+      TypePtr elem = parseType();
+      return std::make_shared<Type>(
+          ArrayType{size, std::move(elem), SourceSpan{b, prevEnd()}}, SourceSpan{b, prevEnd()}
+      );
+    }
+    errorHere("Expected a type (iN, array type, or struct type @Name)");
   }
 
   SourcePos Parser::prevEnd() const {
@@ -586,7 +559,68 @@ namespace symir {
       return atom;
     }
 
-    if (is(TokenKind::IntLit) || is(TokenKind::SymId)) {
+    // Handle 'as' for IntLit, SymId, or LocalId (LValue)
+    if (is(TokenKind::IntLit)) {
+      std::size_t save = idx_;
+      Coef c = parseCoef();
+      if (tryConsume(TokenKind::KwAs)) {
+        TypePtr dst = parseType();
+        CastAtom ca{std::get<IntLit>(c), std::move(dst), SourceSpan{b, prevEnd()}};
+        Atom a;
+        a.v = std::move(ca);
+        a.span = SourceSpan{b, prevEnd()};
+        return a;
+      }
+      idx_ = save;
+    } else if (is(TokenKind::SymId)) {
+      std::size_t save = idx_;
+      Coef c = parseCoef();
+      if (tryConsume(TokenKind::KwAs)) {
+        TypePtr dst = parseType();
+        auto &lsid = std::get<LocalOrSymId>(c);
+        if (auto sid = std::get_if<SymId>(&lsid)) {
+          CastAtom ca{std::move(*sid), std::move(dst), SourceSpan{b, prevEnd()}};
+          Atom a;
+          a.v = std::move(ca);
+          a.span = SourceSpan{b, prevEnd()};
+          return a;
+        }
+      }
+      idx_ = save;
+    } else if (is(TokenKind::LocalId)) {
+      std::size_t save = idx_;
+      LValue lv = parseLValue();
+      if (tryConsume(TokenKind::KwAs)) {
+        TypePtr dst = parseType();
+        CastAtom ca{std::move(lv), std::move(dst), SourceSpan{b, prevEnd()}};
+        Atom a;
+        a.v = std::move(ca);
+        a.span = SourceSpan{b, prevEnd()};
+        return a;
+      }
+      idx_ = save;
+    }
+
+    if (is(TokenKind::LocalId)) {
+      std::size_t save = idx_;
+      LValue lv = parseLValue();
+      if (!lv.accesses.empty()) {
+        if (is(TokenKind::Star) || is(TokenKind::Slash) || is(TokenKind::Percent)) {
+          throw ParseError(
+              "An accessed lvalue cannot be used as a coefficient for '*', '/', '%'", peek().span
+          );
+        }
+        RValueAtom ra{std::move(lv), SourceSpan{b, prevEnd()}};
+        Atom a;
+        a.v = std::move(ra);
+        a.span = SourceSpan{b, prevEnd()};
+        return a;
+      }
+      idx_ = save;
+    }
+
+    if (is(TokenKind::IntLit) || is(TokenKind::LocalId) || is(TokenKind::SymId)) {
+      std::size_t save = idx_;
       Coef c = parseCoef();
       if (is(TokenKind::Star) || is(TokenKind::Slash) || is(TokenKind::Percent)) {
         AtomOpKind op = parseAtomOp();
@@ -597,43 +631,26 @@ namespace symir {
         a.span = SourceSpan{b, prevEnd()};
         return a;
       }
-      CoefAtom ca{std::move(c), SourceSpan{b, prevEnd()}};
-      Atom a;
-      a.v = std::move(ca);
-      a.span = SourceSpan{b, prevEnd()};
-      return a;
-    }
 
-    if (is(TokenKind::LocalId)) {
-      std::size_t save = idx_;
-      LValue lv = parseLValue();
-      bool hasAccess = !lv.accesses.empty();
-
-      if (is(TokenKind::Star) || is(TokenKind::Slash) || is(TokenKind::Percent)) {
-        if (hasAccess) {
-          throw ParseError(
-              "An accessed lvalue cannot be used as a coefficient for '*', '/', '%'", peek().span
-          );
-        }
+      if (std::holds_alternative<LocalOrSymId>(c) &&
+          std::holds_alternative<LocalId>(std::get<LocalOrSymId>(c))) {
         idx_ = save;
-        Coef c = parseCoef();
-        AtomOpKind op = parseAtomOp();
-        RValue rv = parseLValue();
-        OpAtom oa{op, std::move(c), std::move(rv), SourceSpan{b, prevEnd()}};
+        LValue lv = parseLValue();
+        RValueAtom ra{std::move(lv), SourceSpan{b, prevEnd()}};
         Atom a;
-        a.v = std::move(oa);
+        a.v = std::move(ra);
+        a.span = SourceSpan{b, prevEnd()};
+        return a;
+      } else {
+        CoefAtom ca{std::move(c), SourceSpan{b, prevEnd()}};
+        Atom a;
+        a.v = std::move(ca);
         a.span = SourceSpan{b, prevEnd()};
         return a;
       }
-
-      RValueAtom ra{std::move(lv), SourceSpan{b, prevEnd()}};
-      Atom a;
-      a.v = std::move(ra);
-      a.span = SourceSpan{b, prevEnd()};
-      return a;
     }
 
-    errorHere("Expected atom (select, coefficient, or lvalue)");
+    errorHere("Expected atom (select, cast, coefficient, or lvalue)");
   }
 
   AtomOpKind Parser::parseAtomOp() {

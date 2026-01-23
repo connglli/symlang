@@ -313,6 +313,47 @@ namespace symir {
             return evalCoef(arg.coef, store);
           } else if constexpr (std::is_same_v<T, RValueAtom>) {
             return evalLValue(arg.rval, store);
+          } else if constexpr (std::is_same_v<T, CastAtom>) {
+            RuntimeValue v = std::visit(
+                [&](auto &&src) -> RuntimeValue {
+                  using S = std::decay_t<decltype(src)>;
+                  if constexpr (std::is_same_v<S, IntLit>) {
+                    return RuntimeValue{RuntimeValue::Kind::Int, src.value, {}, {}};
+                  } else if constexpr (std::is_same_v<S, SymId>) {
+                    return store.at(src.name);
+                  } else {
+                    return evalLValue(src, store);
+                  }
+                },
+                arg.src
+            );
+            if (v.kind == RuntimeValue::Kind::Undef)
+              throw std::runtime_error("UB: Reading undef in cast");
+            if (v.kind != RuntimeValue::Kind::Int)
+              throw std::runtime_error("Cast only on integers");
+
+            auto getWidth = [](const TypePtr &t) -> int {
+              if (auto it = std::get_if<IntType>(&t->v)) {
+                if (it->kind == IntType::Kind::I32)
+                  return 32;
+                if (it->kind == IntType::Kind::I64)
+                  return 64;
+                if (it->kind == IntType::Kind::ICustom)
+                  return it->bits.value_or(32);
+              }
+              return 32;
+            };
+
+            int bits = getWidth(arg.dstType);
+            if (bits < 64) {
+              uint64_t mask = (1ULL << bits) - 1;
+              uint64_t sign_bit = 1ULL << (bits - 1);
+              uint64_t uval = static_cast<uint64_t>(v.intVal) & mask;
+              if (uval & sign_bit)
+                uval |= ~mask;
+              v.intVal = static_cast<int64_t>(uval);
+            }
+            return v;
           }
           return RuntimeValue{};
         },

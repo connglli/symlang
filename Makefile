@@ -44,7 +44,7 @@ $(TARGET_SOLVER): $(COMMON_OBJS) $(SOLVER_OBJS)
 
 clean:
 	rm -f $(COMMON_OBJS) $(TEST_OBJS) $(INTERP_OBJS) $(COMPILER_OBJS) $(SOLVER_OBJS) $(TARGET_INTERP) $(TARGET_COMPILER) $(TARGET_SOLVER)
-test: $(TARGET_INTERP) $(TARGET_COMPILER)
+test: $(TARGET_INTERP) $(TARGET_COMPILER) $(TARGET_SOLVER)
 	$(PY) -m test.lib.run_interp_tests test/lexer ./$(TARGET_INTERP) --check
 	$(PY) -m test.lib.run_interp_tests test/parser ./$(TARGET_INTERP) --check
 	$(PY) -m test.lib.run_interp_tests test/cfgbuilder ./$(TARGET_INTERP) --check

@@ -48,17 +48,17 @@ namespace symir {
         [this](auto &&arg) {
           using T = std::decay_t<decltype(arg)>;
           if constexpr (std::is_same_v<T, IntType>) {
-            if (arg.kind == IntType::Kind::I32 || arg.kind == IntType::Kind::IntKeyword)
+            if (arg.kind == IntType::Kind::I32)
               out_ << "int32_t";
             else if (arg.kind == IntType::Kind::I64)
               out_ << "int64_t";
             else if (arg.kind == IntType::Kind::ICustom) {
-              int bits = arg.bits.value_or(32);
-              if (bits <= 8)
+              int b = arg.bits.value_or(32);
+              if (b <= 8)
                 out_ << "int8_t";
-              else if (bits <= 16)
+              else if (b <= 16)
                 out_ << "int16_t";
-              else if (bits <= 32)
+              else if (b <= 32)
                 out_ << "int32_t";
               else
                 out_ << "int64_t";
@@ -301,6 +301,23 @@ namespace symir {
             emitCoef(arg.coef);
           } else if constexpr (std::is_same_v<T, RValueAtom>) {
             emitLValue(arg.rval);
+          } else if constexpr (std::is_same_v<T, CastAtom>) {
+            out_ << "(";
+            emitType(arg.dstType);
+            out_ << ")";
+            std::visit(
+                [&](auto &&src) {
+                  using S = std::decay_t<decltype(src)>;
+                  if constexpr (std::is_same_v<S, IntLit>) {
+                    out_ << src.value;
+                  } else if constexpr (std::is_same_v<S, SymId>) {
+                    out_ << getMangledSymbolName(curFuncName_, src.name) << "()";
+                  } else {
+                    emitLValue(src);
+                  }
+                },
+                arg.src
+            );
           }
         },
         atom.v

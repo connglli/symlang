@@ -146,9 +146,6 @@ namespace symir {
               case IntType::Kind::ICustom:
                 out_ << "i" << (arg.bits ? std::to_string(*arg.bits) : "?");
                 break;
-              case IntType::Kind::IntKeyword:
-                out_ << "int";
-                break;
             }
           } else if constexpr (std::is_same_v<T, StructType>) {
             out_ << arg.name.name;
@@ -188,6 +185,22 @@ namespace symir {
             printCoef(arg.coef);
           } else if constexpr (std::is_same_v<T, RValueAtom>) {
             printLValue(arg.rval);
+          } else if constexpr (std::is_same_v<T, CastAtom>) {
+            std::visit(
+                [&](auto &&src) {
+                  using S = std::decay_t<decltype(src)>;
+                  if constexpr (std::is_same_v<S, IntLit>) {
+                    out_ << src.value;
+                  } else if constexpr (std::is_same_v<S, SymId>) {
+                    out_ << src.name;
+                  } else {
+                    printLValue(src);
+                  }
+                },
+                arg.src
+            );
+            out_ << " as ";
+            printType(arg.dstType);
           }
         },
         a.v

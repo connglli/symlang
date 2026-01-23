@@ -57,11 +57,9 @@ namespace symir {
     KwUnreachable,
     KwIn, // domain
     KwSelect,
-    KwI32,
-    KwI64,
-    KwInt,
-    KwI, // "i" prefix for i<N>
+    IntType, // i1, i8, i16, i32, i64, iN
     KwUndef,
+    KwAs, // "as"
   };
 
   struct Token {

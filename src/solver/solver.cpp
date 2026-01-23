@@ -26,9 +26,6 @@ namespace symir {
         case IntType::Kind::ICustom:
           bits = it->bits.value_or(32);
           break;
-        case IntType::Kind::IntKeyword:
-          bits = 32;
-          break;
       }
       return tm.mk_bv_sort(bits);
     }
@@ -508,8 +505,32 @@ namespace symir {
             return tm.mk_term(bitwuzla::Kind::ITE, {cond, vt, vf});
           } else if constexpr (std::is_same_v<T, CoefAtom>) {
             return evalCoef(arg.coef, tm, solver, store);
-          } else {
+          } else if constexpr (std::is_same_v<T, RValueAtom>) {
             return evalLValue(arg.rval, tm, solver, store, pc).term;
+          } else if constexpr (std::is_same_v<T, CastAtom>) {
+            bitwuzla::Term src = std::visit(
+                [&](auto &&s) -> bitwuzla::Term {
+                  using S = std::decay_t<decltype(s)>;
+                  if constexpr (std::is_same_v<S, IntLit>) {
+                    return tm.mk_bv_value(tm.mk_bv_sort(32), std::to_string(s.value), 10);
+                  } else if constexpr (std::is_same_v<S, SymId>) {
+                    return store.at(s.name).term;
+                  } else {
+                    return evalLValue(s, tm, solver, store, pc).term;
+                  }
+                },
+                arg.src
+            );
+            auto dstSort = getSort(arg.dstType, tm);
+            uint32_t srcWidth = src.sort().bv_size();
+            uint32_t dstWidth = dstSort.bv_size();
+            if (srcWidth == dstWidth)
+              return src;
+            if (srcWidth < dstWidth) {
+              return tm.mk_term(bitwuzla::Kind::BV_SIGN_EXTEND, {src}, {dstWidth - srcWidth});
+            } else {
+              return tm.mk_term(bitwuzla::Kind::BV_EXTRACT, {src}, {dstWidth - 1, 0});
+            }
           }
         },
         a.v

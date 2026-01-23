@@ -1,0 +1,32 @@
+// EXPECT: PASS
+fun @main() : i32 {
+  let mut %x: i32 = -1;
+  let mut %y: i64 = 0;
+  let mut %z: i32 = 0;
+  let mut %w: i8 = 0;
+  let mut %a: i32 = 255;
+  let mut %b: i8 = 0;
+  let mut %c: i64 = 4294967295; // 2^32 - 1
+  let mut %d: i32 = 0;
+
+  let %m1_i64: i64 = -1;
+  let %m1_i32: i32 = -1;
+  let %m1_i8: i8 = -1;
+
+^entry:
+  %y = %x as i64; // Sign extend: -1 (i32) -> -1 (i64)
+  %z = %y as i32; // Truncate: -1 (i64) -> -1 (i32)
+  %w = %x as i8;   // Truncate: -1 (i32) -> -1 (i8)
+
+  require %y == %m1_i64;
+  require %z == %m1_i32;
+  require %w == %m1_i8;
+
+  %b = %a as i8; // Truncate: 255 (0xFF) -> -1 (i8)
+  require %b == %m1_i8;
+
+  %d = %c as i32;  // Truncate: 0xFFFFFFFF -> -1 (i32)
+  require %d == %m1_i32;
+
+  ret 0;
+}
