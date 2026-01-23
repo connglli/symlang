@@ -175,7 +175,7 @@ Ensures program well-formedness beyond typing:
 
 ## Project Structure
 
-Goto [./README.md]
+Goto [./README.md](./README.md)
 
 
 ## Testing – TDD Approach (MANDATORY)
@@ -211,7 +211,7 @@ ALWAYS follow a strict Test-Driven Development discipline.
 - Activate with:
   ```bash
   source venv/bin/activate
-````
+  ````
 
 * Dependencies:
   * `requirements.txt` – runtime

@@ -69,8 +69,8 @@ symirsolve template.sir --main @f0 --path '^entry,^b1,^b2,^b1,^b3,^exit' -o conc
 .
 ├── README.md
 ├── AGENT.md
-├── SPEC.md
 ├── docs/
+│   ├── SPEC.md
 │   ├── symirc.md
 │   ├── symiri.md
 │   └── symirsolve.md
@@ -83,6 +83,7 @@ symirsolve template.sir --main @f0 --path '^entry,^b1,^b2,^b1,^b3,^exit' -o conc
 ├── src/
 │   ├── symircc.cpp
 │   ├── symiri.cpp
+│   ├── symirsolve.cpp
 │   ├── frontend/
 │   ├── analysis/
 │   ├── backend/
