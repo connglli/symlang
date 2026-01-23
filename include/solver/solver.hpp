@@ -36,16 +36,23 @@ namespace symir {
     Config config_;
 
     struct SymbolicValue {
+
       enum class Kind { Int, Array, Struct, Undef } kind = Kind::Undef;
+
       bitwuzla::Term term; // For scalar Int
+
+      bitwuzla::Term is_defined; // Boolean term: true if value is defined
+
       std::vector<SymbolicValue> arrayVal;
+
       std::unordered_map<std::string, SymbolicValue> structVal;
+
 
       SymbolicValue() = default;
 
       SymbolicValue(Kind k) : kind(k) {}
 
-      SymbolicValue(Kind k, bitwuzla::Term t) : kind(k), term(t) {}
+      SymbolicValue(Kind k, bitwuzla::Term t, bitwuzla::Term d) : kind(k), term(t), is_defined(d) {}
     };
 
     using SymbolicStore = std::unordered_map<std::string, SymbolicValue>;

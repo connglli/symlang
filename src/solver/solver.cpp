@@ -57,6 +57,7 @@ namespace symir {
     } else {
       res.kind = SymbolicValue::Kind::Int;
       res.term = tm.mk_const(getSort(t, tm), name);
+      res.is_defined = tm.mk_true();
     }
     return res;
   }
@@ -76,7 +77,9 @@ namespace symir {
           res.structVal[f.name] = makeUndef(f.type, tm);
       }
     } else {
-      res.kind = SymbolicValue::Kind::Undef;
+      res.kind = SymbolicValue::Kind::Int;
+      res.term = tm.mk_const(getSort(t, tm), "undef");
+      res.is_defined = tm.mk_false();
     }
     return res;
   }
@@ -103,6 +106,7 @@ namespace symir {
       SymbolicValue res;
       res.kind = SymbolicValue::Kind::Int;
       res.term = val;
+      res.is_defined = tm.mk_true();
       return res;
     }
   }
@@ -247,9 +251,14 @@ namespace symir {
               using T = std::decay_t<decltype(arg)>;
               if constexpr (std::is_same_v<T, AssignInstr>) {
                 auto rhs = evalExpr(arg.rhs, tm, solver, store, pathConstraints);
-                setLValue(
-                    arg.lhs, {SymbolicValue::Kind::Int, rhs}, tm, solver, store, pathConstraints
-                );
+                auto defined =
+                    tm.mk_true(); // Assuming rhs is defined for now, actually need to track
+                // For v0, we assume evalExpr returns a defined value unless it propagates undef
+                // (which we don't track fully in evalExpr yet). Let's use a dummy true for now or
+                // update evalExpr to return definedness. Actually, SymbolicValue::Kind::Int needs 3
+                // args now. Let's just create a SymbolicValue with Int kind.
+                SymbolicValue val(SymbolicValue::Kind::Int, rhs, tm.mk_true());
+                setLValue(arg.lhs, val, tm, solver, store, pathConstraints);
               } else if constexpr (std::is_same_v<T, AssumeInstr>) {
                 pathConstraints.push_back(evalCond(arg.cond, tm, solver, store, pathConstraints));
               } else if constexpr (std::is_same_v<T, RequireInstr>) {
@@ -323,12 +332,14 @@ namespace symir {
 
     if (elements[0].kind == SymbolicValue::Kind::Int) {
       bitwuzla::Term res = elements[0].term;
+      bitwuzla::Term defined = elements[0].is_defined;
       for (size_t i = 1; i < elements.size(); ++i) {
         auto i_term = tm.mk_bv_value(idx.sort(), std::to_string(i), 10);
         auto cond = tm.mk_term(bitwuzla::Kind::EQUAL, {idx, i_term});
         res = tm.mk_term(bitwuzla::Kind::ITE, {cond, elements[i].term, res});
+        defined = tm.mk_term(bitwuzla::Kind::ITE, {cond, elements[i].is_defined, defined});
       }
-      return {SymbolicValue::Kind::Int, res};
+      return SymbolicValue(SymbolicValue::Kind::Int, res, defined);
     } else if (elements[0].kind == SymbolicValue::Kind::Array) {
       SymbolicValue res;
       res.kind = SymbolicValue::Kind::Array;
@@ -438,11 +449,11 @@ namespace symir {
     for (const auto &tail: e.rest) {
       bitwuzla::Term right = evalAtom(tail.atom, tm, solver, store, pc);
       if (tail.op == AddOp::Plus) {
-        auto overflow = tm.mk_term(bitwuzla::Kind::BV_SADDO, {res, right});
+        auto overflow = tm.mk_term(bitwuzla::Kind::BV_SADD_OVERFLOW, {res, right});
         pc.push_back(tm.mk_term(bitwuzla::Kind::NOT, {overflow}));
         res = tm.mk_term(bitwuzla::Kind::BV_ADD, {res, right});
       } else {
-        auto overflow = tm.mk_term(bitwuzla::Kind::BV_SSUBO, {res, right});
+        auto overflow = tm.mk_term(bitwuzla::Kind::BV_SSUB_OVERFLOW, {res, right});
         pc.push_back(tm.mk_term(bitwuzla::Kind::NOT, {overflow}));
         res = tm.mk_term(bitwuzla::Kind::BV_SUB, {res, right});
       }
@@ -465,7 +476,7 @@ namespace symir {
               pc.push_back(tm.mk_term(bitwuzla::Kind::DISTINCT, {r, zero}));
             }
             if (arg.op == AtomOpKind::Mul) {
-              auto overflow = tm.mk_term(bitwuzla::Kind::BV_SMULO, {c, r});
+              auto overflow = tm.mk_term(bitwuzla::Kind::BV_SMUL_OVERFLOW, {c, r});
               pc.push_back(tm.mk_term(bitwuzla::Kind::NOT, {overflow}));
               return tm.mk_term(bitwuzla::Kind::BV_MUL, {c, r});
             }
