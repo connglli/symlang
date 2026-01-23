@@ -287,6 +287,20 @@ namespace symir {
               case AtomOpKind::Mod:
                 out_ << " % ";
                 break;
+              case AtomOpKind::And:
+                out_ << " & ";
+                break;
+              case AtomOpKind::Or:
+                out_ << " | ";
+                break;
+              case AtomOpKind::Xor:
+                out_ << " ^ ";
+                break;
+            }
+            emitLValue(arg.rval);
+          } else if constexpr (std::is_same_v<T, UnaryAtom>) {
+            if (arg.op == UnaryOpKind::Not) {
+              out_ << "~";
             }
             emitLValue(arg.rval);
           } else if constexpr (std::is_same_v<T, SelectAtom>) {

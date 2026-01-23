@@ -95,6 +95,22 @@ namespace symir {
                       diags_.error("Read of uninitialized local: " + lid->name, lid->span);
                   }
                 }
+              } else if constexpr (std::is_same_v<T, CastAtom>) {
+                std::visit(
+                    [&](auto &&src) {
+                      using S = std::decay_t<decltype(src)>;
+                      if constexpr (std::is_same_v<S, LValue>) {
+                        checkLValue(src);
+                      } else if constexpr (std::is_same_v<S, SymId>) {
+                        // symbols are always init
+                      } else if constexpr (std::is_same_v<S, IntLit>) {
+                        // literals are always init
+                      }
+                    },
+                    arg.src
+                );
+              } else if constexpr (std::is_same_v<T, UnaryAtom>) {
+                checkLValue(arg.rval);
               }
             },
             a.v

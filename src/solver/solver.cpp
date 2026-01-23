@@ -311,7 +311,7 @@ namespace symir {
         auto term = store.at(s.name.name).term;
         auto val_term = solver.get_value(term);
         auto val_str = val_term.value<std::string>(10);
-        finalRes.model[s.name.name] = std::stoll(val_str);
+        finalRes.model[s.name.name] = std::stoll(val_str, nullptr, 0);
       }
     } else if (res == bitwuzla::Result::UNSAT) {
       finalRes.unsat = true;
@@ -496,6 +496,21 @@ namespace symir {
               auto mod_overflow = tm.mk_term(bitwuzla::Kind::AND, {is_min, is_minus_one});
               pc.push_back(tm.mk_term(bitwuzla::Kind::NOT, {mod_overflow}));
               return tm.mk_term(bitwuzla::Kind::BV_SREM, {c, r});
+            }
+            if (arg.op == AtomOpKind::And) {
+              return tm.mk_term(bitwuzla::Kind::BV_AND, {c, r});
+            }
+            if (arg.op == AtomOpKind::Or) {
+              return tm.mk_term(bitwuzla::Kind::BV_OR, {c, r});
+            }
+            if (arg.op == AtomOpKind::Xor) {
+              return tm.mk_term(bitwuzla::Kind::BV_XOR, {c, r});
+            }
+            return {};
+          } else if constexpr (std::is_same_v<T, UnaryAtom>) {
+            auto r = evalLValue(arg.rval, tm, solver, store, pc).term;
+            if (arg.op == UnaryOpKind::Not) {
+              return tm.mk_term(bitwuzla::Kind::BV_NOT, {r});
             }
             return {};
           } else if constexpr (std::is_same_v<T, SelectAtom>) {

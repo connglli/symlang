@@ -145,14 +145,16 @@ namespace symir {
     }
 
     if (c == '^') {
-      get();
-      if (!isIdentStart(peek())) {
-        throw ParseError("Expected block label name after '^'", SourceSpan{b, pos()});
+      if (isIdentStart(peek(1))) {
+        get();
+        std::string name;
+        while (isIdentCont(peek()))
+          name.push_back(get());
+        return make(TokenKind::BlockLabel, "^" + name, b, pos());
+      } else {
+        get();
+        return make(TokenKind::Caret, "^", b, pos());
       }
-      std::string name;
-      while (isIdentCont(peek()))
-        name.push_back(get());
-      return make(TokenKind::BlockLabel, "^" + name, b, pos());
     }
 
     // Integer literal
@@ -161,8 +163,16 @@ namespace symir {
       std::string num;
       if (c == '-')
         num.push_back(get());
-      while (std::isdigit(static_cast<unsigned char>(peek())))
-        num.push_back(get());
+
+      if (peek() == '0' && (peek(1) == 'x' || peek(1) == 'X')) {
+        num.push_back(get()); // '0'
+        num.push_back(get()); // 'x'
+        while (std::isxdigit(static_cast<unsigned char>(peek())))
+          num.push_back(get());
+      } else {
+        while (std::isdigit(static_cast<unsigned char>(peek())))
+          num.push_back(get());
+      }
       return make(TokenKind::IntLit, num, b, pos());
     }
 
@@ -236,6 +246,15 @@ namespace symir {
       case '%':
         get();
         return make(TokenKind::Percent, "%", b, pos());
+      case '&':
+        get();
+        return make(TokenKind::Amp, "&", b, pos());
+      case '|':
+        get();
+        return make(TokenKind::Pipe, "|", b, pos());
+      case '~':
+        get();
+        return make(TokenKind::Tilde, "~", b, pos());
       case '=':
         get();
         return make(TokenKind::Equal, "=", b, pos());

@@ -36,6 +36,10 @@ namespace symir {
     Star,
     Slash,
     Percent,
+    Amp,   // '&'
+    Pipe,  // '|'
+    Caret, // '^'
+    Tilde, // '~'
     Equal, // '=' assignment
     EqEq,
     NotEq,

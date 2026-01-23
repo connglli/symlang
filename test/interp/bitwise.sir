@@ -1,0 +1,23 @@
+// EXPECT: PASS
+fun @main() : i32 {
+  let mut %x: i32 = 43690; // 0xAAAA
+  let mut %y: i32 = 21845; // 0x5555
+  let mut %z: i32 = 0;
+  let %all_ones: i32 = 65535; // 0xFFFF
+  let %expected: i32 = -43691; // 0xFFFF5555 signed
+
+^entry:
+  %z = %x & %y;
+  require %z == 0;
+
+  %z = %x | %y;
+  require %z == %all_ones;
+
+  %z = %x ^ %all_ones;
+  require %z == %y;
+
+  %z = ~%x;
+  require %z == %expected;
+
+  ret 0;
+}

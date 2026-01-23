@@ -304,6 +304,24 @@ namespace symir {
               if (c.intVal == INT64_MIN && r.intVal == -1)
                 throw std::runtime_error("UB: Signed integer overflow in modulo");
               res.intVal = c.intVal % r.intVal;
+            } else if (arg.op == AtomOpKind::And) {
+              res.intVal = c.intVal & r.intVal;
+            } else if (arg.op == AtomOpKind::Or) {
+              res.intVal = c.intVal | r.intVal;
+            } else if (arg.op == AtomOpKind::Xor) {
+              res.intVal = c.intVal ^ r.intVal;
+            }
+            return res;
+          } else if constexpr (std::is_same_v<T, UnaryAtom>) {
+            RuntimeValue r = evalLValue(arg.rval, store);
+            if (r.kind == RuntimeValue::Kind::Undef)
+              throw std::runtime_error("UB: Reading undef in unary op");
+            if (r.kind != RuntimeValue::Kind::Int)
+              throw std::runtime_error("Unary op requires int");
+            RuntimeValue res;
+            res.kind = RuntimeValue::Kind::Int;
+            if (arg.op == UnaryOpKind::Not) {
+              res.intVal = ~r.intVal;
             }
             return res;
           } else if constexpr (std::is_same_v<T, SelectAtom>) {

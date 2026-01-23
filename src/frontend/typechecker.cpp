@@ -357,6 +357,9 @@ namespace symir {
             if (cb && rb && *cb != *rb)
               diags.error("Bitwidth mismatch in operation", arg.span);
             return Ty{Ty::BVTy{cb.value_or(32)}};
+          } else if constexpr (std::is_same_v<T, UnaryAtom>) {
+            auto rt = typeOfLValue(arg.rval, vars, syms, diags);
+            return Ty{Ty::BVTy{getBVWidth(rt, diags, arg.rval.span).value_or(32)}};
           } else if constexpr (std::is_same_v<T, SelectAtom>) {
             checkCond(*arg.cond, vars, syms, ann, diags);
             auto t1 = typeOfSelectVal(arg.vtrue, vars, syms, ann, diags, expectedBits);

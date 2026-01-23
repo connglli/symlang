@@ -52,6 +52,20 @@ namespace symir {
                 }
               } else if constexpr (std::is_same_v<T, RValueAtom>) {
                 collectLValue(arg.rval);
+              } else if constexpr (std::is_same_v<T, CastAtom>) {
+                std::visit(
+                    [&](auto &&src) {
+                      using S = std::decay_t<decltype(src)>;
+                      if constexpr (std::is_same_v<S, LValue>) {
+                        collectLValue(src);
+                      } else if constexpr (std::is_same_v<S, SymId>) {
+                        used.insert(src.name);
+                      }
+                    },
+                    arg.src
+                );
+              } else if constexpr (std::is_same_v<T, UnaryAtom>) {
+                collectLValue(arg.rval);
               }
             },
             a.v

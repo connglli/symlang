@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
     for (const auto &s: result["sym"].as<std::vector<std::string>>()) {
       auto eq = s.find('=');
       if (eq != std::string::npos) {
-        fixedSyms[s.substr(0, eq)] = std::stoll(s.substr(eq + 1));
+        fixedSyms[s.substr(0, eq)] = std::stoll(s.substr(eq + 1), nullptr, 0);
       }
     }
   }

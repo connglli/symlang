@@ -162,14 +162,26 @@ namespace symir {
   //   Coef * RValue
   //   Coef / RValue
   //   Coef % RValue
+  //   Coef & RValue
+  //   Coef | RValue
+  //   Coef ^ RValue
+  //   ~ RValue
   //   select ...
   //   Coef
   //   RValue
-  enum class AtomOpKind { Mul, Div, Mod };
+  enum class AtomOpKind { Mul, Div, Mod, And, Or, Xor };
 
   struct OpAtom {
     AtomOpKind op;
     Coef coef;
+    RValue rval;
+    SourceSpan span;
+  };
+
+  enum class UnaryOpKind { Not };
+
+  struct UnaryAtom {
+    UnaryOpKind op;
     RValue rval;
     SourceSpan span;
   };
@@ -192,7 +204,7 @@ namespace symir {
   };
 
   struct Atom {
-    using Variant = std::variant<OpAtom, SelectAtom, CoefAtom, RValueAtom, CastAtom>;
+    using Variant = std::variant<OpAtom, SelectAtom, CoefAtom, RValueAtom, CastAtom, UnaryAtom>;
     Variant v;
     SourceSpan span;
   };

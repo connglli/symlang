@@ -208,6 +208,11 @@ namespace symir {
             dumpCoef(arg.coef);
           } else if constexpr (std::is_same_v<T, RValueAtom>) {
             dumpLValue(arg.rval);
+          } else if constexpr (std::is_same_v<T, UnaryAtom>) {
+            if (arg.op == UnaryOpKind::Not) {
+              out_ << "~";
+            }
+            dumpLValue(arg.rval);
           } else if constexpr (std::is_same_v<T, CastAtom>) {
             std::visit(
                 [&](auto &&src) {
@@ -378,7 +383,13 @@ namespace symir {
       case AtomOpKind::Div:
         return "/";
       case AtomOpKind::Mod:
-        return "% ";
+        return "%";
+      case AtomOpKind::And:
+        return "&";
+      case AtomOpKind::Or:
+        return "|";
+      case AtomOpKind::Xor:
+        return "^";
     }
     return "?";
   }

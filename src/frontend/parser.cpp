@@ -212,8 +212,8 @@ namespace symir {
       const Token &hiT = consume(TokenKind::IntLit, "domain interval upper bound");
       consume(TokenKind::RBracket, "']'");
       DomainInterval di;
-      di.lo = std::stoll(loT.lexeme);
-      di.hi = std::stoll(hiT.lexeme);
+      di.lo = std::stoll(loT.lexeme, nullptr, 0);
+      di.hi = std::stoll(hiT.lexeme, nullptr, 0);
       di.span = SourceSpan{b, prevEnd()};
       return Domain{di};
     }
@@ -224,7 +224,7 @@ namespace symir {
       if (!is(TokenKind::RBrace)) {
         while (true) {
           const Token &v = consume(TokenKind::IntLit, "domain set element");
-          ds.values.push_back(std::stoll(v.lexeme));
+          ds.values.push_back(std::stoll(v.lexeme, nullptr, 0));
           if (!tryConsume(TokenKind::Comma))
             break;
         }
@@ -300,7 +300,7 @@ namespace symir {
 
     if (is(TokenKind::IntLit)) {
       const Token &t = consume(TokenKind::IntLit, "integer literal");
-      IntLit lit{std::stoll(t.lexeme), t.span};
+      IntLit lit{std::stoll(t.lexeme, nullptr, 0), t.span};
       InitVal iv;
       iv.kind = InitVal::Kind::Int;
       iv.value = lit;
@@ -470,8 +470,8 @@ namespace symir {
 
   Index Parser::parseIndex() {
     if (is(TokenKind::IntLit)) {
-      const Token &t = consume(TokenKind::IntLit, "integer index");
-      return Index{IntLit{std::stoll(t.lexeme), t.span}};
+      const Token &t = consume(TokenKind::IntLit, "index");
+      return Index{IntLit{std::stoll(t.lexeme, nullptr, 0), t.span}};
     }
     if (is(TokenKind::LocalId)) {
       return Index{LocalOrSymId{parseLocalId()}};
@@ -484,8 +484,8 @@ namespace symir {
 
   Coef Parser::parseCoef() {
     if (is(TokenKind::IntLit)) {
-      const Token &t = consume(TokenKind::IntLit, "integer literal");
-      return Coef{IntLit{std::stoll(t.lexeme), t.span}};
+      const Token &t = consume(TokenKind::IntLit, "coefficient");
+      return Coef{IntLit{std::stoll(t.lexeme, nullptr, 0), t.span}};
     }
     if (is(TokenKind::LocalId)) {
       return Coef{LocalOrSymId{parseLocalId()}};
@@ -559,6 +559,15 @@ namespace symir {
       return atom;
     }
 
+    if (tryConsume(TokenKind::Tilde)) {
+      RValue rv = parseLValue();
+      UnaryAtom ua{UnaryOpKind::Not, std::move(rv), SourceSpan{b, prevEnd()}};
+      Atom a;
+      a.v = std::move(ua);
+      a.span = SourceSpan{b, prevEnd()};
+      return a;
+    }
+
     // Handle 'as' for IntLit, SymId, or LocalId (LValue)
     if (is(TokenKind::IntLit)) {
       std::size_t save = idx_;
@@ -605,9 +614,11 @@ namespace symir {
       std::size_t save = idx_;
       LValue lv = parseLValue();
       if (!lv.accesses.empty()) {
-        if (is(TokenKind::Star) || is(TokenKind::Slash) || is(TokenKind::Percent)) {
+        if (is(TokenKind::Star) || is(TokenKind::Slash) || is(TokenKind::Percent) ||
+            is(TokenKind::Amp) || is(TokenKind::Pipe) || is(TokenKind::Caret)) {
           throw ParseError(
-              "An accessed lvalue cannot be used as a coefficient for '*', '/', '%'", peek().span
+              "An accessed lvalue cannot be used as a coefficient for '*', '/', '%', '&', '|', '^'",
+              peek().span
           );
         }
         RValueAtom ra{std::move(lv), SourceSpan{b, prevEnd()}};
@@ -622,7 +633,8 @@ namespace symir {
     if (is(TokenKind::IntLit) || is(TokenKind::LocalId) || is(TokenKind::SymId)) {
       std::size_t save = idx_;
       Coef c = parseCoef();
-      if (is(TokenKind::Star) || is(TokenKind::Slash) || is(TokenKind::Percent)) {
+      if (is(TokenKind::Star) || is(TokenKind::Slash) || is(TokenKind::Percent) ||
+          is(TokenKind::Amp) || is(TokenKind::Pipe) || is(TokenKind::Caret)) {
         AtomOpKind op = parseAtomOp();
         RValue rv = parseLValue();
         OpAtom oa{op, std::move(c), std::move(rv), SourceSpan{b, prevEnd()}};
@@ -660,7 +672,13 @@ namespace symir {
       return AtomOpKind::Div;
     if (tryConsume(TokenKind::Percent))
       return AtomOpKind::Mod;
-    errorHere("Expected atom operator (*, /, %)");
+    if (tryConsume(TokenKind::Amp))
+      return AtomOpKind::And;
+    if (tryConsume(TokenKind::Pipe))
+      return AtomOpKind::Or;
+    if (tryConsume(TokenKind::Caret))
+      return AtomOpKind::Xor;
+    errorHere("Expected atom operator (*, /, %, &, |, ^)");
   }
 
   SelectVal Parser::parseSelectVal() {
