@@ -12,7 +12,7 @@ In the Solver (`symirsolve`), UB generates constraints that negate the path cond
 - **Mechanism:**
   - **Static:** `DefiniteInitAnalysis` warns at compile time (conservative).
   - **Dynamic:** Interpreter tracks `undef` state per-scalar-leaf. Reading `undef` throws a runtime error.
-  - **Solver:** Initialization constraints ensure variables are determined or explicitly `undef`.
+  - **Solver:** Tracks a boolean `is_defined` flag for every symbolic value. Reading a value (e.g., in an expression or branch condition) adds its `is_defined` term to the path condition, ensuring the path is only feasible if all read values are definitely initialized.
 
 ## 2. Out-of-Bounds Access
 **Definition:** Accessing an array with an index `i` such that `i < 0` or `i >= Size`.
