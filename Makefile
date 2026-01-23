@@ -7,14 +7,14 @@ COMMON_SRCS = src/frontend/lexer.cpp src/frontend/parser.cpp src/frontend/ast_du
               src/analysis/pass_manager.cpp src/analysis/reachability.cpp \
               src/analysis/unused_name.cpp
 
-TEST_SRCS = src/test/sym_test.cpp
+TEST_SRCS = src/test/runner.cpp
 INTERP_SRCS = src/symiri.cpp src/interp/interpreter.cpp
 
 COMMON_OBJS = $(COMMON_SRCS:.cpp=.o)
 TEST_OBJS = $(TEST_SRCS:.cpp=.o)
 INTERP_OBJS = $(INTERP_SRCS:.cpp=.o)
 
-TARGET_TEST = sym_test
+TARGET_TEST = runner
 TARGET_INTERP = symiri
 
 all: $(TARGET_TEST) $(TARGET_INTERP)

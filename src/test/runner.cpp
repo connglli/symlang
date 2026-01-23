@@ -19,7 +19,7 @@
 int main(int argc, char **argv) {
   using namespace symir;
 
-  cxxopts::Options options("sym_test", "SymIR Frontend/Analysis Test Driver");
+  cxxopts::Options options("runner", "SymIR Frontend/Analysis Test Driver");
 
   // clang-format off
   options.add_options()
