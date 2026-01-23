@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "ast/ast_dumper.hpp"
+#include "ast/sir_printer.hpp"
 #include "cxxopts.hpp"
 #include "frontend/lexer.hpp"
 #include "frontend/parser.hpp"
@@ -128,16 +129,20 @@ int main(int argc, char **argv) {
         mfs << "}\n";
       }
 
-      if (result.count("output") || result["dump-ast"].as<bool>()) {
-        std::ostream *out = &std::cout;
-        std::ofstream ofs;
-        if (result.count("output")) {
-          ofs.open(result["output"].as<std::string>());
-          out = &ofs;
-        }
-
-        ASTDumper dumper(*out, res.model);
+      if (result["dump-ast"].as<bool>()) {
+        ASTDumper dumper(std::cout, res.model);
         dumper.dump(prog);
+      }
+
+      if (result.count("output")) {
+        std::ofstream ofs(result["output"].as<std::string>());
+        if (!ofs) {
+          std::cerr << "Error: Could not open output file " << result["output"].as<std::string>()
+                    << std::endl;
+          return 1;
+        }
+        SIRPrinter printer(ofs, res.model);
+        printer.print(prog);
       }
 
     } else if (res.unsat) {
