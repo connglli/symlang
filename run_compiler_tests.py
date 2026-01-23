@@ -132,14 +132,9 @@ def run_test(file_path, symirc_path, temp_dir):
 
     # Symbol stubs
     for k, v in bindings.items():
-      func_name = "symir_" + "main" + "__" + "symir_" + strip_sigil(k)
-      # Wait, getMangledSymbolName uses mangleName(func) + "__" + mangleName(sym)
-      # mangleName("@main") -> "symir_main"
-      # mangleName("%?a") -> "symir_a"
-      # So "symir_main__symir_a"
-
+      # Match docs/symirc.md: <func>__<sym> with sigils removed
       # We assume function is always @main for these tests
-      func_name = "symir_main__symir_" + strip_sigil(k)
+      func_name = "main" + "__" + strip_sigil(k)
       f.write(f"int32_t {func_name}(void) {{ return {v}; }}\n")
 
     f.write("\n")
@@ -149,7 +144,6 @@ def run_test(file_path, symirc_path, temp_dir):
     f.write("  symir_main();\n")
     f.write("  return 0;\n")
     f.write("}\n")
-
   # 3. Compile with gcc
   # We need -Wno-unused-variable because generated C code might have unused vars
   # Enable sanitizers for the generated code too

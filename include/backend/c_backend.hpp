@@ -30,6 +30,7 @@ namespace symir {
 
     std::string getMangledSymbolName(const std::string &funcName, const std::string &symName);
     std::string mangleName(const std::string &name);
+    std::string stripSigil(const std::string &name);
   };
 
 } // namespace symir

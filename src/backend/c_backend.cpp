@@ -17,16 +17,26 @@ namespace symir {
       if (name.size() > 1 && name[1] == '?')
         start = 2;
     }
-    // Prefix with symir_ to avoid C keywords and collisions
+    // Prefix with symir_ to avoid C keywords and collisions for internal identifiers
     return "symir_" + name.substr(start);
+  }
+
+  std::string CBackend::stripSigil(const std::string &name) {
+    if (name.empty())
+      return name;
+    size_t start = 0;
+    if (name[0] == '@' || name[0] == '%' || name[0] == '^') {
+      start = 1;
+      if (name.size() > 1 && name[1] == '?')
+        start = 2;
+    }
+    return name.substr(start);
   }
 
   std::string
   CBackend::getMangledSymbolName(const std::string &funcName, const std::string &symName) {
-    // For external symbols, we also prefix/mangle to be safe
-    // funcName is already mangled? No, passed as raw string from AST usually.
-    // Let's rely on mangleName for components.
-    return mangleName(funcName) + "__" + mangleName(symName);
+    // Follow docs/symirc.md format: <func>__<sym> with sigils removed
+    return stripSigil(funcName) + "__" + stripSigil(symName);
   }
 
   void CBackend::emitType(const TypePtr &type) {

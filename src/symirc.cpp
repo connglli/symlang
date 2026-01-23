@@ -23,7 +23,7 @@ int main(int argc, char **argv) {
   options.add_options()
     ("input", "Input .sir file", cxxopts::value<std::string>())
     ("o,output", "Output file (default: stdout)", cxxopts::value<std::string>())
-    ("backend", "Backend target (c, wasm)", cxxopts::value<std::string>()->default_value("c"))
+    ("target", "Backend target (c, wasm)", cxxopts::value<std::string>()->default_value("c"))
     ("h,help", "Print usage");
   // clang-format on
 
@@ -88,7 +88,7 @@ int main(int argc, char **argv) {
     }
 
     // 3. Backend
-    std::string backend = result["backend"].as<std::string>();
+    std::string target = result["target"].as<std::string>();
     std::ostream *outStream = &std::cout;
     std::ofstream ofs;
 
@@ -102,11 +102,14 @@ int main(int argc, char **argv) {
       outStream = &ofs;
     }
 
-    if (backend == "c") {
+    if (target == "c") {
       CBackend cb(*outStream);
       cb.emit(prog);
+    } else if (target == "wasm") {
+      std::cerr << "Error: WebAssembly backend not yet implemented in v0.\n";
+      return 1;
     } else {
-      std::cerr << "Error: Unsupported backend: " << backend << "\n";
+      std::cerr << "Error: Unsupported target: " << target << "\n";
       return 1;
     }
 
