@@ -1,6 +1,7 @@
 // EXPECT: PASS
+// ARGS: --sym @?n=5
 fun @main() : i32 {
-  let %n: i32 = 5;
+  sym @?n : value i32;
   let mut %res: i32 = 1;
   let mut %i: i32 = 1;
   let %one: i32 = 1;
@@ -10,7 +11,7 @@ fun @main() : i32 {
   br ^loop;
 
 ^loop:
-  br %i <= %n, ^body, ^exit;
+  br %i <= @?n, ^body, ^exit;
 
 ^body:
   %res = %res * %i;

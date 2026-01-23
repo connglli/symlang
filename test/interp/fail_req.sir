@@ -1,6 +1,8 @@
 // EXPECT: FAIL
+// ARGS: --sym @?one=1
 fun @main() : i32 {
+  sym @?one : value i32;
 ^entry:
-  require 1 == 0, "This should fail";
+  require @?one == 0, "This should fail";
   ret 0;
 }

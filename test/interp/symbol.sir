@@ -1,8 +1,10 @@
 // EXPECT: PASS
-// ARGS: --sym @?c=5
+// ARGS: --sym @?c=5 --sym %?extra=42
 fun @main() : i32 {
   sym @?c: value i32;
+  sym %?extra: value i32;
 ^entry:
   require @?c == 5, "Symbol check";
+  require %?extra == 42, "Local symbol check";
   ret 0;
 }

@@ -1,8 +1,9 @@
 // EXPECT: PASS
+// ARGS: --sym @?x=10
 fun @main() : i32 {
-  let %x: i32 = 10;
+  sym @?x : value i32;
   let %y: i32 = 20;
 ^entry:
-  require select %x < %y, %x, %y == 10, "Min check";
+  require select @?x < %y, @?x, %y == 10, "Min check";
   ret 0;
 }

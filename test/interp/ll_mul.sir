@@ -1,10 +1,9 @@
 // EXPECT: PASS
+// ARGS: --sym @?v1=5
 fun @main() : i64 {
-  let %v1: i64 = 5; // Used if we need lvalue
+  sym @?v1 : value i64;
   let %v2: i64 = 9;
 ^entry:
-  // 5 * 9 is not valid (Coef * IntLit not allowed)
-  // 5 * %v2 is valid (Coef * RValue)
-  require 5 * %v2 == 45, "mul.ll";
-  ret 5 * %v2;
+  require @?v1 * %v2 == 45, "mul.ll";
+  ret @?v1 * %v2;
 }

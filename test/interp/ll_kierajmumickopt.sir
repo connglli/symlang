@@ -1,5 +1,7 @@
 // EXPECT: PASS
+// ARGS: --sym @?res=420
 fun @main() : i64 {
+  sym @?res : value i64;
 ^entry:
-  ret 420;
+  ret @?res;
 }

@@ -1,5 +1,7 @@
 // EXPECT: PASS
+// ARGS: --sym @?ret_val=0
 fun @main() : i64 {
+  sym @?ret_val : value i64;
 ^entry:
-  ret 0;
+  ret @?ret_val;
 }

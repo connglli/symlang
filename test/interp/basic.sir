@@ -1,8 +1,9 @@
 // EXPECT: PASS
+// ARGS: --sym @?a=10
 fun @main() : i32 {
-  let %a: i32 = 10;
+  sym @?a : value i32;
   let %b: i32 = 20;
 ^entry:
-  require %a + %b == 30, "Math check";
+  require @?a + %b == 30, "Math check";
   ret 0;
 }

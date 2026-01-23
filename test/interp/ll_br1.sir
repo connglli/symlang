@@ -1,7 +1,10 @@
 // EXPECT: PASS
+// ARGS: --sym @?check=1
 fun @main() : i64 {
+  sym @?check : value i64;
   let %exp: i64 = 9;
 ^entry:
+  require @?check == 1, "Symbol check";
   br ^end;
 ^end:
   require %exp == 9, "br1.ll";

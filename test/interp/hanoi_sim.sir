@@ -1,27 +1,22 @@
 // EXPECT: PASS
+// ARGS: --sym @?n=3
 fun @main() : i32 {
-  let mut %stack: [100] i32 = 0; // stack array
-  let mut %sp: i32 = 0; // stack pointer (index of next free slot)
+  sym @?n : value i32;
+  let mut %stack: [100] i32 = 0;
+  let mut %sp: i32 = 0;
   let mut %moves: i32 = 0;
 
-  // Frame vars (temps for popping)
-  let mut %n: i32 = 0;
+  let mut %curr_n: i32 = 0;
   let mut %stage: i32 = 0;
   let mut %s: i32 = 0;
   let mut %d: i32 = 0;
   let mut %a: i32 = 0;
 
-  // Constants
-  let %c0: i32 = 0;
   let %c1: i32 = 1;
-  let %c2: i32 = 2;
-  let %c3: i32 = 3;
-  let %c5: i32 = 5; // Frame size
 
 ^entry:
-  // Push initial call: hanoi(3, 1, 3, 2)
-  // [3, 0, 1, 3, 2]
-  %stack[%sp] = 3; %sp = %sp + %c1;
+  // Push initial call: hanoi(@?n, 1, 3, 2)
+  %stack[%sp] = @?n; %sp = %sp + %c1;
   %stack[%sp] = 0; %sp = %sp + %c1;
   %stack[%sp] = 1; %sp = %sp + %c1;
   %stack[%sp] = 3; %sp = %sp + %c1;
@@ -33,28 +28,25 @@ fun @main() : i32 {
   br %sp > 0, ^pop, ^exit;
 
 ^pop:
-  // Pop frame
   %sp = %sp - %c1; %a = %stack[%sp];
   %sp = %sp - %c1; %d = %stack[%sp];
   %sp = %sp - %c1; %s = %stack[%sp];
   %sp = %sp - %c1; %stage = %stack[%sp];
-  %sp = %sp - %c1; %n = %stack[%sp];
+  %sp = %sp - %c1; %curr_n = %stack[%sp];
 
-  br %n == 0, ^while_loop, ^process;
+  br %curr_n == 0, ^while_loop, ^process;
 
 ^process:
   br %stage == 0, ^stage0, ^stage1;
 
 ^stage0:
-  // Push [n, 1, s, d, a] (current, next stage)
-  %stack[%sp] = %n; %sp = %sp + %c1;
+  %stack[%sp] = %curr_n; %sp = %sp + %c1;
   %stack[%sp] = 1; %sp = %sp + %c1;
   %stack[%sp] = %s; %sp = %sp + %c1;
   %stack[%sp] = %d; %sp = %sp + %c1;
   %stack[%sp] = %a; %sp = %sp + %c1;
 
-  // Push [n-1, 0, s, a, d] (left recurse)
-  %stack[%sp] = %n - %c1; %sp = %sp + %c1;
+  %stack[%sp] = %curr_n - %c1; %sp = %sp + %c1;
   %stack[%sp] = 0; %sp = %sp + %c1;
   %stack[%sp] = %s; %sp = %sp + %c1;
   %stack[%sp] = %a; %sp = %sp + %c1;
@@ -63,11 +55,9 @@ fun @main() : i32 {
   br ^while_loop;
 
 ^stage1:
-  // Move disk
   %moves = %moves + %c1;
 
-  // Push [n-1, 0, a, d, s] (right recurse)
-  %stack[%sp] = %n - %c1; %sp = %sp + %c1;
+  %stack[%sp] = %curr_n - %c1; %sp = %sp + %c1;
   %stack[%sp] = 0; %sp = %sp + %c1;
   %stack[%sp] = %a; %sp = %sp + %c1;
   %stack[%sp] = %d; %sp = %sp + %c1;

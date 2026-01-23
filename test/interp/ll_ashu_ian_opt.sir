@@ -1,9 +1,10 @@
 // EXPECT: PASS
+// ARGS: --sym @?cond_val=1
 fun @main() : i64 {
-  let %one: i64 = 1;
+  sym @?cond_val : value i64;
   let %zero: i64 = 0;
 ^entry:
-  br %one != %zero, ^then22, ^else21;
+  br @?cond_val != %zero, ^then22, ^else21;
 ^else21:
   br ^merge20;
 ^merge20:

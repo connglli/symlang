@@ -1,8 +1,9 @@
 // EXPECT: PASS
+// ARGS: --sym @?v1=10
 fun @main() : i64 {
-  let %v1: i64 = 10;
+  sym @?v1 : value i64;
   let %v2: i64 = 9;
 ^entry:
-  require %v1 - %v2 == 1, "sub.ll";
-  ret %v1 - %v2;
+  require @?v1 - %v2 == 1, "sub.ll";
+  ret @?v1 - %v2;
 }

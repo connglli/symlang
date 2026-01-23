@@ -1,8 +1,9 @@
 // EXPECT: PASS
+// ARGS: --sym @?cond=0
 fun @main() : i64 {
-  let %zero: i64 = 0;
+  sym @?cond : value i64;
 ^entry:
-  br %zero != 0, ^then, ^else;
+  br @?cond != 0, ^then, ^else;
 ^then:
   ret 7;
 ^else:
