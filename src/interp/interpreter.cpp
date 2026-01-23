@@ -14,8 +14,9 @@ namespace symir {
 
   void Interpreter::run(
       const std::string &entryFuncName,
-      const std::unordered_map<std::string, std::int64_t> &symBindings
+      const std::unordered_map<std::string, std::int64_t> &symBindings, bool dumpExec
   ) {
+    dumpExec_ = dumpExec;
     const FunDecl *entry = nullptr;
     for (const auto &f: prog_.funs) {
       if (f.name.name == entryFuncName) {
@@ -29,6 +30,20 @@ namespace symir {
 
     std::vector<RuntimeValue> args;
     execFunction(*entry, args, symBindings);
+  }
+
+  std::string Interpreter::rvToString(const RuntimeValue &rv) const {
+    switch (rv.kind) {
+      case RuntimeValue::Kind::Int:
+        return std::to_string(rv.intVal);
+      case RuntimeValue::Kind::Undef:
+        return "undef";
+      case RuntimeValue::Kind::Array:
+        return "[...]";
+      case RuntimeValue::Kind::Struct:
+        return "{...}";
+    }
+    return "?";
   }
 
   Interpreter::RuntimeValue Interpreter::makeUndef(const TypePtr &t) {
@@ -152,6 +167,9 @@ namespace symir {
 
     while (true) {
       const Block &block = f.blocks[pc];
+      if (dumpExec_) {
+        std::cout << block.label.name << ":\n";
+      }
 
       for (const auto &ins: block.instrs) {
         std::visit(
@@ -159,6 +177,33 @@ namespace symir {
               using T = std::decay_t<decltype(i)>;
               if constexpr (std::is_same_v<T, AssignInstr>) {
                 RuntimeValue rhs = evalExpr(i.rhs, store);
+                if (dumpExec_) {
+                  std::cout << "  " << i.lhs.base.name;
+                  for (const auto &acc: i.lhs.accesses) {
+                    if (auto ai = std::get_if<AccessIndex>(&acc)) {
+                      std::cout << "[";
+                      if (auto ilit = std::get_if<IntLit>(&ai->index)) {
+                        std::cout << ilit->value;
+                      } else {
+                        auto id = std::get<LocalOrSymId>(ai->index);
+                        std::visit(
+                            [&](auto &&id_val) {
+                              auto it = store.find(id_val.name);
+                              if (it != store.end())
+                                std::cout << it->second.intVal;
+                              else
+                                std::cout << id_val.name;
+                            },
+                            id
+                        );
+                      }
+                      std::cout << "]";
+                    } else if (auto af = std::get_if<AccessField>(&acc)) {
+                      std::cout << "." << af->field;
+                    }
+                  }
+                  std::cout << " = " << rvToString(rhs) << "\n";
+                }
                 setLValue(i.lhs, rhs, store);
               } else if constexpr (std::is_same_v<T, AssumeInstr>) {
                 if (!evalCond(i.cond, store))

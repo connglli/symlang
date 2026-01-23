@@ -13,10 +13,11 @@ namespace symir {
     explicit Interpreter(const Program &prog);
     void
     run(const std::string &entryFuncName,
-        const std::unordered_map<std::string, std::int64_t> &symBindings);
+        const std::unordered_map<std::string, std::int64_t> &symBindings, bool dumpExec = false);
 
   private:
     const Program &prog_;
+    bool dumpExec_ = false;
     std::unordered_map<std::string, const StructDecl *> structs_;
 
     struct RuntimeValue {
@@ -31,6 +32,7 @@ namespace symir {
     RuntimeValue makeUndef(const TypePtr &t);
     RuntimeValue broadcast(const TypePtr &t, const RuntimeValue &v);
     RuntimeValue evalInit(const InitVal &iv, const TypePtr &t, const Store &store);
+    std::string rvToString(const RuntimeValue &rv) const;
 
     void execFunction(
         const FunDecl &f, const std::vector<RuntimeValue> &args,

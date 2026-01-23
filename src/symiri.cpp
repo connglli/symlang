@@ -26,8 +26,8 @@ int main(int argc, char **argv) {
     ("input", "Input .sir file", cxxopts::value<std::string>())
     ("main", "Entry function to execute", cxxopts::value<std::string>()->default_value("@main"))
     ("sym", "Bind a symbol (name=value)", cxxopts::value<std::vector<std::string>>())
-    ("trace", "Print execution trace", cxxopts::value<bool>()->default_value("false"))
     ("check", "Check semantics only (do not execute)", cxxopts::value<bool>()->default_value("false"))
+    ("dump-trace", "Dump executed blocks and variable updates", cxxopts::value<bool>()->default_value("false"))
     ("w", "Inhibit all warning messages", cxxopts::value<bool>()->default_value("false"))
     ("Werror", "Make all warnings into errors", cxxopts::value<bool>()->default_value("false"))
     ("h,help", "Print usage");
@@ -124,8 +124,7 @@ int main(int argc, char **argv) {
 
     // 4. Interpret
     Interpreter interp(prog);
-    // TODO: Pass trace flag to interpreter when implemented
-    interp.run(mainFunc, symBindings);
+    interp.run(mainFunc, symBindings, result["dump-trace"].as<bool>());
 
   } catch (const std::exception &e) {
     std::cerr << "Exception: " << e.what() << "\n";
