@@ -183,6 +183,10 @@ Expr        := Atom (("+" | "-") Atom)* ;
 Atom        := Coef "*" RValue
             | Coef "/" RValue
             | Coef "%" RValue
+            | Coef "&" RValue
+            | Coef "|" RValue
+            | Coef "^" RValue
+            | "~" RValue
             | Select
             | Cast
             | Coef
@@ -201,6 +205,7 @@ Evaluation order:
 - `Expr` is evaluated strictly left-to-right: `(((a0 op a1) op a2) ...)`.
 - `select` evaluates its `Cond` first, then evaluates only the chosen arm.
 - `as` performs integer casting.
+- Bitwise operators (`&`, `|`, `^`, `~`) operate at the bit level on integer values.
 
 ## 6. Typing and well-formedness (v0)
 
@@ -223,12 +228,11 @@ The result has that type.
 - `rval` is a scalar integer.
 - `T` is a scalar integer type.
 
-**Semantics:**
-- **Extension (src < dst):** Sign-extend to the target width.
-- **Truncation (src > dst):** Discard high bits (keep LSBs).
-- **Identity (src == dst):** No-op.
+### 6.5 Bitwise typing
+- `Coef op RValue` (`&`, `|`, `^`): well-typed iff both operands are scalar integers of the same bit-width.
+- `~ RValue`: well-typed iff the operand is a scalar integer.
 
-### 6.5 Mutability rules
+### 6.6 Mutability rules
 - The LHS of `=` must be an lvalue rooted at a `let mut` local.
 - `sym` identifiers and `let` (immutable) locals cannot appear on the LHS.
 - Parameters are immutable and cannot appear on the LHS.
