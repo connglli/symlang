@@ -62,11 +62,11 @@ Alternatively, you can run specific suites using the Python module syntax:
 
 ```bash
 # Run only the interpreter tests
-python3 -m test.lib.run_tests test/interp ./symiri
+python3 -m test.lib.run_interp_tests test/interp ./symiri
 
 # Run only the compiler tests
 python3 -m test.lib.run_compiler_tests test/ ./symirc
 
 # Run only a specific analysis directory
-python3 -m test.lib.run_tests test/typechecker ./symiri --check
+python3 -m test.lib.run_interp_tests test/typechecker ./symiri --check
 ```

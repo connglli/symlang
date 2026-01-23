@@ -18,12 +18,18 @@ It executes programs directly from `.sir`, enforcing:
 ## Usage
 
 ```bash
-symiri <input.sir> --main <function> [--sym name=value ...]
-````
+symiri <input.sir> [--main <function>] [--sym name=value ...] [options]
+```
 
 ### Examples
 
-Interpret a concrete program:
+Interpret a concrete program (defaults to `@main`):
+
+```bash
+symiri prog.sir
+```
+
+Interpret a specific entry function:
 
 ```bash
 symiri prog.sir --main @f0
@@ -60,11 +66,15 @@ Value parsing:
 
 ## Options
 
-| Option             | Description               |
-| ------------------ | ------------------------- |
-| `--main <func>`    | Entry function to execute |
-| `--sym name=value` | Bind a symbol             |
-| `--trace`          | Print execution trace     |
+| Option             | Description                                              |
+| ------------------ | -------------------------------------------------------- |
+| `--main <func>`    | Entry function to execute (default: `@main`)             |
+| `--sym name=value` | Bind a symbol                                            |
+| `--check`          | Check semantics and type correctness only (don't execute)|
+| `--dump-trace`     | Dump executed blocks and variable updates during execution|
+| `-w`               | Inhibit all warning messages                             |
+| `--Werror`         | Make all warnings into errors                            |
+| `-h, --help`       | Print usage                                              |
 
 
 ## Intended Use

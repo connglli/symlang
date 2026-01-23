@@ -29,9 +29,9 @@ This repository currently provides three primary tools:
 
 | Tool      | Purpose |
 |-----------|--------|
-| `symirc` | Translate `.sir` programs into C or WebAssembly |
 | `symiri` | Interpret `.sir` programs directly |
-| `symirsolve` | (Planned) Concretize symbolic programs using SMT |
+| `symirc` | Translate `.sir` programs into C or WebAssembly |
+| `symirsolve` | Concretize symbolic programs using SMT (Bitwuzla) |
 
 Documentation of each tool: [./docs/](./docs).
 
@@ -40,26 +40,25 @@ Documentation of each tool: [./docs/](./docs).
 
 ### Interpret a concrete program
 ```bash
-symiri input.sir --main @f0
+symiri input.sir
 ````
 
 ### Interpret a symbolic program with bindings
 
 ```bash
-symiri input.sir --main @f0 --sym @?c4=3 --sym %?k=10
+symiri input.sir --sym %?a=10 --dump-trace
 ```
 
 ### Translate to C/WASM
 ```bash
 symirc input.sir --target c -o out.c
-symirc input.sir --target wasm -o out.wat
 ```
 
 Note: for symbolic programs, `symirc` emits extern C function declarations or WASM imports.
 
 ### Concretize a symbolic template
 ```bash
-symirsolve template.sir --main @f0 --path '^entry,^b1,^b2,^b1,^b3,^exit' -o concrete.sir
+symirsolve template.sir --path '^entry,^b1,^exit' -o concrete.sir
 ```
 
 
@@ -68,9 +67,8 @@ symirsolve template.sir --main @f0 --path '^entry,^b1,^b2,^b1,^b3,^exit' -o conc
 ```
 .
 ├── README.md
-├── AGENT.md
 ├── docs/
-│   ├── SPEC.md
+│   ├── SPEC_v0.md
 │   ├── symirc.md
 │   ├── symiri.md
 │   └── symirsolve.md
@@ -79,15 +77,17 @@ symirsolve template.sir --main @f0 --path '^entry,^b1,^b2,^b1,^b3,^exit' -o conc
 │   ├── frontend/
 │   ├── analysis/
 │   ├── backend/
-│   └── interp/
+│   ├── interp/
+│   └── solver/
 ├── src/
-│   ├── symircc.cpp
 │   ├── symiri.cpp
+│   ├── symirc.cpp
 │   ├── symirsolve.cpp
 │   ├── frontend/
 │   ├── analysis/
 │   ├── backend/
-│   └── interp/
+│   ├── interp/
+│   └── solver/
 └── test/
 ```
 

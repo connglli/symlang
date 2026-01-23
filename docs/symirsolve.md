@@ -24,27 +24,27 @@ Concretization means:
 ## Usage
 
 ```bash
-symirsolve <input.sir> --main <func> --path <labels> -o <output.sir>
-````
+symirsolve <input.sir> [--main <func>] --path <labels> [options]
+```
 
 ### Common Examples
 
-Concretize using constraints embedded in the program (`assume`, `require`) and a specified path:
+Concretize using constraints embedded in the program (`assume`, `require`) and a specified path (defaults to `@main`):
 
 ```bash
-symirsolve template.sir --main @f0 --path '^entry,^b1,^b3,^b1,^b2,^exit' -o concrete.sir
+symirsolve template.sir --path '^entry,^b1,^b3,^b1,^b2,^exit' -o concrete.sir
 ```
 
 Concretize and also emit a model file:
 
 ```bash
-symirsolve template.sir --main @f0 --path '^entry,^b1,^b3,^b1,^b2,^exit' --emit-model model.json -o concrete.sir
+symirsolve template.sir --path '^entry,^b1,^b3,^b1,^b2,^exit' --emit-model model.json -o concrete.sir
 ```
 
 Concretize with additional symbol constraints provided on the command line:
 
 ```bash
-symirsolve template.sir --main @f0 --path '^entry,^b1,^b3,^b1,^b2,^exit' --sym @?c4=3 -o concrete.sir
+symirsolve template.sir --path '^entry,^b1,^b3,^b1,^b2,^exit' --sym %?c4=3 -o concrete.sir
 ```
 
 
@@ -61,7 +61,7 @@ symirsolve template.sir --main @f0 --path '^entry,^b1,^b3,^b1,^b2,^exit' --sym @
 
 Strict UB is enforced:
 
-* Any UB encountered on the chosen path makes that path infeasible.
+* Any UB encountered on the chosen path (e.g., division by zero or OOB) makes that path infeasible.
 
 
 ## Path Specification
@@ -80,24 +80,25 @@ Rules:
 
 ## Outputs
 
-By default, `symirsolve` produces a concrete `.sir` where all symbols are replaced with concrete constants.
-
-Optional outputs:
-
-* a model file (`--emit-model`) containing symbol assignments
+* **SAT**: If a solution exists, `symirsolve` reports `SAT`.
+* **Concrete SIR**: If `-o <file>` is specified, it produces a concrete `.sir` where all symbols are replaced with concrete constants.
+* **Model File**: If `--emit-model <file>` is specified, it produces a JSON file mapping the entry function to its solved symbol values.
+* **AST Dump**: If `--dump-ast` is specified, it prints the internal AST representation of the concretized program to stdout.
 
 
 ## Options
 
 | Option                | Description                                              |
 | --------------------- | -------------------------------------------------------- |
-| `--main <func>`       | Function to concretize (entry for path execution)        |
+| `--main <func>`       | Function to concretize (default: `@main`)                |
 | `--path <labels>`     | Comma-separated block label sequence                     |
-| `-o <file>`           | Output file (required; default: stdout if omitted)       |
-| `--timeout-ms <n>`    | Solver timeout                                           |
-| `--seed <n>`          | Seed for deterministic model selection (if supported)    |
-| `--emit-model <file>` | Emit symbol assignments (e.g., JSON)                     |
+| `-o <file>`           | Output concrete `.sir` file                              |
+| `--dump-ast`          | Dump concretized AST to stdout                           |
+| `--timeout-ms <n>`    | Solver timeout in milliseconds                           |
+| `--seed <n>`          | Seed for deterministic model selection                   |
+| `--emit-model <file>` | Emit symbol assignments in nested JSON format            |
 | `--sym sym=val`       | Fix a symbol to a concrete value before solving          |
+| `-h, --help`          | Print usage                                              |
 
 
 ## Notes on BV Semantics

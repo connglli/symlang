@@ -88,9 +88,13 @@ Examples:
 
 | Option             | Description                                |
 | ------------------ | ------------------------------------------ |
-| `--target c`       | Emit C source                              |
+| `--target c`       | Emit C source (default)                    |
 | `--target wasm`    | Emit WebAssembly (WAT)                     |
 | `-o <file>`        | Output file (default: stdout)              |
+| `--dump-ast`       | Dump the AST to stdout and exit            |
+| `-w`               | Inhibit all warning messages               |
+| `--Werror`         | Make all warnings into errors              |
+| `-h, --help`       | Print usage                                |
 
 
 ## Limitations (v0)
