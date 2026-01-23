@@ -243,7 +243,15 @@ namespace symir {
           if constexpr (std::is_same_v<T, IntLit>) {
             out_ << arg.value;
           } else {
-            std::visit([this](auto &&id) { out_ << id.name; }, arg);
+            std::visit(
+                [this](auto &&id) {
+                  if (model_.count(id.name))
+                    out_ << model_.at(id.name);
+                  else
+                    out_ << id.name;
+                },
+                arg
+            );
           }
         },
         c
@@ -265,7 +273,15 @@ namespace symir {
           if constexpr (std::is_same_v<T, IntLit>) {
             out_ << arg.value;
           } else {
-            std::visit([this](auto &&id) { out_ << id.name; }, arg);
+            std::visit(
+                [this](auto &&id) {
+                  if (model_.count(id.name))
+                    out_ << model_.at(id.name);
+                  else
+                    out_ << id.name;
+                },
+                arg
+            );
           }
         },
         idx
@@ -277,9 +293,14 @@ namespace symir {
       case InitVal::Kind::Int:
         out_ << std::get<IntLit>(iv.value).value;
         break;
-      case InitVal::Kind::Sym:
-        out_ << std::get<SymId>(iv.value).name;
+      case InitVal::Kind::Sym: {
+        auto name = std::get<SymId>(iv.value).name;
+        if (model_.count(name))
+          out_ << model_.at(name);
+        else
+          out_ << name;
         break;
+      }
       case InitVal::Kind::Local:
         out_ << std::get<LocalId>(iv.value).name;
         break;

@@ -1,0 +1,11 @@
+// EXPECT: PASS
+// ARGS: --main @main --path '^entry'
+struct @Rect { w: i32; h: i32; }
+fun @main() : i32 {
+  sym %?area : value i32 in [50, 100];
+  let mut %r: @Rect = {10, 0};
+^entry:
+  %r.h = %?area / %r.w;
+  require %r.h == 8;
+  ret 0;
+}

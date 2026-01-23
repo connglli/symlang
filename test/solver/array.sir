@@ -1,0 +1,9 @@
+// EXPECT: PASS
+// ARGS: --main @main --path '^entry'
+fun @main() : i32 {
+  sym %?idx : value i32 in [0, 2];
+  let mut %arr: [3] i32 = {10, 20, 30};
+^entry:
+  require %arr[%?idx] == 20;
+  ret 0;
+}

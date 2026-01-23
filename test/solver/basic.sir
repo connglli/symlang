@@ -1,0 +1,8 @@
+// EXPECT: PASS
+// ARGS: --main @main --path '^entry'
+fun @main() : i32 {
+  sym %?x : value i32 in [10, 20];
+^entry:
+  require %?x == 15;
+  ret 0;
+}

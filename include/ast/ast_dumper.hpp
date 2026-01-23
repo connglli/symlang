@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <string>
+#include <unordered_map>
 #include "ast/ast.hpp"
 
 namespace symir {
@@ -10,10 +11,14 @@ namespace symir {
   public:
     explicit ASTDumper(std::ostream &out) : out_(out) {}
 
+    explicit ASTDumper(std::ostream &out, const std::unordered_map<std::string, int64_t> &model) :
+        out_(out), model_(model) {}
+
     void dump(const Program &p);
 
   private:
     std::ostream &out_;
+    std::unordered_map<std::string, int64_t> model_;
     int indent_level_ = 0;
 
     void indent();
