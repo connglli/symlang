@@ -6,6 +6,8 @@
 #include "analysis/cfg.hpp"
 #include "analysis/definite_init.hpp"
 #include "analysis/pass_manager.hpp"
+#include "analysis/reachability.hpp"
+#include "analysis/unused_name.hpp"
 #include "ast/ast_dumper.hpp"
 #include "frontend/lexer.hpp"
 #include "frontend/parser.hpp"
@@ -41,7 +43,9 @@ int main(int argc, char **argv) {
     symir::PassManager pm(diags);
     pm.addModulePass(std::make_unique<SemChecker>());
     pm.addModulePass(std::make_unique<TypeChecker>());
+    pm.addFunctionPass(std::make_unique<ReachabilityAnalysis>());
     pm.addFunctionPass(std::make_unique<DefiniteInitAnalysis>());
+    pm.addFunctionPass(std::make_unique<UnusedNameAnalysis>());
 
     if (pm.run(prog) == symir::PassResult::Error) {
       for (const auto &d: diags.diags) {
@@ -51,6 +55,13 @@ int main(int argc, char **argv) {
         }
       }
       return 1;
+    }
+
+    for (const auto &d: diags.diags) {
+      if (d.level == DiagLevel::Warning) {
+        std::cout << "Warning: " << d.message << " at " << d.span.begin.line << ":"
+                  << d.span.begin.col << "\n";
+      }
     }
 
   } catch (const ParseError &e) {

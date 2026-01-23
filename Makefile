@@ -4,7 +4,8 @@ CXXFLAGS = -std=c++20 -Iinclude -Wall -Wextra
 COMMON_SRCS = src/frontend/lexer.cpp src/frontend/parser.cpp src/frontend/ast_dumper.cpp \
               src/analysis/cfgbuilder.cpp src/analysis/definite_init.cpp \
               src/frontend/typechecker.cpp src/frontend/semchecker.cpp \
-              src/analysis/pass_manager.cpp
+              src/analysis/pass_manager.cpp src/analysis/reachability.cpp \
+              src/analysis/unused_name.cpp
 
 TEST_SRCS = src/test/sym_test.cpp
 INTERP_SRCS = src/symiri.cpp src/interp/interpreter.cpp
