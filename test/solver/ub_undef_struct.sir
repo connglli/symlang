@@ -1,0 +1,9 @@
+// EXPECT: FAIL
+// ARGS: --main @main --path '^entry'
+struct @S { x: i32; y: i32; }
+fun @main() : i32 {
+  let %s: @S = {1, undef};
+^entry:
+  let %val: i32 = %s.y; // Reading undef field
+  ret 0;
+}

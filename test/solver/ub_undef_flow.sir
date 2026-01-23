@@ -1,0 +1,17 @@
+// EXPECT: FAIL
+// ARGS: --main @main --path '^entry,^b1,^merge' --sym %?c=1
+fun @main() : i32 {
+  sym %?c : value i32;
+  let mut %x: i32 = 0;
+^entry:
+  br %?c > 0, ^b1, ^b2;
+^b1:
+  %x = undef;
+  br ^merge;
+^b2:
+  %x = 10;
+  br ^merge;
+^merge:
+  let %use: i32 = %x; // Undef on path from b1
+  ret 0;
+}
