@@ -115,7 +115,11 @@ namespace symir {
 
     TypePtr initType = nullptr;
     if (iv.kind == InitVal::Kind::Int) {
-      // Literals are compatible with all integer BV types
+      // Literals must fit in the target type's range
+      auto bits = getBVWidth(targetType, diags, iv.span);
+      if (bits) {
+        checkLiteralRange(std::get<IntLit>(iv.value).value, *bits, iv.span, diags);
+      }
       return;
     } else if (iv.kind == InitVal::Kind::Sym) {
       auto it = syms.find(std::get<SymId>(iv.value).name);
@@ -402,15 +406,25 @@ namespace symir {
 
   TypePtr TypeChecker::typeOfCoef(
       const Coef &c, const std::unordered_map<std::string, VarInfo> &vars,
-      const std::unordered_map<std::string, SymInfo> &syms, [[maybe_unused]] DiagBag &diags,
+      const std::unordered_map<std::string, SymInfo> &syms, DiagBag &diags,
       std::optional<std::uint32_t> expectedBits
   ) {
     if (auto lit = std::get_if<IntLit>(&c)) {
+      uint32_t bits = expectedBits.value_or(32);
+      checkLiteralRange(lit->value, bits, lit->span, diags);
       auto t = std::make_shared<Type>();
-      t->v = IntType{
-          expectedBits && *expectedBits == 64 ? IntType::Kind::I64 : IntType::Kind::I32,
-          std::nullopt, lit->span
-      };
+      IntType it;
+      if (bits == 32)
+        it.kind = IntType::Kind::I32;
+      else if (bits == 64)
+        it.kind = IntType::Kind::I64;
+      else {
+        it.kind = IntType::Kind::ICustom;
+        it.bits = bits;
+      }
+      it.span = lit->span;
+      t->v = it;
+      t->span = lit->span;
       return t;
     }
     auto id = std::get<LocalOrSymId>(c);
@@ -423,6 +437,20 @@ namespace symir {
       if (it == syms.end())
         return nullptr;
       return it->second.type;
+    }
+  }
+
+  void TypeChecker::checkLiteralRange(int64_t val, uint32_t bits, SourceSpan sp, DiagBag &diags) {
+    if (bits >= 64)
+      return;
+    int64_t min = -(1LL << (bits - 1));
+    int64_t max = (1LL << bits) - 1; // Allow up to unsigned max for convenience
+    if (val < min || val > max) {
+      diags.error(
+          "Literal " + std::to_string(val) + " out of range for i" + std::to_string(bits) + " ([" +
+              std::to_string(min) + ", " + std::to_string(max) + "])",
+          sp
+      );
     }
   }
 

@@ -1,0 +1,6 @@
+// EXPECT: FAIL
+fun @main() : i32 {
+  let %x: i8 = 256; // Out of range for i8 [0, 255] or [-128, 127]
+^entry:
+  ret 0;
+}

@@ -1,0 +1,7 @@
+// EXPECT: FAIL
+fun @main() : i32 {
+  let mut %x: i8 = 0;
+^entry:
+  %x = 1000; // Should fail: 1000 doesn't fit in i8
+  ret 0;
+}

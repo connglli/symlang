@@ -1,0 +1,6 @@
+// EXPECT: FAIL
+fun @main(%p: i32) : i32 {
+^entry:
+  %p = 2; // Should fail: parameter is immutable
+  ret 0;
+}
