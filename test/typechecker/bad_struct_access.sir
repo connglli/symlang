@@ -1,0 +1,6 @@
+// EXPECT: FAIL
+struct @S { val: i32; }
+fun @bad_acc(%s: @S) : i32 {
+^entry:
+  ret %s.missing; // Error
+}

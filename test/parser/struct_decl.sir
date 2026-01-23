@@ -1,0 +1,6 @@
+// EXPECT: PASS
+struct @Point { x: i32; y: i32; }
+fun @use_struct(%p: @Point) : i32 {
+^entry:
+  ret %p.x;
+}

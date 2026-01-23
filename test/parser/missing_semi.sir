@@ -1,0 +1,5 @@
+// EXPECT: FAIL
+fun @semi() : i32 {
+^entry:
+  ret 0 // missing semicolon
+}

@@ -1,0 +1,8 @@
+// EXPECT: FAIL
+fun @bad_idx(%a: [10] i32, %i: @S) : i32 {
+  // Assuming @S is from context or just invalid type usage
+  // We need to define @S locally or use a non-int type
+  let %idx: [2] i32 = undef;
+^entry:
+  ret %a[%idx]; // Error: index not int
+}

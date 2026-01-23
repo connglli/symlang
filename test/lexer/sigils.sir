@@ -1,0 +1,7 @@
+// EXPECT: PASS
+fun @sigils(%a: i32) : i32 {
+  sym @?g: value i32;
+  sym %?l: value i32;
+^entry:
+  ret %a;
+}

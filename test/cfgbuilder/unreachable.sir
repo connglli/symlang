@@ -1,0 +1,8 @@
+// EXPECT: PASS
+// Unreachable code is semantically valid in v0 (though analysis might warn)
+fun @unreach() : i32 {
+^entry:
+  ret 0;
+^dead:
+  ret 1;
+}

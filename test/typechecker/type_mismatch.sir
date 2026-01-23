@@ -1,0 +1,7 @@
+// EXPECT: FAIL
+fun @mismatch() : i32 {
+  let %a: i32 = 1;
+  let %b: i64 = 2;
+^entry:
+  ret %a + %b; // Error: mismatch
+}

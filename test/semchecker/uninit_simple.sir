@@ -1,0 +1,6 @@
+// EXPECT: FAIL
+fun @uninit() : i32 {
+  let mut %x: i32;
+^entry:
+  ret %x;
+}

@@ -1,0 +1,4 @@
+// EXPECT: FAIL
+// Function must have at least one block
+fun @empty() : i32 {
+}

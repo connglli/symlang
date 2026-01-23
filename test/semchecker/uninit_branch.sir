@@ -1,0 +1,15 @@
+// EXPECT: FAIL
+fun @uninit_br(%c: i32) : i32 {
+  let mut %x: i32;
+  let %zero: i32 = 0;
+^entry:
+  br %c > %zero, ^t, ^f;
+^t:
+  %x = 1;
+  br ^exit;
+^f:
+  // %x not init here
+  br ^exit;
+^exit:
+  ret %x;
+}

@@ -1,0 +1,6 @@
+// EXPECT: PASS
+fun @strs() : i32 {
+^entry:
+  require 1 == 1, "Hello\nWorld";
+  ret 0;
+}

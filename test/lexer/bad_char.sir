@@ -1,0 +1,6 @@
+// EXPECT: FAIL
+fun @bad() : i32 {
+^entry:
+  let %x: i32 = $; // $ is invalid
+  ret 0;
+}

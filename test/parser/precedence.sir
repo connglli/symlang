@@ -1,0 +1,8 @@
+// EXPECT: PASS
+// Left-to-right means this parses as ((1 + 2) * 3) -> valid syntax
+// update: v0 restricts mult to Coef * RValue.
+// So 1 + 2 * %p is valid: Atom(1) + Atom(2 * %p)
+fun @prec(%p: i32) : i32 {
+^entry:
+  ret 1 + 2 * %p;
+}
