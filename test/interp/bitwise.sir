@@ -1,19 +1,19 @@
 // EXPECT: PASS
 fun @main() : i32 {
-  let mut %x: i32 = 43690; // 0xAAAA
-  let mut %y: i32 = 21845; // 0x5555
-  let mut %z: i32 = 0;
+  let %x: i32 = 43690; // 0xAAAA
+  let %y: i32 = 21845; // 0x5555
   let %all_ones: i32 = 65535; // 0xFFFF
-  let %expected: i32 = -43691; // 0xFFFF5555 signed
+  let %expected: i32 = -43691; // ~0xAAAA
+  let mut %z: i32 = 0;
 
 ^entry:
-  %z = %x & %y;
+  %z = %y & %x; // 0x5555 & 0xAAAA = 0
   require %z == 0;
 
-  %z = %x | %y;
+  %z = %y | %x; // 0x5555 | 0xAAAA = 0xFFFF (65535)
   require %z == %all_ones;
 
-  %z = %x ^ %all_ones;
+  %z = %all_ones ^ %x; // 0xFFFF ^ 0xAAAA = 0x5555 (21845)
   require %z == %y;
 
   %z = ~%x;

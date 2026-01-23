@@ -1,0 +1,93 @@
+// EXPECT: PASS
+// Edit Distance (Levenshtein)
+// Str1: "kit" (3), Str2: "sit" (3)
+// Distance: 1 (k -> s)
+
+struct @String { data: [3]i32; }
+struct @DP { table: [4][4]i32; }
+
+fun @main() : i32 {
+  let %s1: @String = { {107, 105, 116} }; // "kit"
+  let %s2: @String = { {115, 105, 116} }; // "sit"
+  let mut %dp: @DP = 0;
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %im1: i32 = 0;
+  let mut %jm1: i32 = 0;
+  let mut %c1: i32 = 0;
+  let mut %c2: i32 = 0;
+  let mut %del: i32 = 0;
+  let mut %ins: i32 = 0;
+  let mut %sub: i32 = 0;
+  let mut %min: i32 = 0;
+
+^init_row:
+  %i = 0;
+  br ^init_row_cond;
+
+^init_row_cond:
+  br %i <= 3, ^init_row_body, ^init_col;
+
+^init_row_body:
+  %dp.table[%i][0] = %i;
+  %i = %i + 1;
+  br ^init_row_cond;
+
+^init_col:
+  %j = 0;
+  br ^init_col_cond;
+
+^init_col_cond:
+  br %j <= 3, ^init_col_body, ^solve;
+
+^init_col_body:
+  %dp.table[0][%j] = %j;
+  %j = %j + 1;
+  br ^init_col_cond;
+
+^solve:
+  %i = 1;
+  br ^solve_outer_cond;
+
+^solve_outer_cond:
+  br %i <= 3, ^solve_inner, ^verify;
+
+^solve_inner:
+  %j = 1;
+  br ^solve_inner_cond;
+
+^solve_inner_cond:
+  br %j <= 3, ^solve_body, ^solve_outer_inc;
+
+^solve_body:
+  %im1 = %i - 1;
+  %jm1 = %j - 1;
+  %c1 = %s1.data[%im1];
+  %c2 = %s2.data[%jm1];
+  br %c1 == %c2, ^match, ^mismatch;
+
+^match:
+  %dp.table[%i][%j] = %dp.table[%im1][%jm1];
+  br ^solve_inner_inc;
+
+^mismatch:
+  %del = %dp.table[%im1][%j];
+  %ins = %dp.table[%i][%jm1];
+  %sub = %dp.table[%im1][%jm1];
+  %min = select %del < %ins, %del, %ins;
+  %min = select %min < %sub, %min, %sub;
+  %dp.table[%i][%j] = %min + 1;
+  br ^solve_inner_inc;
+
+^solve_inner_inc:
+  %j = %j + 1;
+  br ^solve_inner_cond;
+
+^solve_outer_inc:
+  %i = %i + 1;
+  br ^solve_outer_cond;
+
+^verify:
+  require %dp.table[3][3] == 1;
+  ret %dp.table[3][3];
+}

@@ -1,11 +1,11 @@
 #pragma once
 
-#include <bitwuzla/cpp/bitwuzla.h>
-#include <memory>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
 #include "ast/ast.hpp"
+#include "bitwuzla/cpp/bitwuzla.h"
 
 namespace symir {
 
@@ -84,6 +84,17 @@ namespace symir {
     void setLValue(
         const LValue &lv, const SymbolicValue &val, bitwuzla::TermManager &tm,
         bitwuzla::Bitwuzla &solver, SymbolicStore &store, std::vector<bitwuzla::Term> &pc
+    );
+
+    SymbolicValue muxSymbolicValue(
+        bitwuzla::Term cond, const SymbolicValue &t, const SymbolicValue &f,
+        bitwuzla::TermManager &tm
+    );
+
+    SymbolicValue updateLValueRec(
+        const SymbolicValue &cur, std::span<const Access> accesses, const SymbolicValue &val,
+        bitwuzla::Term pathCond, bitwuzla::TermManager &tm, SymbolicStore &store,
+        std::vector<bitwuzla::Term> &pc, int depth = 0
     );
 
     bitwuzla::Term evalCond(

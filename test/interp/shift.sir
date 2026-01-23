@@ -1,0 +1,25 @@
+// EXPECT: PASS
+fun @main() : i32 {
+  let mut %x: i32 = 1;
+  let mut %y: i32 = 0;
+  let %four: i32 = 4;
+  let %two: i32 = 2;
+  let %one: i32 = 1;
+  let mut %neg: i32 = -1;
+  let %expected: i32 = 2147483647;
+
+^entry:
+  %y = %x << %four;   // 1 << 4 = 16
+  require %y == 16;
+
+  %y = %y >> %two;   // 16 >> 2 = 4
+  require %y == 4;
+
+  %y = %neg >> %one; // arithmetic shift: -1 >> 1 = -1
+  require %y == -1;
+
+  %y = %neg >>> %one; // logical shift: 0xFFFFFFFF >>> 1 = 0x7FFFFFFF
+  require %y == %expected;
+
+  ret 0;
+}

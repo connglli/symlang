@@ -1,0 +1,122 @@
+// EXPECT: PASS
+// Dijkstra's Algorithm
+// Graph: 0->1(4), 0->2(1), 2->1(2), 2->3(5), 1->3(1)
+// Shortest path 0->3: 0->2->1->3 cost 4
+
+struct @Graph { adj: [4][4]i32; dist: [4]i32; visited: [4]i32; }
+struct @DijkstraState { i: i32; u: i32; min_dist: i32; }
+
+fun @main() : i32 {
+  let mut %g: @Graph = 0; // Init graph
+  let mut %s: @DijkstraState;
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %v: i32 = 0;
+  let mut %d: i32 = 0;
+  let mut %vis: i32 = 0;
+  let mut %weight: i32 = 0;
+  let mut %new_dist: i32 = 0;
+  let mut %old_dist: i32 = 0;
+  let %inf: i32 = 9999;
+  let %neg_one: i32 = -1;
+  let mut %u: i32 = 0;
+
+^init_adj:
+  %i = 0;
+  br ^init_adj_loop;
+
+^init_adj_loop:
+  br %i < 4, ^init_adj_inner, ^setup_edges;
+
+^init_adj_inner:
+  %j = 0;
+  br ^init_adj_inner_loop;
+
+^init_adj_inner_loop:
+  br %j < 4, ^init_adj_body, ^init_adj_inc;
+
+^init_adj_body:
+  %g.adj[%i][%j] = -1;
+  %j = %j + 1;
+  br ^init_adj_inner_loop;
+
+^init_adj_inc:
+  %g.dist[%i] = 9999;
+  %g.visited[%i] = 0;
+  %i = %i + 1;
+  br ^init_adj_loop;
+
+^setup_edges:
+  %g.adj[0][1] = 4; %g.adj[0][2] = 1;
+  %g.adj[2][1] = 2; %g.adj[2][3] = 5;
+  %g.adj[1][3] = 1;
+  %g.dist[0] = 0;
+  %i = 0;
+  br ^dijkstra_loop;
+
+^dijkstra_loop:
+  br %i < 4, ^find_min, ^check_res;
+
+^find_min:
+  %s.min_dist = 9999;
+  %s.u = -1;
+  %v = 0;
+  br ^min_loop;
+
+^min_loop:
+  br %v < 4, ^check_v, ^found_u;
+
+^check_v:
+  %d = %g.dist[%v];
+  %vis = %g.visited[%v];
+  br %vis == 0, ^check_dist, ^min_inc;
+
+^check_dist:
+  br %d < %s.min_dist, ^update_min, ^min_inc;
+
+^update_min:
+  %s.min_dist = %d;
+  %s.u = %v;
+  br ^min_inc;
+
+^min_inc:
+  %v = %v + 1;
+  br ^min_loop;
+
+^found_u:
+  %u = %s.u;
+  br %u == -1, ^check_res, ^relax_neighbors;
+
+^relax_neighbors:
+  %g.visited[%u] = 1;
+  %v = 0;
+  br ^relax_loop;
+
+^relax_loop:
+  br %v < 4, ^relax_check, ^dijkstra_inc;
+
+^relax_check:
+  %weight = %g.adj[%u][%v];
+  br %weight != -1, ^do_relax, ^relax_inc;
+
+^do_relax:
+  %new_dist = %g.dist[%u] + %weight;
+  %old_dist = %g.dist[%v];
+  br %new_dist < %old_dist, ^update_dist, ^relax_inc;
+
+^update_dist:
+  %g.dist[%v] = %new_dist;
+  br ^relax_inc;
+
+^relax_inc:
+  %v = %v + 1;
+  br ^relax_loop;
+
+^dijkstra_inc:
+  %i = %i + 1;
+  br ^dijkstra_loop;
+
+^check_res:
+  require %g.dist[3] == 4;
+  ret %g.dist[3];
+}

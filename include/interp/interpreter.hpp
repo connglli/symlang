@@ -23,6 +23,7 @@ namespace symir {
     struct RuntimeValue {
       enum class Kind { Int, Array, Struct, Undef } kind;
       std::int64_t intVal = 0;
+      std::uint32_t bits = 64; // bitwidth for Int
       std::vector<RuntimeValue> arrayVal;
       std::unordered_map<std::string, RuntimeValue> structVal;
     };

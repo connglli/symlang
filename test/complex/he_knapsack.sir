@@ -1,0 +1,97 @@
+// EXPECT: PASS
+// 0/1 Knapsack Problem
+// Items: (2,3), (3,4), (4,5), (5,6)
+// Capacity: 5
+// Optimal: Item (2,3) + Item (3,4) = Weight 5, Value 7
+
+struct @Item { weight: i32; value: i32; }
+struct @Result { max_val: i32; cap_used: i32; }
+
+fun @main() : i32 {
+  let mut %items: [4]@Item;
+  let mut %dp: [5][6]i32 = 0; // dp[item+1][cap+1]
+  let mut %i: i32 = 0;
+  let mut %w: i32 = 0;
+  let mut %im1: i32 = 0;
+  let mut %wi: i32 = 0;
+  let mut %vi: i32 = 0;
+  let mut %take: i32 = 0;
+  let mut %rem_w: i32 = 0;
+  let mut %no_take: i32 = 0;
+  let mut %res: @Result;
+
+^init_items:
+  %items[0].weight = 2; %items[0].value = 3;
+  %items[1].weight = 3; %items[1].value = 4;
+  %items[2].weight = 4; %items[2].value = 5;
+  %items[3].weight = 5; %items[3].value = 6;
+  br ^init_outer;
+
+^init_outer:
+  %i = 0;
+  br ^init_cond;
+
+^init_cond:
+  br %i <= 4, ^init_inner, ^solve;
+
+^init_inner:
+  %w = 0;
+  br ^init_inner_cond;
+
+^init_inner_cond:
+  br %w <= 5, ^init_body, ^init_outer_inc;
+
+^init_body:
+  %dp[%i][%w] = 0;
+  %w = %w + 1;
+  br ^init_inner_cond;
+
+^init_outer_inc:
+  %i = %i + 1;
+  br ^init_cond;
+
+^solve:
+  %i = 1;
+  br ^solve_outer_cond;
+
+^solve_outer_cond:
+  br %i <= 4, ^solve_inner, ^check;
+
+^solve_inner:
+  %w = 0;
+  br ^solve_inner_cond;
+
+^solve_inner_cond:
+  br %w <= 5, ^solve_body, ^solve_outer_inc;
+
+^solve_body:
+  %im1 = %i - 1;
+  %wi = %items[%im1].weight;
+  %vi = %items[%im1].value;
+  br %wi <= %w, ^can_take, ^cannot_take;
+
+^can_take:
+  %rem_w = %w - %wi;
+  %take = %dp[%im1][%rem_w] + %vi;
+  %no_take = %dp[%im1][%w];
+  %dp[%i][%w] = select %take > %no_take, %take, %no_take;
+  br ^solve_inner_inc;
+
+^cannot_take:
+  %dp[%i][%w] = %dp[%im1][%w];
+  br ^solve_inner_inc;
+
+^solve_inner_inc:
+  %w = %w + 1;
+  br ^solve_inner_cond;
+
+^solve_outer_inc:
+  %i = %i + 1;
+  br ^solve_outer_cond;
+
+^check:
+  %res.max_val = %dp[4][5];
+  %res.cap_used = 5;
+  require %res.max_val == 7;
+  ret %res.max_val;
+}

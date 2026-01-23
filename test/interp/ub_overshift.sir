@@ -1,0 +1,9 @@
+// EXPECT: FAIL
+// ARGS: --sym %?n=32
+fun @main() : i32 {
+  sym %?n : value i32;
+  let %x: i32 = 1;
+^entry:
+  let %y: i32 = %x << %?n; // UB: Shift by width
+  ret 0;
+}

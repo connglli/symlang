@@ -40,8 +40,11 @@ In the Solver (`symirsolve`), UB generates constraints that negate the path cond
   - **Solver:** Generates `(bv ssubo/saddo/smulo)` checks to ensure no overflow occurs.
   - *Note:* This aligns SymIR with strict C/C++ signed integer semantics.
 
-## 5. Shift Operators
-**Definition:** Shifting by a value greater than or equal to the bit-width.
+## 5. Overshift
+**Definition:** Shifting a value by an amount `n` such that `n < 0` or `n >= bit_width`.
 
-- **Status:** **NOT UB** (Logic is currently not part of core v0 arithmetic atoms).
-- *Future Note:* If shifts (`shl`, `lshr`, `ashr`) are added, over-shifting should likely be defined as UB or masking, consistent with the chosen design philosophy.
+- **Status:** **Enforced.**
+- **Mechanism:**
+  - **Dynamic:** Interpreter checks the shift amount before the operation.
+  - **Solver:** Generates `(bvult amount width)` constraints.
+  - *Note:* This prevents architecture-defined behavior (like masking) from affecting program semantics.

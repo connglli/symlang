@@ -169,7 +169,7 @@ namespace symir {
   //   select ...
   //   Coef
   //   RValue
-  enum class AtomOpKind { Mul, Div, Mod, And, Or, Xor };
+  enum class AtomOpKind { Mul, Div, Mod, And, Or, Xor, Shl, Shr, LShr };
 
   struct OpAtom {
     AtomOpKind op;

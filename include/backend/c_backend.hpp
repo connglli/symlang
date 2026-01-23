@@ -17,6 +17,7 @@ namespace symir {
     std::ostream &out_;
     int indent_level_ = 0;
     std::string curFuncName_;
+    std::unordered_map<std::string, std::uint32_t> varWidths_;
 
     void indent();
     void emitType(const TypePtr &type);

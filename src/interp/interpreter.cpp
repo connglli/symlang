@@ -46,6 +46,31 @@ namespace symir {
     return "?";
   }
 
+  static std::uint32_t getTypeBits(const TypePtr &t) {
+    if (auto it = std::get_if<IntType>(&t->v)) {
+      switch (it->kind) {
+        case IntType::Kind::I32:
+          return 32;
+        case IntType::Kind::I64:
+          return 64;
+        case IntType::Kind::ICustom:
+          return it->bits.value_or(32);
+      }
+    }
+    return 64;
+  }
+
+  static std::int64_t canonicalize(std::int64_t val, std::uint32_t bits) {
+    if (bits >= 64)
+      return val;
+    std::uint64_t mask = (1ULL << bits) - 1;
+    std::uint64_t sign_bit = 1ULL << (bits - 1);
+    std::uint64_t uval = static_cast<std::uint64_t>(val) & mask;
+    if (uval & sign_bit)
+      uval |= ~mask;
+    return static_cast<std::int64_t>(uval);
+  }
+
   Interpreter::RuntimeValue Interpreter::makeUndef(const TypePtr &t) {
     RuntimeValue res;
     if (auto at = std::get_if<ArrayType>(&t->v)) {
@@ -61,6 +86,7 @@ namespace symir {
       }
     } else {
       res.kind = RuntimeValue::Kind::Undef;
+      res.bits = getTypeBits(t);
     }
     return res;
   }
@@ -83,7 +109,10 @@ namespace symir {
       }
       return res;
     } else {
-      return v;
+      RuntimeValue res = v;
+      res.bits = getTypeBits(t);
+      res.intVal = canonicalize(res.intVal, res.bits);
+      return res;
     }
   }
 
@@ -103,27 +132,34 @@ namespace symir {
       } else if (auto st = std::get_if<StructType>(&t->v)) {
         RuntimeValue res;
         res.kind = RuntimeValue::Kind::Struct;
-        auto it = structs_.find(st->name.name);
-        if (it != structs_.end()) {
-          for (size_t i = 0; i < elements.size(); ++i)
-            res.structVal[it->second->fields[i].name] =
-                evalInit(*elements[i], it->second->fields[i].type, store);
+        auto sit = structs_.find(st->name.name);
+        if (sit != structs_.end()) {
+          for (size_t i = 0; i < sit->second->fields.size(); ++i) {
+            res.structVal[sit->second->fields[i].name] =
+                evalInit(*elements[i], sit->second->fields[i].type, store);
+          }
         }
         return res;
       }
     }
 
     // Scalar
-    RuntimeValue scalar;
+    RuntimeValue v;
     if (iv.kind == InitVal::Kind::Int) {
-      scalar.kind = RuntimeValue::Kind::Int;
-      scalar.intVal = std::get<IntLit>(iv.value).value;
+      v.kind = RuntimeValue::Kind::Int;
+      v.intVal = std::get<IntLit>(iv.value).value;
     } else if (iv.kind == InitVal::Kind::Sym) {
-      scalar = store.at(std::get<SymId>(iv.value).name);
-    } else if (iv.kind == InitVal::Kind::Local) {
-      scalar = store.at(std::get<LocalId>(iv.value).name);
+      v = store.at(std::get<SymId>(iv.value).name);
+    } else {
+      v = store.at(std::get<LocalId>(iv.value).name);
     }
-    return broadcast(t, scalar);
+    v.bits = getTypeBits(t);
+    v.intVal = canonicalize(v.intVal, v.bits);
+
+    if (std::holds_alternative<ArrayType>(t->v) || std::holds_alternative<StructType>(t->v)) {
+      return broadcast(t, v);
+    }
+    return v;
   }
 
   void Interpreter::execFunction(
@@ -133,21 +169,22 @@ namespace symir {
     Store store;
     DiagBag diags;
 
-    // Init params
     for (size_t i = 0; i < f.params.size(); ++i) {
-      if (i < args.size())
-        store[f.params[i].name.name] = args[i];
-      else
-        store[f.params[i].name.name] = RuntimeValue{RuntimeValue::Kind::Int, 0, {}, {}};
+      RuntimeValue v = args[i];
+      v.bits = getTypeBits(f.params[i].type);
+      v.intVal = canonicalize(v.intVal, v.bits);
+      store[f.params[i].name.name] = v;
     }
 
-    // Init Symbols
     for (const auto &s: f.syms) {
-      auto it = symBindings.find(s.name.name);
-      if (it == symBindings.end()) {
-        throw std::runtime_error("Unbound symbol: " + s.name.name);
+      if (symBindings.count(s.name.name)) {
+        RuntimeValue v;
+        v.kind = RuntimeValue::Kind::Int;
+        v.intVal = symBindings.at(s.name.name);
+        v.bits = getTypeBits(s.type);
+        v.intVal = canonicalize(v.intVal, v.bits);
+        store[s.name.name] = v;
       }
-      store[s.name.name] = RuntimeValue{RuntimeValue::Kind::Int, it->second, {}, {}};
     }
 
     // Init locals
@@ -271,6 +308,7 @@ namespace symir {
         if (__builtin_sub_overflow(v.intVal, right.intVal, &v.intVal))
           throw std::runtime_error("UB: Signed integer overflow in subtraction");
       }
+      v.intVal = canonicalize(v.intVal, v.bits);
     }
     return v;
   }
@@ -289,6 +327,8 @@ namespace symir {
 
             RuntimeValue res;
             res.kind = RuntimeValue::Kind::Int;
+            res.bits = c.bits;
+
             if (arg.op == AtomOpKind::Mul) {
               if (__builtin_mul_overflow(c.intVal, r.intVal, &res.intVal))
                 throw std::runtime_error("UB: Signed integer overflow in multiplication");
@@ -310,7 +350,21 @@ namespace symir {
               res.intVal = c.intVal | r.intVal;
             } else if (arg.op == AtomOpKind::Xor) {
               res.intVal = c.intVal ^ r.intVal;
+            } else if (arg.op == AtomOpKind::Shl || arg.op == AtomOpKind::Shr || arg.op == AtomOpKind::LShr) {
+              if (r.intVal < 0 || (uint64_t) r.intVal >= (uint64_t) res.bits) {
+                throw std::runtime_error("UB: Overshift");
+              }
+              if (arg.op == AtomOpKind::Shl) {
+                res.intVal = c.intVal << r.intVal;
+              } else if (arg.op == AtomOpKind::Shr) {
+                res.intVal = c.intVal >> r.intVal;
+              } else {
+                // Logical shift right: mask to width first
+                uint64_t mask = (res.bits >= 64) ? ~0ULL : (1ULL << res.bits) - 1;
+                res.intVal = (int64_t) ((static_cast<uint64_t>(c.intVal) & mask) >> r.intVal);
+              }
             }
+            res.intVal = canonicalize(res.intVal, res.bits);
             return res;
           } else if constexpr (std::is_same_v<T, UnaryAtom>) {
             RuntimeValue r = evalLValue(arg.rval, store);
@@ -336,7 +390,11 @@ namespace symir {
                 [&](auto &&src) -> RuntimeValue {
                   using S = std::decay_t<decltype(src)>;
                   if constexpr (std::is_same_v<S, IntLit>) {
-                    return RuntimeValue{RuntimeValue::Kind::Int, src.value, {}, {}};
+                    RuntimeValue rv;
+                    rv.kind = RuntimeValue::Kind::Int;
+                    rv.intVal = src.value;
+                    rv.bits = 64;
+                    return rv;
                   } else if constexpr (std::is_same_v<S, SymId>) {
                     return store.at(src.name);
                   } else {
@@ -350,28 +408,11 @@ namespace symir {
             if (v.kind != RuntimeValue::Kind::Int)
               throw std::runtime_error("Cast only on integers");
 
-            auto getWidth = [](const TypePtr &t) -> int {
-              if (auto it = std::get_if<IntType>(&t->v)) {
-                if (it->kind == IntType::Kind::I32)
-                  return 32;
-                if (it->kind == IntType::Kind::I64)
-                  return 64;
-                if (it->kind == IntType::Kind::ICustom)
-                  return it->bits.value_or(32);
-              }
-              return 32;
-            };
-
-            int bits = getWidth(arg.dstType);
-            if (bits < 64) {
-              uint64_t mask = (1ULL << bits) - 1;
-              uint64_t sign_bit = 1ULL << (bits - 1);
-              uint64_t uval = static_cast<uint64_t>(v.intVal) & mask;
-              if (uval & sign_bit)
-                uval |= ~mask;
-              v.intVal = static_cast<int64_t>(uval);
-            }
-            return v;
+            RuntimeValue res;
+            res.kind = RuntimeValue::Kind::Int;
+            res.bits = getTypeBits(arg.dstType);
+            res.intVal = canonicalize(v.intVal, res.bits);
+            return res;
           }
           return RuntimeValue{};
         },
@@ -381,7 +422,11 @@ namespace symir {
 
   Interpreter::RuntimeValue Interpreter::evalCoef(const Coef &c, const Store &store) {
     if (std::holds_alternative<IntLit>(c)) {
-      return RuntimeValue{RuntimeValue::Kind::Int, std::get<IntLit>(c).value, {}, {}};
+      RuntimeValue rv;
+      rv.kind = RuntimeValue::Kind::Int;
+      rv.intVal = std::get<IntLit>(c).value;
+      rv.bits = 64;
+      return rv;
     }
     const auto &id = std::get<LocalOrSymId>(c);
     if (auto lid = std::get_if<LocalId>(&id))
@@ -473,6 +518,12 @@ namespace symir {
           throw std::runtime_error("Accessing field of non-struct");
         cur = &cur->structVal[af->field];
       }
+    }
+
+    // Enforce bitwidth of destination if it's an integer
+    if (val.kind == RuntimeValue::Kind::Int) {
+      val.bits = cur->bits;
+      val.intVal = canonicalize(val.intVal, val.bits);
     }
     *cur = val;
   }

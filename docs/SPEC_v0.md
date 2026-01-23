@@ -190,6 +190,9 @@ Atom        := Coef "*" RValue
             | Coef "&" RValue
             | Coef "|" RValue
             | Coef "^" RValue
+            | Coef "<<" RValue
+            | Coef ">>" RValue
+            | Coef ">>>" RValue
             | "~" RValue
             | Select
             | Cast
@@ -210,6 +213,10 @@ Evaluation order:
 - `select` evaluates its `Cond` first, then evaluates only the chosen arm.
 - `as` performs integer casting.
 - Bitwise operators (`&`, `|`, `^`, `~`) operate at the bit level on integer values.
+- Shift operators:
+  - `<<` : Logical Shift Left.
+  - `>>` : Arithmetic Shift Right (sign-extending).
+  - `>>>`: Logical Shift Right (zero-filling).
 
 ## 6. Typing and well-formedness (v0)
 
@@ -232,8 +239,8 @@ The result has that type.
 - `rval` is a scalar integer.
 - `T` is a scalar integer type.
 
-### 6.5 Bitwise typing
-- `Coef op RValue` (`&`, `|`, `^`): well-typed iff both operands are scalar integers of the same bit-width.
+### 6.5 Bitwise and Shift typing
+- `Coef op RValue` (`&`, `|`, `^`, `<<`, `>>`, `>>>`): well-typed iff both operands are scalar integers of the same bit-width.
 - `~ RValue`: well-typed iff the operand is a scalar integer.
 
 ### 6.6 Mutability rules
@@ -258,6 +265,9 @@ UB is checked during symbolic execution along the chosen path. Any UB makes the 
 
 4. **Signed Integer Overflow**
    Signed arithmetic operations (`+`, `-`, `*`) that result in a value outside the representable range of the target bit-width cause UB. Division/modulo overflow (`INT_MIN / -1`) is also UB.
+
+5. **Overshift**
+   In `x << n`, `x >> n`, or `x >>> n`, UB if `n < 0` or `n >= width(x)`.
 
 ### 7.2 `select` and strict UB (lazy)
 For `select c, a, b`:

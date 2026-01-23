@@ -1,0 +1,89 @@
+// EXPECT: PASS
+// BST Insertion Simulation
+// Insert 5, 3, 7 into empty BST.
+// Root: 5, Left: 3, Right: 7.
+
+struct @BST { tree: [16]i32; }
+struct @Node { val: i32; idx: i32; }
+
+fun @main() : i32 {
+  let mut %bst: @BST;
+  let mut %node: @Node;
+  let mut %i: i32 = 0;
+  let %two: i32 = 2;
+  let mut %node_val: i32 = 0;
+  let mut %idx: i32 = 0;
+  let mut %val: i32 = 0;
+
+^init:
+  %i = 0;
+  br ^init_cond;
+
+^init_cond:
+  br %i < 16, ^init_body, ^insert_vals;
+
+^init_body:
+  %bst.tree[%i] = -1;
+  %i = %i + 1;
+  br ^init_cond;
+
+^insert_vals:
+  %bst.tree[1] = 5;
+  br ^insert_3;
+
+^insert_3:
+  %idx = 1;
+  %val = 3;
+  br ^ins_3_loop;
+
+^ins_3_loop:
+  %node_val = %bst.tree[%idx];
+  br %node_val == -1, ^ins_3_found, ^ins_3_trav;
+
+^ins_3_found:
+  %bst.tree[%idx] = %val;
+  br ^insert_7;
+
+^ins_3_trav:
+  br %val < %node_val, ^ins_3_left, ^ins_3_right;
+
+^ins_3_left:
+  %idx = %idx * %two;
+  br ^ins_3_loop;
+
+^ins_3_right:
+  %idx = %idx * %two;
+  %idx = %idx + 1;
+  br ^ins_3_loop;
+
+^insert_7:
+  %idx = 1;
+  %val = 7;
+  br ^ins_7_loop;
+
+^ins_7_loop:
+  %node_val = %bst.tree[%idx];
+  br %node_val == -1, ^ins_7_found, ^ins_7_trav;
+
+^ins_7_found:
+  %bst.tree[%idx] = %val;
+  br ^verify;
+
+^ins_7_trav:
+  br %val < %node_val, ^ins_7_left, ^ins_7_right;
+
+^ins_7_left:
+  %idx = %idx * %two;
+  br ^ins_7_loop;
+
+^ins_7_right:
+  %idx = %idx * %two;
+  %idx = %idx + 1;
+  br ^ins_7_loop;
+
+^verify:
+  require %bst.tree[1] == 5;
+  require %bst.tree[2] == 3;
+  require %bst.tree[3] == 7;
+  ret 0;
+}

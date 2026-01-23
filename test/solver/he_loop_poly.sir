@@ -1,0 +1,36 @@
+// EXPECT: PASS
+// ARGS: --main @main --path '^entry,^loop,^loop,^loop,^loop,^exit'
+
+// Polynomial loop synthesis
+// Find 'x' such that iterating `acc = acc + x + i` for 4 times results in specific value.
+// acc_0 = 0
+// i=0: acc_1 = 0 + x + 0 = x
+// i=1: acc_2 = x + x + 1 = 2x + 1
+// i=2: acc_3 = (2x+1) + x + 2 = 3x + 3
+// i=3: acc_4 = (3x+3) + x + 3 = 4x + 6
+// Target: 46.
+// 4x + 6 = 46 => 4x = 40 => x = 10.
+
+fun @main() : i32 {
+  sym %?x : value i32 in [0, 100];
+  let mut %acc: i32 = 0;
+  let mut %i: i32 = 0;
+  let %one: i32 = 1;
+  let %target: i32 = 46;
+  let mut %tmp: i32 = 0;
+
+^entry:
+  br ^loop;
+
+^loop:
+  // acc = acc + x + i
+  %tmp = %?x + %i;
+  %acc = %acc + %tmp;
+
+  %i = %i + %one;
+  br %i < 4, ^loop, ^exit;
+
+^exit:
+  require %acc == %target;
+  ret 0;
+}

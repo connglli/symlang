@@ -40,6 +40,9 @@ namespace symir {
     Pipe,  // '|'
     Caret, // '^'
     Tilde, // '~'
+    Shl,   // '<<'
+    Shr,   // '>>'
+    LShr,  // '>>>'
     Equal, // '=' assignment
     EqEq,
     NotEq,

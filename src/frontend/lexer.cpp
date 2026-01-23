@@ -186,6 +186,15 @@ namespace symir {
       return make(TokenKind::IntLit, num, b, pos());
     }
 
+    // Punctuators / three-char ops
+    auto three = std::string_view(src_.data() + i_, std::min<std::size_t>(3, src_.size() - i_));
+    if (three == ">>>") {
+      get();
+      get();
+      get();
+      return make(TokenKind::LShr, ">>>", b, pos());
+    }
+
     // Punctuators / two-char ops
     auto two = std::string_view(src_.data() + i_, std::min<std::size_t>(2, src_.size() - i_));
     if (two == "==") {
@@ -207,6 +216,16 @@ namespace symir {
       get();
       get();
       return make(TokenKind::Ge, ">=", b, pos());
+    }
+    if (two == "<<") {
+      get();
+      get();
+      return make(TokenKind::Shl, "<<", b, pos());
+    }
+    if (two == ">>") {
+      get();
+      get();
+      return make(TokenKind::Shr, ">>", b, pos());
     }
 
     // Single-char tokens

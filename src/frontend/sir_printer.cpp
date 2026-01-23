@@ -367,6 +367,12 @@ namespace symir {
         return "|";
       case AtomOpKind::Xor:
         return "^";
+      case AtomOpKind::Shl:
+        return "<<";
+      case AtomOpKind::Shr:
+        return ">>";
+      case AtomOpKind::LShr:
+        return ">>>";
     }
     return "?";
   }

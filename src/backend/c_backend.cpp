@@ -1,5 +1,7 @@
 #include "backend/c_backend.hpp"
 #include <algorithm>
+#include <functional>
+#include <iostream>
 
 namespace symir {
 
@@ -66,9 +68,7 @@ namespace symir {
           } else if constexpr (std::is_same_v<T, StructType>) {
             out_ << "struct " << mangleName(arg.name.name);
           } else if constexpr (std::is_same_v<T, ArrayType>) {
-            // This is tricky in C for function params or fields.
-            // We'll emit the element type here, and handle brackets elsewhere if needed.
-            // But for local decls, we can do: T name[N].
+            // Arrays are emitted as C arrays in context, but here we emit the base type
             emitType(arg.elem);
           }
         },
@@ -101,15 +101,7 @@ namespace symir {
           cur = at->elem;
         }
         emitType(cur);
-        out_ << " "
-             << f.name; // Field names don't need mangling usually, but could collide with keywords?
-        // Let's not mangle fields for now as they are scoped to struct.
-        // But wait, if field is "int", it's fine. If field is "else", problem.
-        // Let's mangle fields too? No, usually struct access is `s.field`.
-        // But definition `int else;` is invalid.
-        // Let's not risk it and skip mangling fields for now or manually escape keywords?
-        // Simpler: assume fields are safe or user avoids keywords.
-        // If I mangle, I must mangle access too.
+        out_ << " " << f.name;
         for (auto d: dims)
           out_ << "[" << d << "]";
         out_ << ";\n";
@@ -118,8 +110,31 @@ namespace symir {
       out_ << "};\n\n";
     }
 
+    auto getWidth = [](const TypePtr &t) -> std::uint32_t {
+      if (auto it = std::get_if<IntType>(&t->v)) {
+        switch (it->kind) {
+          case IntType::Kind::I32:
+            return 32;
+          case IntType::Kind::I64:
+            return 64;
+          case IntType::Kind::ICustom:
+            return it->bits.value_or(32);
+        }
+      }
+      return 64;
+    };
+
     // 3. Functions
     for (const auto &f: prog.funs) {
+      curFuncName_ = f.name.name;
+      varWidths_.clear();
+      for (const auto &p: f.params)
+        varWidths_[p.name.name] = getWidth(p.type);
+      for (const auto &s: f.syms)
+        varWidths_[s.name.name] = getWidth(s.type);
+      for (const auto &l: f.lets)
+        varWidths_[l.name.name] = getWidth(l.type);
+
       // 3a. Extern symbols
       for (const auto &s: f.syms) {
         out_ << "extern ";
@@ -130,7 +145,6 @@ namespace symir {
         out_ << "\n";
 
       // 3b. Function signature
-      curFuncName_ = f.name.name;
       emitType(f.retType);
       out_ << " " << mangleName(f.name.name) << "(";
       if (f.params.empty()) {
@@ -173,27 +187,49 @@ namespace symir {
           out_ << " = ";
           emitInitVal(*l.init);
           out_ << ";\n";
-        } else if (l.init && dims.empty()) {
-          out_ << " = ";
-          emitInitVal(*l.init);
-          out_ << ";\n";
-        } else if (!l.init && dims.empty()) {
-          out_ << " = 0;\n";
-        } else {
-          // Aggregate target with Scalar Init (broadcast) or no init
-          out_ << ";\n";
-          uint64_t total_size = 1;
-          for (auto d: dims)
-            total_size *= d;
+        } else if (l.init) {
+          // Broadcast init
+          if (!dims.empty() || std::holds_alternative<StructType>(l.type->v)) {
+            // Aggregate broadcast
+            out_ << " = {0};\n";
+            // Check if we need a loop for non-zero init
+            bool isZero = false;
+            if (l.init->kind == InitVal::Kind::Int && std::get<IntLit>(l.init->value).value == 0)
+              isZero = true;
 
-          indent();
-          out_ << "for (int i = 0; i < " << total_size << "; ++i) ((";
-          emitType(cur);
-          out_ << "*)" << mangleName(l.name.name) << ")[i] = ";
-          if (l.init)
+            if (!isZero) {
+              if (!dims.empty()) {
+                std::function<void(size_t, std::string)> genLoops = [&](size_t dim,
+                                                                        std::string access) {
+                  if (dim == dims.size()) {
+                    indent();
+                    out_ << mangleName(l.name.name) << access << " = ";
+                    emitInitVal(*l.init);
+                    out_ << ";\n";
+                    return;
+                  }
+                  indent();
+                  out_ << "for (int i" << dim << " = 0; i" << dim << " < " << dims[dim] << "; ++i"
+                       << dim << ") {\n";
+                  indent_level_++;
+                  genLoops(dim + 1, access + "[i" + std::to_string(dim) + "]");
+                  indent_level_--;
+                  indent();
+                  out_ << "}\n";
+                };
+                genLoops(0, "");
+              } else {
+                indent();
+                out_ << "/* Warning: non-zero broadcast init for struct not fully supported */\n";
+              }
+            }
+          } else {
+            // Scalar broadcast
+            out_ << " = ";
             emitInitVal(*l.init);
-          else
-            out_ << "0";
+            out_ << ";\n";
+          }
+        } else {
           out_ << ";\n";
         }
       }
@@ -276,33 +312,65 @@ namespace symir {
         [this](auto &&arg) {
           using T = std::decay_t<decltype(arg)>;
           if constexpr (std::is_same_v<T, OpAtom>) {
-            emitCoef(arg.coef);
-            switch (arg.op) {
-              case AtomOpKind::Mul:
-                out_ << " * ";
-                break;
-              case AtomOpKind::Div:
-                out_ << " / ";
-                break;
-              case AtomOpKind::Mod:
-                out_ << " % ";
-                break;
-              case AtomOpKind::And:
-                out_ << " & ";
-                break;
-              case AtomOpKind::Or:
-                out_ << " | ";
-                break;
-              case AtomOpKind::Xor:
-                out_ << " ^ ";
-                break;
+            if (arg.op == AtomOpKind::LShr) {
+              std::uint32_t bits = 32;
+              if (std::holds_alternative<LocalOrSymId>(arg.coef)) {
+                auto name =
+                    std::visit([](auto &&v) { return v.name; }, std::get<LocalOrSymId>(arg.coef));
+                if (varWidths_.count(name))
+                  bits = varWidths_.at(name);
+              } else {
+                int64_t val = std::get<IntLit>(arg.coef).value;
+                if (val < INT32_MIN || val > INT32_MAX)
+                  bits = 64;
+              }
+
+              out_ << "(";
+              if (bits <= 8)
+                out_ << "int8_t)((uint8_t)";
+              else if (bits <= 16)
+                out_ << "int16_t)((uint16_t)";
+              else if (bits <= 32)
+                out_ << "int32_t)((uint32_t)";
+              else
+                out_ << "int64_t)((uint64_t)";
+
+              emitCoef(arg.coef);
+              out_ << " >> ";
+              emitLValue(arg.rval);
+              out_ << ")";
+            } else {
+              emitCoef(arg.coef);
+              switch (arg.op) {
+                case AtomOpKind::Mul:
+                  out_ << " * ";
+                  break;
+                case AtomOpKind::Div:
+                  out_ << " / ";
+                  break;
+                case AtomOpKind::Mod:
+                  out_ << " % ";
+                  break;
+                case AtomOpKind::And:
+                  out_ << " & ";
+                  break;
+                case AtomOpKind::Or:
+                  out_ << " | ";
+                  break;
+                case AtomOpKind::Xor:
+                  out_ << " ^ ";
+                  break;
+                case AtomOpKind::Shl:
+                  out_ << " << ";
+                  break;
+                case AtomOpKind::Shr:
+                  out_ << " >> ";
+                  break;
+                default:
+                  break;
+              }
+              emitLValue(arg.rval);
             }
-            emitLValue(arg.rval);
-          } else if constexpr (std::is_same_v<T, UnaryAtom>) {
-            if (arg.op == UnaryOpKind::Not) {
-              out_ << "~";
-            }
-            emitLValue(arg.rval);
           } else if constexpr (std::is_same_v<T, SelectAtom>) {
             out_ << "(";
             emitCond(*arg.cond);
@@ -315,10 +383,14 @@ namespace symir {
             emitCoef(arg.coef);
           } else if constexpr (std::is_same_v<T, RValueAtom>) {
             emitLValue(arg.rval);
+          } else if constexpr (std::is_same_v<T, UnaryAtom>) {
+            if (arg.op == UnaryOpKind::Not)
+              out_ << "~";
+            emitLValue(arg.rval);
           } else if constexpr (std::is_same_v<T, CastAtom>) {
             out_ << "(";
             emitType(arg.dstType);
-            out_ << ")";
+            out_ << ")(";
             std::visit(
                 [&](auto &&src) {
                   using S = std::decay_t<decltype(src)>;
@@ -332,6 +404,7 @@ namespace symir {
                 },
                 arg.src
             );
+            out_ << ")";
           }
         },
         atom.v
@@ -383,11 +456,9 @@ namespace symir {
           if constexpr (std::is_same_v<T, IntLit>) {
             out_ << arg.value;
           } else {
-            // LocalOrSymId.
             std::visit(
                 [this](auto &&id) {
-                  using IDT = std::decay_t<decltype(id)>;
-                  if constexpr (std::is_same_v<IDT, SymId>) {
+                  if constexpr (std::is_same_v<std::decay_t<decltype(id)>, SymId>) {
                     out_ << getMangledSymbolName(curFuncName_, id.name) << "()";
                   } else {
                     out_ << mangleName(id.name);
@@ -402,8 +473,8 @@ namespace symir {
   }
 
   void CBackend::emitSelectVal(const SelectVal &sv) {
-    if (auto rv = std::get_if<RValue>(&sv))
-      emitLValue(*rv);
+    if (std::holds_alternative<RValue>(sv))
+      emitLValue(std::get<RValue>(sv));
     else
       emitCoef(std::get<Coef>(sv));
   }

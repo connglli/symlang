@@ -1,0 +1,23 @@
+// EXPECT: PASS
+// ARGS: --main @main --path '^entry'
+
+// XOR Swap verification
+// Verify that after xor swap, values are exchanged.
+
+fun @main() : i32 {
+  sym %?x : value i32;
+  sym %?y : value i32;
+
+  let mut %a: i32 = %?x;
+  let mut %b: i32 = %?y;
+
+^entry:
+  %a = %a ^ %b;
+  %b = %a ^ %b;
+  %a = %a ^ %b;
+
+  require %a == %?y;
+  require %b == %?x;
+
+  ret 0;
+}
