@@ -1,0 +1,20 @@
+// EXPECT: PASS
+// ARGS: --main @main --path '^entry,^loop,^loop,^loop,^exit'
+fun @main() : i32 {
+  sym %?delta : value i32 in [1, 10];
+  let mut %acc: i32 = 0;
+  let mut %i: i32 = 0;
+  let %one: i32 = 1;
+
+^entry:
+  br ^loop;
+
+^loop:
+  %acc = %acc + %?delta;
+  %i = %i + %one;
+  br %i < 3, ^loop, ^exit;
+
+^exit:
+  require %acc == 21;
+  ret 0;
+}

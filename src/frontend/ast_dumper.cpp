@@ -43,7 +43,7 @@ namespace symir {
         indent_level_--;
       }
 
-      if (!f.syms.empty()) {
+      if (model_.empty() && !f.syms.empty()) {
         indent();
         out_ << "Symbols:\n";
         indent_level_++;

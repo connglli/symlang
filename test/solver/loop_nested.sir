@@ -1,0 +1,29 @@
+// EXPECT: PASS
+// ARGS: --main @main --path '^entry,^outer,^inner,^inner,^outer_inc,^outer,^inner,^inner,^outer_inc,^exit'
+fun @main() : i32 {
+  sym %?total : value i32;
+  let mut %sum: i32 = 0;
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let %one: i32 = 1;
+
+^entry:
+  br ^outer;
+
+^outer:
+  %j = 0;
+  br ^inner;
+
+^inner:
+  %sum = %sum + 1;
+  %j = %j + %one;
+  br %j < 2, ^inner, ^outer_inc;
+
+^outer_inc:
+  %i = %i + %one;
+  br %i < 2, ^outer, ^exit;
+
+^exit:
+  require %?total == %sum;
+  ret 0;
+}

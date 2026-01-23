@@ -1,0 +1,23 @@
+// EXPECT: PASS
+// ARGS: --main @main --path '^entry,^loop,^loop,^loop,^exit'
+fun @main() : i32 {
+  sym %?final_sum : value i32;
+  let %arr: [3] i32 = {10, 20, 30};
+  let mut %sum: i32 = 0;
+  let mut %i: i32 = 0;
+  let mut %val: i32 = 0;
+  let %one: i32 = 1;
+
+^entry:
+  br ^loop;
+
+^loop:
+  %val = %arr[%i];
+  %sum = %sum + %val;
+  %i = %i + %one;
+  br %i < 3, ^loop, ^exit;
+
+^exit:
+  require %?final_sum == %sum;
+  ret 0;
+}
