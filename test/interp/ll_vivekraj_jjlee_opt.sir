@@ -1,9 +1,9 @@
 // EXPECT: PASS
-// ARGS: --sym @?c1=0
+// ARGS: --sym %?c1=0
 fun @main() : i64 {
-  sym @?c1 : value i64;
+  sym %?c1 : value i64;
 ^entry:
-  br @?c1 != 0, ^then, ^else;
+  br %?c1 != 0, ^then, ^else;
 ^then:
   ret 0;
 ^else:

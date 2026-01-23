@@ -1,21 +1,21 @@
 // EXPECT: PASS
-// ARGS: --sym @?s3=-1 --sym @?s6=0
+// ARGS: --sym %?s3=-1 --sym %?s6=0
 fun @main() : i32 {
-  sym @?s3 : value i32;
-  sym @?s6 : value i32;
+  sym %?s3 : value i32;
+  sym %?s6 : value i32;
   let mut %v0: i32 = -1;
   let mut %v1: i32 = -1;
   let mut %v2: i32 = -1;
   let mut %v3: i32 = -1;
+  let mut %v6: i32 = -1;
   let mut %v4: [3] i32 = -1;
   let mut %v5: [3] i32 = -1;
-  let mut %v6: i32 = 0;
   let mut %v7: [6] i32 = -1;
   let %cm1: i32 = -1;
 
 ^entry:
-  %v3 = @?s3;
-  %v6 = @?s6;
+  %v3 = %?s3;
+  %v6 = %?s6;
   br ^BB0;
 
 ^BB0:

@@ -8,6 +8,7 @@
 #include "ast/ast_dumper.hpp"
 #include "frontend/lexer.hpp"
 #include "frontend/parser.hpp"
+#include "frontend/semchecker.hpp"
 #include "frontend/typechecker.hpp"
 
 int main(int argc, char **argv) {
@@ -34,8 +35,13 @@ int main(int argc, char **argv) {
     Program prog = ps.parseProgram();
 
     DiagBag diags;
-    TypeChecker tc(prog);
-    tc.runAll(diags);
+    SemChecker sc(prog);
+    sc.run(diags);
+
+    if (!diags.hasErrors()) {
+      TypeChecker tc(prog);
+      tc.runAll(diags);
+    }
 
     if (!diags.hasErrors()) {
       for (const auto &f: prog.funs) {

@@ -1,8 +1,8 @@
 // EXPECT: PASS
-// ARGS: --sym @?s2=-2242717 --sym @?s4=-2147483646
+// ARGS: --sym %?s2=-2242717 --sym %?s4=-2147483646
 fun @main() : i32 {
-  sym @?s2 : value i32;
-  sym @?s4 : value i32;
+  sym %?s2 : value i32;
+  sym %?s4 : value i32;
   let mut %v0: i32 = 23314456;
   let mut %v1: i32 = -5201758;
   let mut %v2: i32 = -2242717;
@@ -13,8 +13,8 @@ fun @main() : i32 {
   let mut %v7: [18] i32 = 0;
 
 ^entry:
-  %v2 = @?s2;
-  %v4 = @?s4;
+  %v2 = %?s2;
+  %v4 = %?s4;
   br ^BB0;
 
 ^BB0:

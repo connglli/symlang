@@ -1,7 +1,7 @@
 // EXPECT: PASS
-// ARGS: --sym @?c3=3
+// ARGS: --sym %?c3=3
 fun @main() : i64 {
-  sym @?c3 : value i64;
+  sym %?c3 : value i64;
   let %v1: i64 = 0;
   let %v2: i64 = 1;
   let %v3: i64 = 2;
@@ -14,11 +14,11 @@ fun @main() : i64 {
   let %c4: i64 = 4;
   let %c10: i64 = 10;
 ^entry:
-  br @?c3 > %c0, ^one, ^wrong;
+  br %?c3 > %c0, ^one, ^wrong;
 ^one:
   br %c1 == %v2, ^two, ^wrong;
 ^two:
-  br %v3 != @?c3, ^three, ^wrong;
+  br %v3 != %?c3, ^three, ^wrong;
 ^three:
   br %v4 < %c4, ^four, ^wrong;
 ^four:

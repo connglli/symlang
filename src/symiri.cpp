@@ -7,6 +7,7 @@
 #include "analysis/definite_init.hpp"
 #include "frontend/lexer.hpp"
 #include "frontend/parser.hpp"
+#include "frontend/semchecker.hpp"
 #include "frontend/typechecker.hpp"
 #include "interp/interpreter.hpp"
 
@@ -62,10 +63,15 @@ int main(int argc, char **argv) {
     Parser ps(std::move(toks));
     Program prog = ps.parseProgram();
 
-    // 2. Analysis: Typecheck & Definite Init
+    // 2. Analysis: Semcheck, Typecheck & Definite Init
     DiagBag diags;
-    TypeChecker tc(prog);
-    tc.runAll(diags);
+    SemChecker sc(prog);
+    sc.run(diags);
+
+    if (!diags.hasErrors()) {
+      TypeChecker tc(prog);
+      tc.runAll(diags);
+    }
 
     if (diags.hasErrors()) {
       std::cerr << "Errors:\n";

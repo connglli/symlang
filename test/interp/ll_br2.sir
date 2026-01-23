@@ -1,11 +1,11 @@
 // EXPECT: PASS
-// ARGS: --sym @?v1=5
+// ARGS: --sym %?v1=5
 fun @main() : i64 {
-  sym @?v1 : value i64;
+  sym %?v1 : value i64;
   let %v2: i64 = 12;
   let mut %sum: i64 = 0;
 ^entry:
-  %sum = @?v1 + %v2;
+  %sum = %?v1 + %v2;
   br ^next;
 ^next:
   br ^end;

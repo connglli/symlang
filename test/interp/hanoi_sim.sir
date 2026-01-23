@@ -1,7 +1,7 @@
 // EXPECT: PASS
-// ARGS: --sym @?n=3
+// ARGS: --sym %?n=3
 fun @main() : i32 {
-  sym @?n : value i32;
+  sym %?n : value i32;
   let mut %stack: [100] i32 = 0;
   let mut %sp: i32 = 0;
   let mut %moves: i32 = 0;
@@ -15,8 +15,8 @@ fun @main() : i32 {
   let %c1: i32 = 1;
 
 ^entry:
-  // Push initial call: hanoi(@?n, 1, 3, 2)
-  %stack[%sp] = @?n; %sp = %sp + %c1;
+  // Push initial call: hanoi(%?n, 1, 3, 2)
+  %stack[%sp] = %?n; %sp = %sp + %c1;
   %stack[%sp] = 0; %sp = %sp + %c1;
   %stack[%sp] = 1; %sp = %sp + %c1;
   %stack[%sp] = 3; %sp = %sp + %c1;

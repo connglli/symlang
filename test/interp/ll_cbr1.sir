@@ -1,10 +1,10 @@
 // EXPECT: PASS
-// ARGS: --sym @?a=3
+// ARGS: --sym %?a=3
 fun @main() : i64 {
-  sym @?a : value i64;
+  sym %?a : value i64;
   let %zero: i64 = 0;
 ^entry:
-  br @?a > %zero, ^then, ^else;
+  br %?a > %zero, ^then, ^else;
 ^then:
   ret 7;
 ^else:
