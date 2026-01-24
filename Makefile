@@ -2,6 +2,12 @@ CXX = g++
 CXXFLAGS = -std=c++20 -Iinclude -Ibitwuzla/include -Wall -Wextra -O2
 LDFLAGS = -Lbitwuzla/lib/x86_64-linux-gnu -lbitwuzla -lbitwuzlals -lbitwuzlabv -lbitwuzlabb -lgmp
 
+# Coverage support
+ifeq ($(COVERAGE), 1)
+  CXXFLAGS += --coverage
+  LDFLAGS += --coverage
+endif
+
 COMMON_SRCS = src/frontend/lexer.cpp src/frontend/parser.cpp src/frontend/ast_dumper.cpp \
               src/frontend/sir_printer.cpp \
               src/analysis/cfgbuilder.cpp src/analysis/definite_init.cpp \
@@ -44,6 +50,10 @@ $(TARGET_SOLVER): $(COMMON_OBJS) $(SOLVER_OBJS)
 
 clean:
 	rm -f $(COMMON_OBJS) $(TEST_OBJS) $(INTERP_OBJS) $(COMPILER_OBJS) $(SOLVER_OBJS) $(TARGET_INTERP) $(TARGET_COMPILER) $(TARGET_SOLVER)
+	find . -name "*.gcno" -delete
+	find . -name "*.gcda" -delete
+	find . -name "*.gcov" -delete
+
 test: $(TARGET_INTERP) $(TARGET_COMPILER) $(TARGET_SOLVER)
 	$(PY) -m test.lib.run_interp_tests test/lexer ./$(TARGET_INTERP) --check
 	$(PY) -m test.lib.run_interp_tests test/parser ./$(TARGET_INTERP) --check

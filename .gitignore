@@ -10,6 +10,11 @@ symirsolve
 # Dependency files
 *.d
 
+# Coverage files
+*.gcov
+*.gcda
+*.gcno
+
 # OS generated files
 .DS_Store
 .DS_Store?
@@ -32,3 +37,6 @@ Thumbs.db
 # Virtual environments
 venv
 __pycache__/
+
+# Others
+fuzzout
