@@ -23,10 +23,10 @@ fun @main() : i32 {
   assume %?idx == 0;
   assume %?val == 50;
 
-  require %arr[0].x == 50;
-  require %arr[1].x == 20;
-  require %arr[0].y == 11;
-  require %arr[1].y == 21;
+  require %arr[0].x == 50, "arr[0].x must be 50 after symbolic write";
+  require %arr[1].x == 20, "arr[1].x must be preserved";
+  require %arr[0].y == 11, "arr[0].y must be preserved";
+  require %arr[1].y == 21, "arr[1].y must be preserved";
 
   ret 0;
 }

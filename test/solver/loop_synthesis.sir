@@ -15,6 +15,6 @@ fun @main() : i32 {
   br %i < 3, ^loop, ^exit;
 
 ^exit:
-  require %acc == 21;
+  require %acc == 21, "accumulator must reach 21 after 3 iterations";
   ret 0;
 }

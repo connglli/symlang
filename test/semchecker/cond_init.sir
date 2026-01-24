@@ -1,4 +1,6 @@
 // EXPECT: PASS
+
+// A variable initialized on all control flow paths should pass definite initialization check.
 fun @init_br(%c: i32) : i32 {
   let mut %x: i32;
   let %zero: i32 = 0;

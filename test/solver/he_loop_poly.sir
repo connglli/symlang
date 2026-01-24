@@ -31,6 +31,6 @@ fun @main() : i32 {
   br %i < 4, ^loop, ^exit;
 
 ^exit:
-  require %acc == %target;
+  require %acc == %target, "accumulator must match target value after loop";
   ret 0;
 }

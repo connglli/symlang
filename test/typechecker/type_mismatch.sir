@@ -1,4 +1,6 @@
 // EXPECT: FAIL
+
+// Arithmetic operations between different integer types (i32 and i64) should fail typechecking.
 fun @mismatch() : i32 {
   let %a: i32 = 1;
   let %b: i64 = 2;

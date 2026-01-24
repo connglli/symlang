@@ -1,11 +1,13 @@
 // EXPECT: PASS
 // ARGS: --main @main --path '^entry' --sym %?x=255
+
+// Verify that casting symbolic i32(255) to i8 results in -1.
 fun @main() : i32 {
   sym %?x : value i32;
   let mut %y: i8 = 0;
   let %m1: i8 = -1;
 ^entry:
   %y = %?x as i8; // 255 -> -1 (i8)
-  require %y == %m1;
+  require %y == %m1, "255 cast to i8 should be -1";
   ret 0;
 }

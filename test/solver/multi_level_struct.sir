@@ -18,9 +18,9 @@ fun @main() : i32 {
 ^entry:
   %c.b.a.x = %?v;
 
-  require %c.b.y == 2;
-  require %c.z == 3;
-  require %c.b.a.x == 99;
+  require %c.b.y == 2, "unrelated field c.b.y must be preserved";
+  require %c.z == 3, "unrelated field c.z must be preserved";
+  require %c.b.a.x == 99, "nested field c.b.a.x must be updated to 99";
 
   ret 0;
 }

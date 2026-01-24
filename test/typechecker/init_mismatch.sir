@@ -1,4 +1,6 @@
 // EXPECT: FAIL
+
+// Array initialization with an incorrect number of elements should fail typechecking.
 fun @main() : i32 {
   let %v: [2] i32 = {1, 2, 3}; // Mismatch
 ^entry:

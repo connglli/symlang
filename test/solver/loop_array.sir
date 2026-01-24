@@ -18,6 +18,6 @@ fun @main() : i32 {
   br %i < 3, ^loop, ^exit;
 
 ^exit:
-  require %?final_sum == %sum;
+  require %?final_sum == %sum, "final sum must match calculated sum of array elements";
   ret 0;
 }

@@ -1,5 +1,7 @@
 // EXPECT: FAIL
 // ARGS: --main @main --path '^entry'
+
+// Division by zero is strict UB and should fail.
 fun @main() : i32 {
 ^entry:
   let %a: i32 = 10 / 0;

@@ -16,8 +16,8 @@ fun @main() : i32 {
   %b = %a ^ %b;
   %a = %a ^ %b;
 
-  require %a == %?y;
-  require %b == %?x;
+  require %a == %?y, "a must be equal to original y";
+  require %b == %?x, "b must be equal to original x";
 
   ret 0;
 }

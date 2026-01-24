@@ -6,10 +6,10 @@ fun @main() : i32 {
   let %neg_h: i32 = -0x1;
 
 ^entry:
-  require %h == 255;
-  require %o == 255;
-  require %b == 255;
-  require %neg_h == -1;
+  require %h == 255, "%h";
+  require %o == 255, "%o";
+  require %b == 255, "%b";
+  require %neg_h == -1, "%neg_h";
 
   ret 0;
 }

@@ -16,6 +16,6 @@ fun @main() : i32 {
   br %i < 3, ^loop, ^exit;
 
 ^exit:
-  require %?result == %acc;
+  require %?result == %acc, "result must match final accumulator value";
   ret 0;
 }

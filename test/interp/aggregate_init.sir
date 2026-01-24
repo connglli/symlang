@@ -1,4 +1,6 @@
 // EXPECT: PASS
+
+// Test various ways of initializing aggregate types (arrays and structs).
 struct @Point { x: i32; y: i32; }
 fun @main() : i32 {
   let %v1: [3] i32 = 10; // broadcast

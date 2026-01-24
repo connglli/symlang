@@ -16,8 +16,8 @@ fun @main() : i32 {
 ^entry:
   %o.arr[0].val = %?v;
 
-  require %o.arr[1].val == 20;
-  require %o.arr[0].val == 42;
+  require %o.arr[1].val == 20, "unrelated array element o.arr[1].val must be preserved";
+  require %o.arr[0].val == 42, "array element field o.arr[0].val must be updated to 42";
 
   ret 0;
 }

@@ -1,5 +1,7 @@
 // EXPECT: FAIL
 // ARGS: --main @main --path '^entry'
+
+// Reading an 'undef' element from an array is strict UB and should fail.
 fun @main() : i32 {
   let %arr: [3] i32 = {1, undef, 3};
 ^entry:

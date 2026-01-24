@@ -1,4 +1,6 @@
 // EXPECT: FAIL
+
+// Assigning to an immutable local variable (declared with 'let') should fail semantic checking.
 fun @main(%p: i32) : i32 {
   let %x: i32 = 1;
 ^entry:

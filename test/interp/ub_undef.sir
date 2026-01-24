@@ -1,4 +1,6 @@
 // EXPECT: FAIL
+
+// Reading an uninitialized ('undef') local variable is strict UB and should fail.
 fun @main() : i32 {
   let mut %x: i32;
 ^entry:

@@ -24,6 +24,6 @@ fun @main() : i32 {
   br %i < 2, ^outer, ^exit;
 
 ^exit:
-  require %?total == %sum;
+  require %?total == %sum, "total must match final sum after nested loops";
   ret 0;
 }

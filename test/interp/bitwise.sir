@@ -1,4 +1,6 @@
 // EXPECT: PASS
+
+// Test bitwise operators: AND, OR, XOR, and NOT.
 fun @main() : i32 {
   let %x: i32 = 43690; // 0xAAAA
   let %y: i32 = 21845; // 0x5555
@@ -8,16 +10,16 @@ fun @main() : i32 {
 
 ^entry:
   %z = %y & %x; // 0x5555 & 0xAAAA = 0
-  require %z == 0;
+  require %z == 0, "AND check";
 
   %z = %y | %x; // 0x5555 | 0xAAAA = 0xFFFF (65535)
-  require %z == %all_ones;
+  require %z == %all_ones, "OR check";
 
   %z = %all_ones ^ %x; // 0xFFFF ^ 0xAAAA = 0x5555 (21845)
-  require %z == %y;
+  require %z == %y, "XOR check";
 
   %z = ~%x;
-  require %z == %expected;
+  require %z == %expected, "NOT check";
 
   ret 0;
 }

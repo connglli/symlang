@@ -61,10 +61,10 @@ fun @main() : i32 {
   %C.data[1][1] = %t1 + %t2;
 
   // Requirement: C == {{10, 20}, {30, 40}}
-  require %C.data[0][0] == 10;
-  require %C.data[0][1] == 20;
-  require %C.data[1][0] == 30;
-  require %C.data[1][1] == 40;
+  require %C.data[0][0] == 10, "C[0][0] must be 10";
+  require %C.data[0][1] == 20, "C[0][1] must be 20";
+  require %C.data[1][0] == 30, "C[1][0] must be 30";
+  require %C.data[1][1] == 40, "C[1][1] must be 40";
 
   ret 0;
 }

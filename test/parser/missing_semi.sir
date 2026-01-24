@@ -1,4 +1,6 @@
 // EXPECT: FAIL
+
+// Missing a semicolon at the end of an instruction should result in a parser error.
 fun @semi() : i32 {
 ^entry:
   ret 0 // missing semicolon

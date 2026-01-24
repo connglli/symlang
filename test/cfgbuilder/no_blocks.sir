@@ -1,4 +1,5 @@
 // EXPECT: FAIL
-// Function must have at least one block
+
+// A function must have at least one basic block; an empty function body should fail CFG building.
 fun @empty() : i32 {
 }

@@ -1,9 +1,11 @@
 // EXPECT: PASS
 // ARGS: --main @main --path '^entry'
+
+// Find index %?idx such that arr[%?idx] == 20.
 fun @main() : i32 {
   sym %?idx : value i32 in [0, 2];
   let mut %arr: [3] i32 = {10, 20, 30};
 ^entry:
-  require %arr[%?idx] == 20;
+  require %arr[%?idx] == 20, "Index must point to element with value 20";
   ret 0;
 }

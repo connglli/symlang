@@ -1,4 +1,6 @@
 // EXPECT: FAIL
+
+// Assigning to a function parameter (which is immutable by default) should fail semantic checking.
 fun @main(%p: i32) : i32 {
 ^entry:
   %p = 2; // Should fail: parameter is immutable

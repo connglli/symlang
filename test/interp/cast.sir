@@ -1,4 +1,6 @@
 // EXPECT: PASS
+
+// Test integer casting (truncation and sign extension).
 fun @main() : i32 {
   let mut %x: i32 = -1;
   let mut %y: i64 = 0;
@@ -18,15 +20,15 @@ fun @main() : i32 {
   %z = %y as i32; // Truncate: -1 (i64) -> -1 (i32)
   %w = %x as i8;   // Truncate: -1 (i32) -> -1 (i8)
 
-  require %y == %m1_i64;
-  require %z == %m1_i32;
-  require %w == %m1_i8;
+  require %y == %m1_i64, "Sign extend i32 -> i64";
+  require %z == %m1_i32, "Truncate i64 -> i32";
+  require %w == %m1_i8, "Truncate i32 -> i8";
 
   %b = %a as i8; // Truncate: 255 (0xFF) -> -1 (i8)
-  require %b == %m1_i8;
+  require %b == %m1_i8, "Truncate 255 to i8";
 
   %d = %c as i32;  // Truncate: 0xFFFFFFFF -> -1 (i32)
-  require %d == %m1_i32;
+  require %d == %m1_i32, "Truncate 0xFFFFFFFF to i32";
 
   ret 0;
 }

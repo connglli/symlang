@@ -1,4 +1,6 @@
 // EXPECT: FAIL
+
+// Reading a mutable local variable before it is initialized should fail semantic checking.
 fun @uninit() : i32 {
   let mut %x: i32;
 ^entry:

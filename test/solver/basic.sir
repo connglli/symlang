@@ -1,8 +1,10 @@
 // EXPECT: PASS
 // ARGS: --main @main --path '^entry'
+
+// Solve for %?x in [10, 20] such that %?x == 15.
 fun @main() : i32 {
   sym %?x : value i32 in [10, 20];
 ^entry:
-  require %?x == 15;
+  require %?x == 15, "x must be 15";
   ret 0;
 }

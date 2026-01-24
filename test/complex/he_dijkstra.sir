@@ -117,6 +117,6 @@ fun @main() : i32 {
   br ^dijkstra_loop;
 
 ^check_res:
-  require %g.dist[3] == 4;
+  require %g.dist[3] == 4, "shortest path from 0 to 3 should be 4";
   ret %g.dist[3];
 }

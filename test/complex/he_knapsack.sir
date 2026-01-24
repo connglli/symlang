@@ -92,6 +92,6 @@ fun @main() : i32 {
 ^check:
   %res.max_val = %dp[4][5];
   %res.cap_used = 5;
-  require %res.max_val == 7;
+  require %res.max_val == 7, "max value in knapsack should be 7";
   ret %res.max_val;
 }

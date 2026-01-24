@@ -23,7 +23,7 @@ fun @main() : i32 {
   %m[%?r][%?c] = 7;
   %val = %m[1][1];
 
-  require %val == 7;
+  require %val == 7, "value at (1,1) must be 7";
 
   ret 0;
 }

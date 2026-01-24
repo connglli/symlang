@@ -25,11 +25,11 @@ fun @main() : i32 {
 
   // Check unrelated field preserved
   %chk1 = %l.p1.y;
-  require %chk1 == 2;
+  require %chk1 == 2, "unrelated field p1.y should be preserved";
 
   // Check target field updated
   %chk2 = %l.p2.y;
-  require %chk2 == 55;
+  require %chk2 == 55, "target field p2.y should be updated to 55";
 
   ret 0;
 }

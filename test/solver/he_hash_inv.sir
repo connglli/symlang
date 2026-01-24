@@ -18,7 +18,7 @@ fun @main() : i32 {
   %h = %h << %five;
   %h = %h ^ %b;
 
-  require %h == 35;
+  require %h == 35, "hash must match target value 35";
 
   ret 0;
 }

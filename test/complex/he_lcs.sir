@@ -92,6 +92,6 @@ fun @main() : i32 {
 ^finish:
   %res.len = %dp[10][10];
   %res.match_count = %res.len;
-  require %res.len == 5;
+  require %res.len == 5, "LCS length should be 5";
   ret %res.len;
 }

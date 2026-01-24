@@ -1,4 +1,6 @@
 // EXPECT: FAIL
+
+// Accessing a non-existent field in a struct should fail typechecking.
 struct @S { val: i32; }
 fun @bad_acc(%s: @S) : i32 {
 ^entry:

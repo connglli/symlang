@@ -1,6 +1,7 @@
 // EXPECT: FAIL
 // ARGS: --sym %?a=9223372036854775807 --sym %?b=1
-// MAX_INT64 + 1
+
+// Signed integer overflow is strict UB and should fail.
 fun @main() : i32 {
   sym %?a : value i64;
   sym %?b : value i64;

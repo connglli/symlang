@@ -1,5 +1,7 @@
 // EXPECT: FAIL
 // ARGS: --main @main --path '^entry'
+
+// Out-of-bounds array access is strict UB and should fail.
 fun @main() : i32 {
   let %arr: [5] i32 = 0;
 ^entry:

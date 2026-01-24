@@ -1,13 +1,15 @@
 // EXPECT: PASS
 // ARGS: --main @main --path '^entry,^then'
+
+// Solve for %?x such that the path ^entry -> ^then is taken and %?x == 15.
 fun @main() : i32 {
   sym %?x : value i32;
 ^entry:
   br %?x > 10, ^then, ^else;
 ^then:
-  require %?x == 15;
+  require %?x == 15, "x must be 15 on then branch";
   ret 0;
 ^else:
-  require %?x == 5;
+  require %?x == 5, "x must be 5 on else branch";
   ret 0;
 }

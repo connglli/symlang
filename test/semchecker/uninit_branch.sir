@@ -1,4 +1,6 @@
 // EXPECT: FAIL
+
+// Reading a variable that is not initialized on all control flow paths should fail semantic checking (definite initialization).
 fun @uninit_br(%c: i32) : i32 {
   let mut %x: i32;
   let %zero: i32 = 0;

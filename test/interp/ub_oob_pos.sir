@@ -1,4 +1,6 @@
 // EXPECT: FAIL
+
+// Out-of-bounds array access (positive) is strict UB and should fail.
 fun @main() : i32 {
   let %arr: [2] i32 = undef;
 ^entry:

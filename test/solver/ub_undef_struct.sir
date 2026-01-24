@@ -1,5 +1,7 @@
 // EXPECT: FAIL
 // ARGS: --main @main --path '^entry'
+
+// Reading an 'undef' field of a struct is strict UB and should fail.
 struct @S { x: i32; y: i32; }
 fun @main() : i32 {
   let %s: @S = {1, undef};

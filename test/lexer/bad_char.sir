@@ -1,4 +1,6 @@
 // EXPECT: FAIL
+
+// Using an invalid character (like '$') should result in a lexer error.
 fun @bad() : i32 {
 ^entry:
   let %x: i32 = $; // $ is invalid
