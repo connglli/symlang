@@ -53,6 +53,12 @@ namespace symir {
       SymbolicValue(Kind k) : kind(k) {}
 
       SymbolicValue(Kind k, bitwuzla::Term t, bitwuzla::Term d) : kind(k), term(t), is_defined(d) {}
+
+      SymbolicValue(const SymbolicValue &other) = default;
+      SymbolicValue &operator=(const SymbolicValue &other) = default;
+
+      SymbolicValue(SymbolicValue &&) = default;
+      SymbolicValue &operator=(SymbolicValue &&) = default;
     };
 
     using SymbolicStore = std::unordered_map<std::string, SymbolicValue>;

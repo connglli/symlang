@@ -1,0 +1,35 @@
+// EXPECT: PASS
+// ARGS: --main @main --path '^entry'
+
+// Test nested struct updates and preservation of other fields.
+// l.p2.y = ?v should not affect l.p1.y
+
+struct @Point { x: i32; y: i32; }
+struct @Line { p1: @Point; p2: @Point; }
+
+fun @main() : i32 {
+  sym %?v : value i32 in [0, 100];
+  let mut %l: @Line;
+  let mut %chk1: i32 = 0;
+  let mut %chk2: i32 = 0;
+
+^init:
+  %l.p1.x = 1;
+  %l.p1.y = 2;
+  %l.p2.x = 3;
+  %l.p2.y = 4;
+  br ^entry;
+
+^entry:
+  %l.p2.y = %?v;
+
+  // Check unrelated field preserved
+  %chk1 = %l.p1.y;
+  require %chk1 == 2;
+
+  // Check target field updated
+  %chk2 = %l.p2.y;
+  require %chk2 == 55;
+
+  ret 0;
+}

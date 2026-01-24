@@ -1,0 +1,32 @@
+// EXPECT: PASS
+// ARGS: --main @main --path '^entry'
+
+struct @Point { x: i32; y: i32; }
+
+fun @main() : i32 {
+  sym %?idx : value i32 in [0, 1];
+  sym %?val : value i32 in [0, 100];
+  let mut %arr: [2] @Point;
+
+^init:
+  %arr[0].x = 10;
+  %arr[0].y = 11;
+  %arr[1].x = 20;
+  %arr[1].y = 21;
+  br ^entry;
+
+^entry:
+  %arr[%?idx].x = %?val;
+
+  // If ?idx == 0, then arr[0].x == ?val, and arr[1].x should be preserved (20)
+  // We want to find a solution where ?idx == 0 and ?val == 50
+  assume %?idx == 0;
+  assume %?val == 50;
+
+  require %arr[0].x == 50;
+  require %arr[1].x == 20;
+  require %arr[0].y == 11;
+  require %arr[1].y == 21;
+
+  ret 0;
+}

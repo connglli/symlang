@@ -1,0 +1,29 @@
+// EXPECT: PASS
+// ARGS: --main @main --path '^entry'
+
+// Test 2D array symbolic write.
+// mat[?r][?c] = 7.
+// Read mat[1][1] == 7.
+// Implies ?r=1, ?c=1 (assuming init is not 7).
+
+fun @main() : i32 {
+  sym %?r : value i32 in [0, 1];
+  sym %?c : value i32 in [0, 1];
+  let mut %m: [2][2]i32;
+  let mut %val: i32 = 0;
+
+^init:
+  %m[0][0] = 0;
+  %m[0][1] = 0;
+  %m[1][0] = 0;
+  %m[1][1] = 0;
+  br ^entry;
+
+^entry:
+  %m[%?r][%?c] = 7;
+  %val = %m[1][1];
+
+  require %val == 7;
+
+  ret 0;
+}

@@ -375,7 +375,8 @@ namespace symir {
         bitwuzla::Term idx;
         if (auto lit = std::get_if<IntLit>(&ai->index)) {
           idx = tm.mk_bv_value(tm.mk_bv_sort(32), std::to_string(lit->value), 10);
-          res = res.arrayVal.at(lit->value);
+          SymbolicValue next = res.arrayVal.at(lit->value);
+          res = std::move(next);
         } else {
           auto id = std::get<LocalOrSymId>(ai->index);
           idx = std::visit([&](auto &&v) { return store.at(v.name).term; }, id);
@@ -389,269 +390,124 @@ namespace symir {
       } else if (auto af = std::get_if<AccessField>(&acc)) {
         if (res.kind != SymbolicValue::Kind::Struct)
           throw std::runtime_error("Field access on non-struct");
-        res = res.structVal.at(af->field);
+        SymbolicValue next = res.structVal.at(af->field);
+        res = std::move(next);
       }
     }
     return res;
   }
 
   SymbolicExecutor::SymbolicValue SymbolicExecutor::muxSymbolicValue(
-
-      bitwuzla::Term cond, const SymbolicValue &t, const SymbolicValue &f,
-
-      bitwuzla::TermManager &tm
-
+      bitwuzla::Term cond, const SymbolicValue &t, const SymbolicValue &f, bitwuzla::TermManager &tm
   ) {
-
     if (t.kind != f.kind) {
-
-      std::cerr << "Mux kind mismatch: " << (int) t.kind << " vs " << (int) f.kind << "\n";
-
       throw std::runtime_error("Muxing different kinds of SymbolicValues");
     }
 
-
     SymbolicValue res;
-
     res.kind = t.kind;
 
-
     if (t.kind == SymbolicValue::Kind::Int) {
-
       res.term = tm.mk_term(bitwuzla::Kind::ITE, {cond, t.term, f.term});
-
       res.is_defined = tm.mk_term(bitwuzla::Kind::ITE, {cond, t.is_defined, f.is_defined});
-
     } else if (t.kind == SymbolicValue::Kind::Array) {
-
       if (t.arrayVal.size() != f.arrayVal.size())
-
         throw std::runtime_error("Muxing arrays of different sizes");
-
       for (size_t i = 0; i < t.arrayVal.size(); ++i) {
-
         res.arrayVal.push_back(muxSymbolicValue(cond, t.arrayVal[i], f.arrayVal[i], tm));
       }
-
     } else if (t.kind == SymbolicValue::Kind::Struct) {
-
       for (const auto &[key, val]: t.structVal) {
-
         if (f.structVal.find(key) == f.structVal.end())
-
           throw std::runtime_error("Muxing structs with mismatching keys: " + key);
-
         res.structVal[key] = muxSymbolicValue(cond, val, f.structVal.at(key), tm);
       }
     }
-
     return res;
   }
 
   SymbolicExecutor::SymbolicValue SymbolicExecutor::updateLValueRec(
-
-
       const SymbolicValue &cur, std::span<const Access> accesses, const SymbolicValue &val,
-
-
       bitwuzla::Term pathCond, bitwuzla::TermManager &tm, SymbolicStore &store,
-
-
       std::vector<bitwuzla::Term> &pc, int depth
-
-
   ) {
-
-
     if (depth > 100)
       throw std::runtime_error("Recursion depth exceeded in updateLValueRec");
 
-
     if (accesses.empty()) {
-
-
       return muxSymbolicValue(pathCond, val, cur, tm);
     }
 
-
     const Access &acc = accesses[0];
-
-
     auto nextAccesses = accesses.subspan(1);
-
-
     SymbolicValue newCur = cur; // Copy
 
-
     if (auto ai = std::get_if<AccessIndex>(&acc)) {
-
-
       if (cur.kind != SymbolicValue::Kind::Array)
-
-
         throw std::runtime_error("Indexing non-array in setLValue");
 
-
       bitwuzla::Term idx;
-
-
       if (auto lit = std::get_if<IntLit>(&ai->index)) {
-
-
         idx = tm.mk_bv_value(tm.mk_bv_sort(32), std::to_string(lit->value), 10);
-
-
       } else {
-
-
         auto id = std::get<LocalOrSymId>(ai->index);
-
-
         idx = std::visit([&](auto &&v) { return store.at(v.name).term; }, id);
       }
 
-
       // Bounds check UB
-
-
       size_t size = cur.arrayVal.size();
-
-
       if (size == 0)
         throw std::runtime_error("Indexing empty array");
 
-
       auto size_term = tm.mk_bv_value(idx.sort(), std::to_string(size), 10);
-
-
       auto zero = tm.mk_bv_zero(idx.sort());
 
-
       pc.push_back(tm.mk_term(
-
-
-          bitwuzla::Kind::IMPLIES,
-
-
-          {pathCond, tm.mk_term(bitwuzla::Kind::BV_SLE, {zero, idx})}
-
-
+          bitwuzla::Kind::IMPLIES, {pathCond, tm.mk_term(bitwuzla::Kind::BV_SLE, {zero, idx})}
       ));
-
-
       pc.push_back(tm.mk_term(
-
-
-          bitwuzla::Kind::IMPLIES,
-
-
-          {pathCond, tm.mk_term(bitwuzla::Kind::BV_SLT, {idx, size_term})}
-
-
+          bitwuzla::Kind::IMPLIES, {pathCond, tm.mk_term(bitwuzla::Kind::BV_SLT, {idx, size_term})}
       ));
-
 
       if (auto lit = std::get_if<IntLit>(&ai->index)) {
-
-
         // Constant index
-
-
         uint64_t k = lit->value;
-
-
         if (k < newCur.arrayVal.size()) {
-
-
-          newCur.arrayVal[k] =
-
-
-              updateLValueRec(
-                  cur.arrayVal[k], nextAccesses, val, pathCond, tm, store, pc, depth + 1
-              );
+          newCur.arrayVal[k] = updateLValueRec(
+              cur.arrayVal[k], nextAccesses, val, pathCond, tm, store, pc, depth + 1
+          );
         }
-
-
       } else {
-
-
         // Symbolic index
-
-
         for (size_t k = 0; k < newCur.arrayVal.size(); ++k) {
-
-
           auto k_term = tm.mk_bv_value(idx.sort(), std::to_string(k), 10);
-
-
           auto match = tm.mk_term(bitwuzla::Kind::EQUAL, {idx, k_term});
-
-
           auto cond = tm.mk_term(bitwuzla::Kind::AND, {pathCond, match});
-
-
           newCur.arrayVal[k] =
-
-
               updateLValueRec(cur.arrayVal[k], nextAccesses, val, cond, tm, store, pc, depth + 1);
         }
       }
-
-
     } else {
-
-
       auto &af = std::get<AccessField>(acc);
-
-
       if (cur.kind != SymbolicValue::Kind::Struct)
-
-
         throw std::runtime_error("Field access on non-struct in setLValue");
-
-
-      // Check if field exists
-
-
       if (cur.structVal.find(af.field) == cur.structVal.end())
-
-
         throw std::runtime_error("Field not found: " + af.field);
 
-
-      newCur.structVal[af.field] =
-
-
-          updateLValueRec(
-              cur.structVal.at(af.field), nextAccesses, val, pathCond, tm, store, pc, depth + 1
-          );
+      newCur.structVal[af.field] = updateLValueRec(
+          cur.structVal.at(af.field), nextAccesses, val, pathCond, tm, store, pc, depth + 1
+      );
     }
-
-
     return newCur;
   }
 
   void SymbolicExecutor::setLValue(
-
-
       const LValue &lv, const SymbolicValue &val, bitwuzla::TermManager &tm, bitwuzla::Bitwuzla &,
-
-
       SymbolicStore &store, std::vector<bitwuzla::Term> &pc
-
-
   ) {
-
-
     SymbolicValue &root = store.at(lv.base.name);
-
-
     // Use true condition because the instruction itself is unconditional *at this point in the
-
-
     // trace* The path constraints handle the reachability of the instruction.
-
-
     root = updateLValueRec(root, lv.accesses, val, tm.mk_true(), tm, store, pc, 0);
   }
 

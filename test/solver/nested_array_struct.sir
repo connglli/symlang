@@ -1,0 +1,23 @@
+// EXPECT: PASS
+// ARGS: --main @main --path '^entry'
+
+struct @Inner { val: i32; }
+struct @Outer { arr: [2] @Inner; }
+
+fun @main() : i32 {
+  sym %?v : value i32 in [0, 100];
+  let mut %o: @Outer;
+
+^init:
+  %o.arr[0].val = 10;
+  %o.arr[1].val = 20;
+  br ^entry;
+
+^entry:
+  %o.arr[0].val = %?v;
+
+  require %o.arr[1].val == 20;
+  require %o.arr[0].val == 42;
+
+  ret 0;
+}

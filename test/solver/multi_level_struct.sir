@@ -1,0 +1,26 @@
+// EXPECT: PASS
+// ARGS: --main @main --path '^entry'
+
+struct @A { x: i32; }
+struct @B { a: @A; y: i32; }
+struct @C { b: @B; z: i32; }
+
+fun @main() : i32 {
+  sym %?v : value i32 in [0, 100];
+  let mut %c: @C;
+
+^init:
+  %c.b.a.x = 1;
+  %c.b.y = 2;
+  %c.z = 3;
+  br ^entry;
+
+^entry:
+  %c.b.a.x = %?v;
+
+  require %c.b.y == 2;
+  require %c.z == 3;
+  require %c.b.a.x == 99;
+
+  ret 0;
+}
