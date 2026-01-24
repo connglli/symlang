@@ -9,6 +9,7 @@ The SymIR test suite is managed by a unified Python-based testing framework loca
 - **`symiri --check`**: Validates static semantics (lexing, parsing, duplicate checks, type checking, and dataflow analysis).
 - **`symiri`**: Executes SymIR programs using the reference interpreter.
 - **`symirc`**: Compiles SymIR programs to C and verifies them by linking with a test harness.
+- **`symirsolve`**: Solves symbolic SymIR programs into concrete SymIR programs given a path.
 
 ### Framework Features
 - **Automatic Discovery**: Recursively finds all `.sir` files in a given directory.
@@ -49,6 +50,9 @@ These tests validate the runtime semantics of the language. They are run using t
 ### 3. Compiler Tests
 These tests validate the C backend by compiling `.sir` files to C, linking them with a generated test harness, and executing them. They are managed by `test/lib/run_compiler_tests.py`.
 
+### 4. Solver Tests
+These tests validate the symbolic execution capabilities of the `symirsolve` tool. They ensure that symbolic programs can be correctly solved into concrete programs.
+
 ## Running Tests
 
 The recommended way to run tests is via the `Makefile` targets:
@@ -66,6 +70,9 @@ python3 -m test.lib.run_interp_tests test/interp ./symiri
 
 # Run only the compiler tests
 python3 -m test.lib.run_compiler_tests test/ ./symirc
+
+# Run only the solver tests
+python3 -m test.lib.run_solver_tests test/solver ./symirsolve
 
 # Run only a specific analysis directory
 python3 -m test.lib.run_interp_tests test/typechecker ./symiri --check
