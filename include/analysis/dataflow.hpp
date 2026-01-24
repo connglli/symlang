@@ -5,28 +5,44 @@
 
 namespace symir {
 
-  // Generic Forward Dataflow Problem
+  /**
+   * Generic interface for a Forward Dataflow Problem.
+   * @tparam State The type representing the dataflow information (e.g., bitset, map).
+   */
   template<typename State>
   class DataflowProblem {
   public:
     virtual ~DataflowProblem() = default;
 
-    // Initial value for all blocks (usually Top or Bottom)
+    /**
+     * The 'bottom' value of the lattice, used for initializing non-entry blocks.
+     */
     virtual State bottom() = 0;
 
-    // Initial value for entry block
+    /**
+     * The state at the start of the entry block.
+     */
     virtual State entryState() = 0;
 
-    // Meet/Join operator (e.g., AND for definite init, OR for liveness)
+    /**
+     * The meet (or join) operator that combines information from multiple predecessors.
+     */
     virtual State meet(const State &lhs, const State &rhs) = 0;
 
-    // Transfer function for a block
+    /**
+     * The transfer function that computes the 'out' state of a block given its 'in' state.
+     */
     virtual State transfer(const Block &block, const State &in) = 0;
 
-    // Check if states are identical
+    /**
+     * Checks if two dataflow states are equal.
+     */
     virtual bool equal(const State &lhs, const State &rhs) = 0;
   };
 
+  /**
+   * Worklist-based iterative solver for forward dataflow problems.
+   */
   template<typename State>
   class DataflowSolver {
   public:
@@ -35,6 +51,9 @@ namespace symir {
       std::vector<State> out;
     };
 
+    /**
+     * Solves the dataflow problem on a given function.
+     */
     static Result solve(const FunDecl &f, const CFG &cfg, DataflowProblem<State> &problem) {
       size_t numBlocks = cfg.blocks.size();
       Result res;

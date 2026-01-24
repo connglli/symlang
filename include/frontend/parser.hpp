@@ -6,9 +6,16 @@
 
 namespace symir {
 
+  /**
+   * Recursive-descent parser for the SymIR language.
+   * Transforms a sequence of tokens into a structured AST (Program).
+   */
   class Parser {
   public:
     explicit Parser(std::vector<Token> toks);
+    /**
+     * Entry point for parsing a complete SymIR program.
+     */
     Program parseProgram();
 
   private:
@@ -21,6 +28,7 @@ namespace symir {
     bool tryConsume(TokenKind k);
     [[noreturn]] void errorHere(const std::string &msg) const;
 
+    // --- Sub-parsers for different AST components ---
     GlobalId parseGlobalId();
     LocalId parseLocalId();
     SymId parseSymId();

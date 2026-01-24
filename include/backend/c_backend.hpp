@@ -7,10 +7,18 @@
 
 namespace symir {
 
+  /**
+   * Generates C code from a SymIR program.
+   * Maps SymIR constructs to their C equivalents, handling bitwidths
+   * and symbolic variables (as externs).
+   */
   class CBackend {
   public:
     explicit CBackend(std::ostream &out) : out_(out) {}
 
+    /**
+     * Translates the entire program to C and writes it to the output stream.
+     */
     void emit(const Program &prog);
 
   private:
@@ -19,6 +27,7 @@ namespace symir {
     std::string curFuncName_;
     std::unordered_map<std::string, std::uint32_t> varWidths_;
 
+    // --- Emission helpers ---
     void indent();
     void emitType(const TypePtr &type);
     void emitExpr(const Expr &expr);
@@ -30,6 +39,7 @@ namespace symir {
     void emitIndex(const Index &idx);
     void emitInitVal(const InitVal &iv);
 
+    // --- Mangling and naming helpers ---
     std::string getMangledSymbolName(const std::string &funcName, const std::string &symName);
     std::string mangleName(const std::string &name);
     std::string stripSigil(const std::string &name);

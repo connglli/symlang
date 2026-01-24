@@ -7,6 +7,9 @@
 
 namespace symir {
 
+  /**
+   * Enumeration of all token types recognized by the SymIR lexer.
+   */
   enum class TokenKind {
     End,
 
@@ -69,15 +72,25 @@ namespace symir {
     KwAs, // "as"
   };
 
+  /**
+   * Represents a single lexical token.
+   */
   struct Token {
     TokenKind kind;
     std::string lexeme;
     SourceSpan span;
   };
 
+  /**
+   * Lexical analyzer for the SymIR language.
+   * Converts a source string into a sequence of tokens.
+   */
   class Lexer {
   public:
     explicit Lexer(std::string_view src);
+    /**
+     * Lexes the entire source and returns a vector of tokens.
+     */
     std::vector<Token> lexAll();
 
   private:

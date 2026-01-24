@@ -9,6 +9,11 @@
 
 namespace symir {
 
+  /**
+   * Performs path-based symbolic execution on the SymIR program.
+   * Generates SMT constraints for a selected path and uses Bitwuzla
+   * to find concrete values for symbolic variables that satisfy the path.
+   */
   class SymbolicExecutor {
   public:
     struct Config {
@@ -18,6 +23,9 @@ namespace symir {
 
     explicit SymbolicExecutor(const Program &prog, const Config &config);
 
+    /**
+     * Represents the result of symbolic execution/solving.
+     */
     struct Result {
       bool sat = false;
       bool unsat = false;
@@ -26,6 +34,12 @@ namespace symir {
       std::unordered_map<std::string, int64_t> model;
     };
 
+    /**
+     * Solves for a specific path in a function.
+     * @param funcName The function to analyze.
+     * @param path A sequence of block labels representing the path to execute.
+     * @param fixedSyms Optional mapping to fix certain symbols to concrete values.
+     */
     Result solve(
         const std::string &funcName, const std::vector<std::string> &path,
         const std::unordered_map<std::string, int64_t> &fixedSyms = {}
@@ -35,18 +49,16 @@ namespace symir {
     const Program &prog_;
     Config config_;
 
+    /**
+     * Represents a symbolic value during execution.
+     * Maps to SMT terms or nested aggregate structures.
+     */
     struct SymbolicValue {
-
       enum class Kind { Int, Array, Struct, Undef } kind = Kind::Undef;
-
-      bitwuzla::Term term; // For scalar Int
-
+      bitwuzla::Term term;       // For scalar Int (the BV value)
       bitwuzla::Term is_defined; // Boolean term: true if value is defined
-
       std::vector<SymbolicValue> arrayVal;
-
       std::unordered_map<std::string, SymbolicValue> structVal;
-
 
       SymbolicValue() = default;
 
@@ -56,13 +68,13 @@ namespace symir {
 
       SymbolicValue(const SymbolicValue &other) = default;
       SymbolicValue &operator=(const SymbolicValue &other) = default;
-
       SymbolicValue(SymbolicValue &&) = default;
       SymbolicValue &operator=(SymbolicValue &&) = default;
     };
 
     using SymbolicStore = std::unordered_map<std::string, SymbolicValue>;
 
+    // --- Symbolic evaluation helpers ---
     SymbolicValue mergeAggregate(
         const std::vector<SymbolicValue> &elements, bitwuzla::Term idx, bitwuzla::TermManager &tm
     );
@@ -113,7 +125,6 @@ namespace symir {
         const TypePtr &t, const std::string &name, bitwuzla::TermManager &tm, bool isSymbol = false
     );
 
-    // Helpers for recursive aggregate handling
     SymbolicValue makeUndef(const TypePtr &t, bitwuzla::TermManager &tm);
     SymbolicValue broadcast(const TypePtr &t, bitwuzla::Term val, bitwuzla::TermManager &tm);
     SymbolicValue

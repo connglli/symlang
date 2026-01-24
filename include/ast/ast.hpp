@@ -9,22 +9,26 @@
 
 namespace symir {
 
-  // ---------------------------
-  // Source location primitives
-  // ---------------------------
-
+  /**
+   * Represents a location in the source code.
+   */
   struct SourcePos {
     std::size_t offset = 0; // byte offset in source
     int line = 1;           // 1-based
     int col = 1;            // 1-based
   };
 
+  /**
+   * Represents a span between two source positions.
+   */
   struct SourceSpan {
     SourcePos begin;
     SourcePos end;
   };
 
-  // A structured parse error with location.
+  /**
+   * A structured parse error with location information.
+   */
   struct ParseError : std::runtime_error {
     SourceSpan span;
 
@@ -38,6 +42,9 @@ namespace symir {
 
   using NodeId = std::uint32_t;
 
+  /**
+   * Base struct for all AST nodes containing common metadata.
+   */
   struct NodeBase {
     NodeId id{};
     SourceSpan span{};
@@ -47,58 +54,78 @@ namespace symir {
   // Identifier kinds (type-safe)
   // ---------------------------
 
+  /**
+   * Global identifier starting with '@', e.g., '@main'.
+   */
   struct GlobalId {
     std::string name;
     SourceSpan span;
-  }; // "@foo"
+  };
 
+  /**
+   * Local identifier starting with '%', e.g., '%x'.
+   */
   struct LocalId {
     std::string name;
     SourceSpan span;
-  }; // "%x"
+  };
 
+  /**
+   * Symbolic identifier starting with '@?' or '%?', e.g., '%?v'.
+   */
   struct SymId {
     std::string name;
     SourceSpan span;
-  }; // "@?c0" or "%?k"
+  };
 
+  /**
+   * Block label identifier starting with '^', e.g., '^entry'.
+   */
   struct BlockLabel {
     std::string name;
     SourceSpan span;
-  }; // "^entry"
+  };
 
   using AnyId = std::variant<GlobalId, LocalId, SymId, BlockLabel>;
-
-  // For places where LocalId or SymId are permitted.
   using LocalOrSymId = std::variant<LocalId, SymId>;
 
   // ---------------------------
   // Type system (AST-level)
   // ---------------------------
 
+  /**
+   * Represents integer types with specific bitwidths.
+   */
   struct IntType {
-    // "i32", "i64", or "i<N>"
     enum class Kind { I32, I64, ICustom } kind = Kind::I32;
-    std::optional<int> bits; // for ICustom
+    std::optional<int> bits; // bitwidth for ICustom
     SourceSpan span;
   };
 
+  /**
+   * Represents user-defined struct types.
+   */
   struct StructType {
-    GlobalId name; // e.g. @Rect
+    GlobalId name;
     SourceSpan span;
   };
 
   struct ArrayType;
-
   struct Type;
   using TypePtr = std::shared_ptr<Type>;
 
+  /**
+   * Represents fixed-size array types.
+   */
   struct ArrayType {
-    std::uint64_t size = 0; // fixed-size in v0
+    std::uint64_t size = 0;
     TypePtr elem;
     SourceSpan span;
   };
 
+  /**
+   * Wrapper for all possible types in SymIR.
+   */
   struct Type {
     using Variant = std::variant<IntType, StructType, ArrayType>;
     Variant v;
@@ -109,22 +136,35 @@ namespace symir {
   // AST: expressions
   // ---------------------------
 
+  /**
+   * Literal integer value.
+   */
   struct IntLit {
     std::int64_t value = 0;
     SourceSpan span;
   };
 
-  using Coef = std::variant<IntLit, LocalOrSymId>; // v0: IntLit | LocalId | SymId
+  /**
+   * A coefficient in an expression (literal or variable).
+   */
+  using Coef = std::variant<IntLit, LocalOrSymId>;
 
-  // Index: IntLit | LocalId | SymId
+  /**
+   * An index for array access.
+   */
   using Index = std::variant<IntLit, LocalOrSymId>;
 
-  // LValue access segments: [index] or .field
+  /**
+   * Represents an array index access segment.
+   */
   struct AccessIndex {
     Index index;
     SourceSpan span;
   };
 
+  /**
+   * Represents a struct field access segment.
+   */
   struct AccessField {
     std::string field;
     SourceSpan span;
@@ -132,25 +172,30 @@ namespace symir {
 
   using Access = std::variant<AccessIndex, AccessField>;
 
+  /**
+   * Represents an addressable location (e.g., %x.y[0]).
+   */
   struct LValue {
-    LocalId base;                 // v0: base is LocalId (params/locals)
-    std::vector<Access> accesses; // zero or more
+    LocalId base;
+    std::vector<Access> accesses;
     SourceSpan span;
   };
 
-  // RValue is just an LValue read in v0.
   using RValue = LValue;
 
-  // Relational operators
+  /**
+   * Relational operators for comparisons.
+   */
   enum class RelOp { EQ, NE, LT, LE, GT, GE };
 
-  // Forward decl
   struct Expr;
   struct Cond;
 
-  // SelectVal := RValue | Coef (v0 restriction: no nested expressions)
   using SelectVal = std::variant<RValue, Coef>;
 
+  /**
+   * Ternary select expression (lazy evaluation).
+   */
   struct SelectAtom {
     std::unique_ptr<Cond> cond;
     SelectVal vtrue;
@@ -158,19 +203,14 @@ namespace symir {
     SourceSpan span;
   };
 
-  // Atom kinds:
-  //   Coef * RValue
-  //   Coef / RValue
-  //   Coef % RValue
-  //   Coef & RValue
-  //   Coef | RValue
-  //   Coef ^ RValue
-  //   ~ RValue
-  //   select ...
-  //   Coef
-  //   RValue
+  /**
+   * Binary operator kinds for atoms.
+   */
   enum class AtomOpKind { Mul, Div, Mod, And, Or, Xor, Shl, Shr, LShr };
 
+  /**
+   * Binary operation atom.
+   */
   struct OpAtom {
     AtomOpKind op;
     Coef coef;
@@ -180,22 +220,34 @@ namespace symir {
 
   enum class UnaryOpKind { Not };
 
+  /**
+   * Unary operation atom.
+   */
   struct UnaryAtom {
     UnaryOpKind op;
     RValue rval;
     SourceSpan span;
   };
 
+  /**
+   * Constant or variable atom.
+   */
   struct CoefAtom {
     Coef coef;
     SourceSpan span;
   };
 
+  /**
+   * Read from an LValue atom.
+   */
   struct RValueAtom {
     RValue rval;
     SourceSpan span;
   };
 
+  /**
+   * Type cast atom.
+   */
   struct CastAtom {
     using Variant = std::variant<IntLit, SymId, LValue>;
     Variant src;
@@ -203,15 +255,20 @@ namespace symir {
     SourceSpan span;
   };
 
+  /**
+   * The fundamental building block of expressions.
+   */
   struct Atom {
     using Variant = std::variant<OpAtom, SelectAtom, CoefAtom, RValueAtom, CastAtom, UnaryAtom>;
     Variant v;
     SourceSpan span;
   };
 
-  // Expr := Atom (('+'|'-') Atom)* evaluated left-to-right
   enum class AddOp { Plus, Minus };
 
+  /**
+   * Represents a linear expression of atoms.
+   */
   struct Expr {
     Atom first;
 
@@ -225,7 +282,9 @@ namespace symir {
     SourceSpan span;
   };
 
-  // Condition: Expr RelOp Expr
+  /**
+   * A boolean condition (comparison of two expressions).
+   */
   struct Cond {
     Expr lhs;
     RelOp op;
@@ -237,17 +296,26 @@ namespace symir {
   // AST: instructions / terminators
   // ---------------------------
 
+  /**
+   * Assignment instruction: lhs = rhs.
+   */
   struct AssignInstr {
     LValue lhs;
     Expr rhs;
     SourceSpan span;
   };
 
+  /**
+   * Assume instruction: provides a constraint to the solver.
+   */
   struct AssumeInstr {
     Cond cond;
     SourceSpan span;
   };
 
+  /**
+   * Require instruction: an assertion that must hold.
+   */
   struct RequireInstr {
     Cond cond;
     std::optional<std::string> message;
@@ -256,26 +324,38 @@ namespace symir {
 
   using Instr = std::variant<AssignInstr, AssumeInstr, RequireInstr>;
 
+  /**
+   * Branch terminator (conditional or unconditional).
+   */
   struct BrTerm {
     std::optional<Cond> cond;
-    BlockLabel dest;      // used if unconditional
-    BlockLabel thenLabel; // used if conditional
-    BlockLabel elseLabel; // used if conditional
+    BlockLabel dest;
+    BlockLabel thenLabel;
+    BlockLabel elseLabel;
     bool isConditional = false;
     SourceSpan span;
   };
 
+  /**
+   * Return terminator.
+   */
   struct RetTerm {
     std::optional<Expr> value;
     SourceSpan span;
   };
 
+  /**
+   * Unreachable terminator.
+   */
   struct UnreachableTerm {
     SourceSpan span;
   };
 
   using Terminator = std::variant<BrTerm, RetTerm, UnreachableTerm>;
 
+  /**
+   * A basic block containing instructions and ending with a terminator.
+   */
   struct Block {
     BlockLabel label;
     std::vector<Instr> instrs;
@@ -293,8 +373,11 @@ namespace symir {
     SourceSpan span;
   };
 
+  /**
+   * User-defined struct declaration.
+   */
   struct StructDecl {
-    GlobalId name; // @TypeName
+    GlobalId name;
     std::vector<FieldDecl> fields;
     SourceSpan span;
   };
@@ -314,40 +397,54 @@ namespace symir {
 
   using Domain = std::variant<DomainInterval, DomainSet>;
 
+  /**
+   * Symbolic variable declaration.
+   */
   struct SymDecl {
-    SymId name; // @? or %?
+    SymId name;
     SymKind kind;
     TypePtr type;
     std::optional<Domain> domain;
     SourceSpan span;
   };
 
-  // let / let mut
   struct InitVal;
   using InitValPtr = std::shared_ptr<InitVal>;
 
+  /**
+   * Initializer value for variables.
+   */
   struct InitVal {
     enum class Kind { Int, Sym, Local, Undef, Aggregate } kind;
     std::variant<IntLit, SymId, LocalId, std::vector<InitValPtr>> value;
     SourceSpan span;
   };
 
+  /**
+   * Local variable declaration (mutable or immutable).
+   */
   struct LetDecl {
-    bool isMutable = false; // let mut
-    LocalId name;           // %x
+    bool isMutable = false;
+    LocalId name;
     TypePtr type;
     std::optional<InitVal> init;
     SourceSpan span;
   };
 
+  /**
+   * Function parameter declaration.
+   */
   struct ParamDecl {
-    LocalId name; // %p
+    LocalId name;
     TypePtr type;
     SourceSpan span;
   };
 
+  /**
+   * Function declaration.
+   */
   struct FunDecl {
-    GlobalId name; // @f
+    GlobalId name;
     std::vector<ParamDecl> params;
     TypePtr retType;
     std::vector<SymDecl> syms;
@@ -356,6 +453,9 @@ namespace symir {
     SourceSpan span;
   };
 
+  /**
+   * Represents a complete SymIR program.
+   */
   struct Program {
     std::vector<StructDecl> structs;
     std::vector<FunDecl> funs;

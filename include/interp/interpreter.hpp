@@ -8,9 +8,20 @@
 
 namespace symir {
 
+  /**
+   * A concrete interpreter for the SymIR language.
+   * Executes SymIR programs by evaluating expressions and instructions
+   * against concrete values for symbolic variables.
+   */
   class Interpreter {
   public:
     explicit Interpreter(const Program &prog);
+    /**
+     * Executes the specified entry function with given symbolic bindings.
+     * @param entryFuncName The name of the function to start execution from.
+     * @param symBindings Mapping of symbolic identifiers to concrete values.
+     * @param dumpExec Whether to print execution trace to stderr.
+     */
     void
     run(const std::string &entryFuncName,
         const std::unordered_map<std::string, std::int64_t> &symBindings, bool dumpExec = false);
@@ -20,6 +31,9 @@ namespace symir {
     bool dumpExec_ = false;
     std::unordered_map<std::string, const StructDecl *> structs_;
 
+    /**
+     * Represents a value during runtime.
+     */
     struct RuntimeValue {
       enum class Kind { Int, Array, Struct, Undef } kind;
       std::int64_t intVal = 0;
@@ -30,6 +44,7 @@ namespace symir {
 
     using Store = std::unordered_map<std::string, RuntimeValue>;
 
+    // --- Runtime evaluation helpers ---
     RuntimeValue makeUndef(const TypePtr &t);
     RuntimeValue broadcast(const TypePtr &t, const RuntimeValue &v);
     RuntimeValue evalInit(const InitVal &iv, const TypePtr &t, const Store &store);

@@ -5,6 +5,9 @@
 
 namespace symir {
 
+  /**
+   * Represents the result of type inference for an expression or atom.
+   */
   struct Ty {
     struct BoolTy {};
 
@@ -22,14 +25,24 @@ namespace symir {
     std::uint32_t bvBits() const { return std::get<BVTy>(v).bits; }
   };
 
+  /**
+   * Stores type information for AST nodes after type checking.
+   */
   struct TypeAnnotations {
     std::unordered_map<NodeId, Ty> nodeTy;
   };
 
+  /**
+   * Performs bitwidth-aware type checking on the SymIR AST.
+   * Ensures that bitwidths match across assignments and operations.
+   */
   class TypeChecker : public symir::ModulePass {
   public:
     std::string name() const override { return "TypeChecker"; }
 
+    /**
+     * Executes the type checker on the program.
+     */
     symir::PassResult run(Program &prog, DiagBag &diags) override;
 
   private:
@@ -54,6 +67,7 @@ namespace symir {
       SourceSpan declSpan;
     };
 
+    // --- Internal type checking helpers ---
     void collectStructs(const Program &prog, DiagBag &diags);
     void checkFunction(const FunDecl &f, TypeAnnotations &ann, DiagBag &diags);
 

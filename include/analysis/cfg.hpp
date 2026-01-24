@@ -8,22 +8,40 @@
 
 namespace symir {
 
+  /**
+   * Represents the Control Flow Graph of a function.
+   *
+   * The CFG indexes basic blocks and tracks successor/predecessor relationships
+   * to facilitate various program analyses and optimizations.
+   */
   struct CFG {
-    // Block order as in function
-    std::vector<std::string> blocks; // "^entry", "^b1", ...
+    // List of block labels in the order they appear in the function.
+    std::vector<std::string> blocks;
+    // Mapping from block label to its index in the 'blocks' vector.
     std::unordered_map<std::string, std::size_t> indexOf;
 
-    // Adjacency by indices
+    // Adjacency lists representing the edges between blocks (using indices).
     std::vector<std::vector<std::size_t>> succ;
     std::vector<std::vector<std::size_t>> pred;
 
-    std::size_t entry = 0; // index into blocks
+    // Index of the entry block (defaults to 0).
+    std::size_t entry = 0;
 
+    /**
+     * Helper to get a string key for a block label.
+     */
     static std::string labelKey(const BlockLabel &b) { return b.name; }
 
+    /**
+     * Builds the CFG for a given function declaration.
+     * Reports errors (like invalid branch targets) to the provided DiagBag.
+     */
     static CFG build(const FunDecl &f, DiagBag &diags);
 
-    // Reverse postorder from entry (useful for forward dataflow)
+    /**
+     * Computes the Reverse Postorder traversal of the CFG.
+     * RPO is essential for efficient forward dataflow analysis.
+     */
     std::vector<std::size_t> rpo() const;
   };
 
