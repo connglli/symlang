@@ -466,15 +466,28 @@ namespace symir {
   // Utilities
   // ---------------------------
   inline int64_t parseIntegerLiteral(const std::string &s) {
-    if (s.size() >= 2 && s[0] == '0') {
-      if (s[1] == 'x' || s[1] == 'X')
-        return std::stoll(s, nullptr, 16);
-      if (s[1] == 'o' || s[1] == 'O')
-        return std::stoll(s.substr(2), nullptr, 8);
-      if (s[1] == 'b' || s[1] == 'B')
-        return std::stoll(s.substr(2), nullptr, 2);
+    // The literal might be:
+    //   0x... (hexadecimal)
+    //   0o... (octal)
+    //   0b... (binary)
+    //   ...or decimal by default.
+    // Or with a leading '-'.
+    if (s.size() >= 2) {
+      size_t n = (s[0] == '-') ? 1 : 0;
+      if (s.size() > n + 1 && s[n] == '0') {
+        if (s[n + 1] == 'x' || s[n + 1] == 'X')
+          return std::stoll(s, nullptr, 16);
+        if (s[n + 1] == 'o' || s[n + 1] == 'O') {
+          std::string octal = (n == 1 ? "-" : "") + s.substr(n + 2);
+          return std::stoll(octal, nullptr, 8);
+        }
+        if (s[n + 1] == 'b' || s[n + 1] == 'B') {
+          std::string binary = (n == 1 ? "-" : "") + s.substr(n + 2);
+          return std::stoll(binary, nullptr, 2);
+        }
+      }
     }
-    return std::stoll(s, nullptr, 0);
+    return static_cast<int64_t>(std::stoll(s, nullptr, 10));
   }
 
 } // namespace symir

@@ -247,13 +247,12 @@ namespace symir {
             [&](auto &&arg) {
               using T = std::decay_t<decltype(arg)>;
               if constexpr (std::is_same_v<T, AssignInstr>) {
-                auto rhs = evalExpr(arg.rhs, tm, solver, store, pathConstraints);
-                auto defined =
-                    tm.mk_true(); // Assuming rhs is defined for now, actually need to track
-                // For v0, we assume evalExpr returns a defined value unless it propagates undef
-                // (which we don't track fully in evalExpr yet). Let's use a dummy true for now or
-                // update evalExpr to return definedness. Actually, SymbolicValue::Kind::Int needs 3
-                // args now. Let's just create a SymbolicValue with Int kind.
+                auto lhsVal = evalLValue(arg.lhs, tm, solver, store, pathConstraints);
+                auto rhs = evalExpr(
+                    arg.rhs, tm, solver, store, pathConstraints,
+                    lhsVal.kind == SymbolicValue::Kind::Int ? std::optional(lhsVal.term.sort())
+                                                            : std::nullopt
+                );
                 SymbolicValue val(SymbolicValue::Kind::Int, rhs, tm.mk_true());
                 setLValue(arg.lhs, val, tm, solver, store, pathConstraints);
               } else if constexpr (std::is_same_v<T, AssumeInstr>) {
@@ -513,11 +512,11 @@ namespace symir {
 
   bitwuzla::Term SymbolicExecutor::evalExpr(
       const Expr &e, bitwuzla::TermManager &tm, bitwuzla::Bitwuzla &solver, SymbolicStore &store,
-      std::vector<bitwuzla::Term> &pc
+      std::vector<bitwuzla::Term> &pc, std::optional<bitwuzla::Sort> expectedSort
   ) {
-    bitwuzla::Term res = evalAtom(e.first, tm, solver, store, pc);
+    bitwuzla::Term res = evalAtom(e.first, tm, solver, store, pc, expectedSort);
     for (const auto &tail: e.rest) {
-      bitwuzla::Term right = evalAtom(tail.atom, tm, solver, store, pc);
+      bitwuzla::Term right = evalAtom(tail.atom, tm, solver, store, pc, expectedSort);
       if (tail.op == AddOp::Plus) {
         auto overflow = tm.mk_term(bitwuzla::Kind::BV_SADD_OVERFLOW, {res, right});
         pc.push_back(tm.mk_term(bitwuzla::Kind::NOT, {overflow}));
@@ -533,13 +532,13 @@ namespace symir {
 
   bitwuzla::Term SymbolicExecutor::evalAtom(
       const Atom &a, bitwuzla::TermManager &tm, bitwuzla::Bitwuzla &solver, SymbolicStore &store,
-      std::vector<bitwuzla::Term> &pc
+      std::vector<bitwuzla::Term> &pc, std::optional<bitwuzla::Sort> expectedSort
   ) {
     return std::visit(
         [&](auto &&arg) -> bitwuzla::Term {
           using T = std::decay_t<decltype(arg)>;
           if constexpr (std::is_same_v<T, OpAtom>) {
-            bitwuzla::Term c = evalCoef(arg.coef, tm, solver, store);
+            bitwuzla::Term c = evalCoef(arg.coef, tm, solver, store, expectedSort);
             bitwuzla::Term r = evalLValue(arg.rval, tm, solver, store, pc).term;
             if (arg.op == AtomOpKind::Div || arg.op == AtomOpKind::Mod) {
               auto zero = tm.mk_bv_zero(r.sort());
@@ -602,11 +601,11 @@ namespace symir {
             return {};
           } else if constexpr (std::is_same_v<T, SelectAtom>) {
             bitwuzla::Term cond = evalCond(*arg.cond, tm, solver, store, pc);
-            bitwuzla::Term vt = evalSelectVal(arg.vtrue, tm, solver, store, pc);
-            bitwuzla::Term vf = evalSelectVal(arg.vfalse, tm, solver, store, pc);
+            bitwuzla::Term vt = evalSelectVal(arg.vtrue, tm, solver, store, pc, expectedSort);
+            bitwuzla::Term vf = evalSelectVal(arg.vfalse, tm, solver, store, pc, expectedSort);
             return tm.mk_term(bitwuzla::Kind::ITE, {cond, vt, vf});
           } else if constexpr (std::is_same_v<T, CoefAtom>) {
-            return evalCoef(arg.coef, tm, solver, store);
+            return evalCoef(arg.coef, tm, solver, store, expectedSort);
           } else if constexpr (std::is_same_v<T, RValueAtom>) {
             return evalLValue(arg.rval, tm, solver, store, pc).term;
           } else if constexpr (std::is_same_v<T, CastAtom>) {
@@ -640,10 +639,12 @@ namespace symir {
   }
 
   bitwuzla::Term SymbolicExecutor::evalCoef(
-      const Coef &c, bitwuzla::TermManager &tm, bitwuzla::Bitwuzla &, SymbolicStore &store
+      const Coef &c, bitwuzla::TermManager &tm, bitwuzla::Bitwuzla &, SymbolicStore &store,
+      std::optional<bitwuzla::Sort> expectedSort
   ) {
     if (auto lit = std::get_if<IntLit>(&c)) {
-      return tm.mk_bv_value(tm.mk_bv_sort(32), std::to_string(lit->value), 10);
+      bitwuzla::Sort s = expectedSort.value_or(tm.mk_bv_sort(32));
+      return tm.mk_bv_value(s, std::to_string(lit->value), 10);
     }
     auto id = std::get<LocalOrSymId>(c);
     return std::visit([&](auto &&v) { return store.at(v.name).term; }, id);
@@ -651,11 +652,12 @@ namespace symir {
 
   bitwuzla::Term SymbolicExecutor::evalSelectVal(
       const SelectVal &sv, bitwuzla::TermManager &tm, bitwuzla::Bitwuzla &solver,
-      SymbolicStore &store, std::vector<bitwuzla::Term> &pc
+      SymbolicStore &store, std::vector<bitwuzla::Term> &pc,
+      std::optional<bitwuzla::Sort> expectedSort
   ) {
     if (auto rv = std::get_if<RValue>(&sv))
       return evalLValue(*rv, tm, solver, store, pc).term;
-    return evalCoef(std::get<Coef>(sv), tm, solver, store);
+    return evalCoef(std::get<Coef>(sv), tm, solver, store, expectedSort);
   }
 
   bitwuzla::Term SymbolicExecutor::evalCond(
@@ -663,7 +665,7 @@ namespace symir {
       std::vector<bitwuzla::Term> &pc
   ) {
     bitwuzla::Term lhs = evalExpr(c.lhs, tm, solver, store, pc);
-    bitwuzla::Term rhs = evalExpr(c.rhs, tm, solver, store, pc);
+    bitwuzla::Term rhs = evalExpr(c.rhs, tm, solver, store, pc, lhs.sort());
     switch (c.op) {
       case RelOp::EQ:
         return tm.mk_term(bitwuzla::Kind::EQUAL, {lhs, rhs});

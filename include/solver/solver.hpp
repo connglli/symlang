@@ -81,18 +81,20 @@ namespace symir {
 
     bitwuzla::Term evalExpr(
         const Expr &e, bitwuzla::TermManager &tm, bitwuzla::Bitwuzla &solver, SymbolicStore &store,
-        std::vector<bitwuzla::Term> &pc
+        std::vector<bitwuzla::Term> &pc, std::optional<bitwuzla::Sort> expectedSort = std::nullopt
     );
     bitwuzla::Term evalAtom(
         const Atom &a, bitwuzla::TermManager &tm, bitwuzla::Bitwuzla &solver, SymbolicStore &store,
-        std::vector<bitwuzla::Term> &pc
+        std::vector<bitwuzla::Term> &pc, std::optional<bitwuzla::Sort> expectedSort = std::nullopt
     );
     bitwuzla::Term evalCoef(
-        const Coef &c, bitwuzla::TermManager &tm, bitwuzla::Bitwuzla &solver, SymbolicStore &store
+        const Coef &c, bitwuzla::TermManager &tm, bitwuzla::Bitwuzla &solver, SymbolicStore &store,
+        std::optional<bitwuzla::Sort> expectedSort = std::nullopt
     );
     bitwuzla::Term evalSelectVal(
         const SelectVal &sv, bitwuzla::TermManager &tm, bitwuzla::Bitwuzla &solver,
-        SymbolicStore &store, std::vector<bitwuzla::Term> &pc
+        SymbolicStore &store, std::vector<bitwuzla::Term> &pc,
+        std::optional<bitwuzla::Sort> expectedSort = std::nullopt
     );
 
     SymbolicValue evalLValue(

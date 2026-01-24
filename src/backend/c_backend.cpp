@@ -308,6 +308,7 @@ namespace symir {
   }
 
   void CBackend::emitAtom(const Atom &atom) {
+    out_ << "(";
     std::visit(
         [this](auto &&arg) {
           using T = std::decay_t<decltype(arg)>;
@@ -409,6 +410,7 @@ namespace symir {
         },
         atom.v
     );
+    out_ << ")";
   }
 
   void CBackend::emitCond(const Cond &cond) {
