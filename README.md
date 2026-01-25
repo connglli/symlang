@@ -1,98 +1,166 @@
-# SymIR / SymLang
+# SymLang (SymIR): A CFG-Based Symbolic Language / Intermediate Representation
 
-SymIR (also referred to as SymLang) is a **CFG-based symbolic intermediate representation** designed for
-program synthesis, symbolic execution, and constraint generation for SMT solvers using **bit-vector (BV) logic**.
+> [!WARNING]
+> The project is under active development. APIs and IR details are still evolving, but semantic decisions in `SPEC.md` are authoritative for v0.
 
-The project provides:
-- a well-defined symbolic IR (`.sir`)
-- a reference interpreter
-- translators to C and WebAssembly
-- a clean foundation for future concretization and solver integration
+SymIR (also referred to as SymLang) is a **CFG-based symbolic intermediate representation** designed for program synthesis, symbolic execution, and constraint generation for SMT solvers using **bit-vector (BV) logic**.
 
-The language specification is defined in detail in:
+It provides a robust foundation for building tools that need to reason about program semantics, explore execution paths, or synthesize code snippets that satisfy specific properties.
 
-👉 **[./docs/SPEC_v0.md](./docs/SPEC_v0.md)**
+## Table of Contents
+
+- [Core Concepts](#core-concepts)
+- [Tools Overview](#tools-overview)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Building](#building)
+  - [Running Tests](#running-tests)
+- [Typical Workflows](#typical-workflows)
+- [Project Structure](#project-structure)
+- [Documentation](#documentation)
 
 
 ## Core Concepts
 
-- Programs may be **symbolic** (contain solver-chosen unknowns) or **concrete**
-- Symbols are explicit (`@?x`, `%?y`) and immutable
-- Control flow is explicit via basic blocks and `br` instructions
-- Expressions are intentionally restricted for SMT friendliness
-- Semantics include **strict undefined behavior (UB)**
-
+- **Path-Oriented:** Designed specifically for symbolic execution and path-based analysis.
+- **Symbolic by Design:** Programs may be **symbolic** (contain solver-chosen unknowns marked with `?`) or fully concrete.
+- **Explicit Control Flow:** CFG-based representation using basic blocks and `br` instructions (no structured nesting requirements).
+- **SMT-Friendly:** Expressions are intentionally restricted to flat, left-to-right forms to ensure predictable BV constraints.
+- **Strict Semantics:** Includes **strict undefined behavior (UB)** for operations like division-by-zero or out-of-bounds access, facilitating bug-finding.
 
 ## Tools Overview
 
-This repository currently provides three primary tools:
+| Tool | Purpose |
+| :--- | :--- |
+| `symiri` | **Interpreter**: Execute `.sir` programs directly with concrete values or symbol bindings. |
+| `symirc` | **Compiler**: Translate `.sir` programs into optimized C or WebAssembly (WASM). |
+| `symirsolve` | **Solver**: Concretize symbolic programs by solving path constraints via SMT (Bitwuzla). |
 
-| Tool      | Purpose |
-|-----------|--------|
-| `symiri` | Interpret `.sir` programs directly |
-| `symirc` | Translate `.sir` programs into C or WebAssembly |
-| `symirsolve` | Concretize symbolic programs using SMT (Bitwuzla) |
+## Getting Started
 
-Documentation of each tool: [./docs/](./docs).
+### Prerequisites
 
+- **C++20** compatible compiler (GCC 10+ or Clang 10+)
+- **GMP** (GNU Multi-Precision Arithmetic Library)
+  - Required by the Bitwuzla SMT solver
+- **Python 3** (for running the test suite)
+- **WASM runtime** (optional, for running WASM backend tests such as Wasmtime, Wasmer, or Node.js)
+
+### Building
+
+To build all tools (interpreter, compiler, and solver):
+
+```bash
+make -j$(nproc)
+```
+
+To clean the build artifacts:
+
+```bash
+make clean
+```
+
+### Running Tests
+
+The project includes an extensive test suite covering lexing, parsing, analysis, interpretation, compilation, and solving.
+
+```bash
+make test
+```
 
 ## Typical Workflows
 
-### Interpret a concrete program
+### 1. Interpret a Concrete Program
 ```bash
-symiri input.sir
-````
-
-### Interpret a symbolic program with bindings
-
-```bash
-symiri input.sir --sym %?a=10 --dump-trace
+./symiri examples/hello.sir
 ```
 
-### Translate to C/WASM
+### 2. Interpret a Symbolic Program with Bindings
+Provide concrete values for symbols at runtime:
 ```bash
-symirc input.sir --target c -o out.c
+./symiri examples/template.sir --sym %?a=10 --dump-trace
 ```
 
-Note: for symbolic programs, `symirc` emits extern C function declarations or WASM imports.
-
-### Concretize a symbolic template
+### 3. Compile to C or WebAssembly
 ```bash
-symirsolve template.sir --path '^entry,^b1,^exit' -o concrete.sir
+# Compile to C
+./symirc input.sir --target c -o out.c
+
+# Compile to WebAssembly
+./symirc input.sir --target wasm -o out.wat
 ```
 
+### 4. Solve for Symbolic Values
+Automatically find values for symbols that satisfy a specific execution path:
+```bash
+./symirsolve template.sir --path '^entry,^b1,^exit' -o concrete.sir
+```
+## SymLang Example
 
-## Repository Structure
+More in [./tests/](./tests/).
 
 ```
+// EXPECT: PASS
+// ARGS: --main @main --path '^entry,^loop,^loop,^loop,^loop,^exit'
+
+// Polynomial loop synthesis
+// Find 'x' such that iterating `acc = acc + x + i` for 4 times results in specific value.
+// acc_0 = 0
+// i=0: acc_1 = 0 + x + 0 = x
+// i=1: acc_2 = x + x + 1 = 2x + 1
+// i=2: acc_3 = (2x+1) + x + 2 = 3x + 3
+// i=3: acc_4 = (3x+3) + x + 3 = 4x + 6
+// Target: 46.
+// 4x + 6 = 46 => 4x = 40 => x = 10.
+
+fun @main() : i32 {
+  sym %?x : value i32 in [0, 100];
+  let mut %acc: i32 = 0;
+  let mut %i: i32 = 0;
+  let %one: i32 = 1;
+  let %target: i32 = 46;
+  let mut %tmp: i32 = 0;
+
+^entry:
+  br ^loop;
+
+^loop:
+  // acc = acc + x + i
+  %tmp = %?x + %i;
+  %acc = %acc + %tmp;
+
+  %i = %i + %one;
+  br %i < 4, ^loop, ^exit;
+
+^exit:
+  require %acc == %target, "accumulator must match target value after loop";
+  ret 0;
+}
+```
+
+## Project Structure
+
+```text
 .
-├── README.md
-├── docs/
-│   ├── SPEC_v0.md
-│   ├── symirc.md
-│   ├── symiri.md
-│   └── symirsolve.md
-├── include/
-│   ├── ast/
-│   ├── frontend/
-│   ├── analysis/
-│   ├── backend/
-│   ├── interp/
-│   └── solver/
-├── src/
-│   ├── symiri.cpp
-│   ├── symirc.cpp
-│   ├── symirsolve.cpp
-│   ├── frontend/
-│   ├── analysis/
-│   ├── backend/
-│   ├── interp/
-│   └── solver/
-└── test/
+├── include/          # Header files
+│   ├── ast/          # AST definitions
+│   ├── frontend/     # Lexer, Parser, TypeChecker
+│   ├── analysis/     # CFG, Dataflow, Pass Manager
+│   ├── backend/      # C and WASM backends
+│   └── solver/       # SMT integration
+├── src/              # Implementation files
+├── docs/             # Tool and language documentation
+├── test/             # Test suite and regression tests
+└── Makefile          # Build system
 ```
 
+## Documentation
 
-## Status
+- **[Language Specification (v0)](./docs/SPEC_v0.md)**
+- **[symiri User Guide](./docs/symiri.md)**
+- **[symirc User Guide](./docs/symirc.md)**
+- **[symirsolve User Guide](./docs/symirsolve.md)**
 
-The project is under active development.
-APIs and IR details are still evolving, but semantic decisions in `SPEC.md` are authoritative for v0.
+## License
+
+MIT.
