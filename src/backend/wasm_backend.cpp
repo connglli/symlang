@@ -125,10 +125,10 @@ namespace symir {
     }
   }
 
-  void WasmBackend::emitMask(std::uint32_t bitwidth) {
-    if (bitwidth == 32 || bitwidth == 64)
+  void WasmBackend::emitMask(std::uint32_t bitwidth, std::uint32_t wasmWidth) {
+    if (bitwidth >= wasmWidth)
       return;
-    if (bitwidth < 32) {
+    if (wasmWidth == 32) {
       uint32_t mask = (1ULL << bitwidth) - 1;
       indent();
       out_ << "i32.const " << mask << "\n";
@@ -146,7 +146,7 @@ namespace symir {
   void WasmBackend::emitSignExtend(std::uint32_t fromWidth, std::uint32_t toWidth) {
     if (fromWidth == toWidth)
       return;
-    if (toWidth == 32) {
+    if (toWidth <= 32) {
       indent();
       out_ << "i32.const " << (32 - fromWidth) << "\n";
       indent();
@@ -185,55 +185,85 @@ namespace symir {
         out_ << (t.op == AddOp::Plus ? "i32.add\n" : "i32.sub\n");
       else
         out_ << (t.op == AddOp::Plus ? "i64.add\n" : "i64.sub\n");
-      emitMask(targetWidth);
+      emitSignExtend(targetWidth, (targetWidth <= 32 ? 32 : 64));
     }
   }
 
   void WasmBackend::emitAtom(const Atom &atom, std::uint32_t targetWidth) {
+    uint32_t wasmWidth = (targetWidth <= 32 ? 32 : 64);
     std::visit(
-        [this, targetWidth](auto &&arg) {
+        [this, targetWidth, wasmWidth](auto &&arg) {
           using T = std::decay_t<decltype(arg)>;
           if constexpr (std::is_same_v<T, CoefAtom>) {
             emitCoef(arg.coef, targetWidth);
           } else if constexpr (std::is_same_v<T, RValueAtom>) {
             emitLValue(arg.rval, false);
-          } else if constexpr (std::is_same_v<T, OpAtom>) {
-            emitCoef(arg.coef, targetWidth);
-            emitLValue(arg.rval, false);
-            indent();
-            std::string opStr;
-            std::string prefix = (targetWidth <= 32 ? "i32." : "i64.");
-            switch (arg.op) {
-              case AtomOpKind::Mul:
-                opStr = prefix + "mul";
-                break;
-              case AtomOpKind::Div:
-                opStr = prefix + "div_s";
-                break;
-              case AtomOpKind::Mod:
-                opStr = prefix + "rem_s";
-                break;
-              case AtomOpKind::And:
-                opStr = prefix + "and";
-                break;
-              case AtomOpKind::Or:
-                opStr = prefix + "or";
-                break;
-              case AtomOpKind::Xor:
-                opStr = prefix + "xor";
-                break;
-              case AtomOpKind::Shl:
-                opStr = prefix + "shl";
-                break;
-              case AtomOpKind::Shr:
-                opStr = prefix + "shr_s";
-                break;
-              case AtomOpKind::LShr:
-                opStr = prefix + "shr_u";
-                break;
+            if (locals_.count(arg.rval.base.name)) {
+              std::uint32_t srcWidth = getIntWidth(locals_.at(arg.rval.base.name).symirType);
+              if (srcWidth <= 32 && targetWidth > 32) {
+                indent();
+                out_ << "i64.extend_i32_s\n";
+              } else if (srcWidth > 32 && targetWidth <= 32) {
+                indent();
+                out_ << "i32.wrap_i64\n";
+              }
             }
-            out_ << opStr << "\n";
-            emitMask(targetWidth);
+          } else if constexpr (std::is_same_v<T, OpAtom>) {
+            if (arg.op == AtomOpKind::LShr) {
+              emitCoef(arg.coef, targetWidth);
+              emitMask(targetWidth, wasmWidth);
+              emitLValue(arg.rval, false);
+              indent();
+              out_ << (wasmWidth == 32 ? "i32.shr_u\n" : "i64.shr_u\n");
+            } else {
+              emitCoef(arg.coef, targetWidth);
+              emitLValue(arg.rval, false);
+              if (locals_.count(arg.rval.base.name)) {
+                std::uint32_t rWidth = getIntWidth(locals_.at(arg.rval.base.name).symirType);
+                if (rWidth <= 32 && targetWidth > 32) {
+                  indent();
+                  out_ << "i64.extend_i32_s\n";
+                } else if (rWidth > 32 && targetWidth <= 32) {
+                  indent();
+                  out_ << "i32.wrap_i64\n";
+                }
+              }
+
+              indent();
+              std::string opStr;
+              std::string prefix = (targetWidth <= 32 ? "i32." : "i64.");
+              switch (arg.op) {
+                case AtomOpKind::Mul:
+                  opStr = prefix + "mul";
+                  break;
+                case AtomOpKind::Div:
+                  opStr = prefix + "div_s";
+                  break;
+                case AtomOpKind::Mod:
+                  opStr = prefix + "rem_s";
+                  break;
+                case AtomOpKind::And:
+                  opStr = prefix + "and";
+                  break;
+                case AtomOpKind::Or:
+                  opStr = prefix + "or";
+                  break;
+                case AtomOpKind::Xor:
+                  opStr = prefix + "xor";
+                  break;
+                case AtomOpKind::Shl:
+                  opStr = prefix + "shl";
+                  break;
+                case AtomOpKind::Shr:
+                  opStr = prefix + "shr_s";
+                  break;
+                case AtomOpKind::LShr:
+                  opStr = prefix + "shr_u";
+                  break;
+              }
+              out_ << opStr << "\n";
+            }
+            emitSignExtend(targetWidth, wasmWidth);
           } else if constexpr (std::is_same_v<T, SelectAtom>) {
             emitCond(*arg.cond);
             indent();
@@ -250,6 +280,17 @@ namespace symir {
             out_ << "end\n";
           } else if constexpr (std::is_same_v<T, UnaryAtom>) {
             emitLValue(arg.rval, false);
+            if (locals_.count(arg.rval.base.name)) {
+              std::uint32_t srcWidth = getIntWidth(locals_.at(arg.rval.base.name).symirType);
+              if (srcWidth <= 32 && targetWidth > 32) {
+                indent();
+                out_ << "i64.extend_i32_s\n";
+              } else if (srcWidth > 32 && targetWidth <= 32) {
+                indent();
+                out_ << "i32.wrap_i64\n";
+              }
+            }
+
             indent();
             if (targetWidth <= 32) {
               out_ << "i32.const -1\n";
@@ -260,7 +301,7 @@ namespace symir {
               indent();
               out_ << "i64.xor\n";
             }
-            emitMask(targetWidth);
+            emitSignExtend(targetWidth, wasmWidth);
           } else if constexpr (std::is_same_v<T, CastAtom>) {
             std::uint32_t srcWidth = 32;
             std::visit(
@@ -275,22 +316,33 @@ namespace symir {
                     out_ << "call " << mangleName(getMangledSymbolName(curFuncName_, src.name))
                          << "\n";
                     srcWidth = 32;
+                    if (syms_.count(src.name)) {
+                      srcWidth = getIntWidth(syms_.at(src.name));
+                    }
                   } else {
                     emitLValue(src, false);
-                    srcWidth = 32;
+                    if (locals_.count(src.base.name))
+                      srcWidth = getIntWidth(locals_.at(src.base.name).symirType);
                   }
                 },
                 arg.src
             );
             std::uint32_t dstWidth = getIntWidth(arg.dstType);
-            if (srcWidth <= 32 && dstWidth > 32) {
-              indent();
-              out_ << "i64.extend_i32_s\n";
-            } else if (srcWidth > 32 && dstWidth <= 32) {
-              indent();
-              out_ << "i32.wrap_i64\n";
+            // Handle cross-width conversions
+            if (srcWidth <= 32 && (targetWidth > 32 || dstWidth > 32)) {
+              // Upcast: extend if targeting 64
+              if (wasmWidth == 64) {
+                indent();
+                out_ << "i64.extend_i32_s\n";
+              }
+            } else if (srcWidth > 32 && (targetWidth <= 32 || dstWidth <= 32)) {
+              // Downcast: wrap if targeting 32
+              if (wasmWidth == 32) {
+                indent();
+                out_ << "i32.wrap_i64\n";
+              }
             }
-            emitMask(dstWidth);
+            emitSignExtend(targetWidth, wasmWidth);
           }
         },
         atom.v
@@ -299,6 +351,38 @@ namespace symir {
 
   void WasmBackend::emitCond(const Cond &cond) {
     std::uint32_t width = 32;
+    auto needs64 = [&](const Expr &e) {
+      auto atomNeeds64 = [&](const Atom &a) {
+        if (std::holds_alternative<CastAtom>(a.v)) {
+          if (getIntWidth(std::get<CastAtom>(a.v).dstType) > 32)
+            return true;
+        } else if (std::holds_alternative<RValueAtom>(a.v)) {
+          auto &lv = std::get<RValueAtom>(a.v).rval;
+          if (locals_.count(lv.base.name) && getIntWidth(locals_.at(lv.base.name).symirType) > 32)
+            return true;
+        } else if (std::holds_alternative<CoefAtom>(a.v)) {
+          auto &coef = std::get<CoefAtom>(a.v).coef;
+          if (std::holds_alternative<LocalOrSymId>(coef)) {
+            auto &id = std::get<LocalOrSymId>(coef);
+            if (std::holds_alternative<LocalId>(id)) {
+              auto &lid = std::get<LocalId>(id);
+              if (locals_.count(lid.name) && getIntWidth(locals_.at(lid.name).symirType) > 32)
+                return true;
+            }
+          }
+        }
+        return false;
+      };
+      if (atomNeeds64(e.first))
+        return true;
+      for (const auto &t: e.rest)
+        if (atomNeeds64(t.atom))
+          return true;
+      return false;
+    };
+    if (needs64(cond.lhs) || needs64(cond.rhs))
+      width = 64;
+
     emitExpr(cond.lhs, width);
     emitExpr(cond.rhs, width);
     indent();
@@ -328,47 +412,81 @@ namespace symir {
   }
 
   void WasmBackend::emitAddress(const LValue &lv) {
+    if (!locals_.count(lv.base.name))
+      return;
     const auto &info = locals_.at(lv.base.name);
-    indent();
-    out_ << "local.get $__old_sp\n";
-    indent();
-    out_ << "i32.const " << info.offset << "\n";
-    indent();
-    out_ << "i32.sub\n";
+
+    if (info.isParam) {
+      indent();
+      out_ << "local.get " << mangleName(lv.base.name) << "\n";
+    } else {
+      indent();
+      out_ << "local.get $__old_sp\n";
+      indent();
+      out_ << "i32.const " << info.offset << "\n";
+      indent();
+      out_ << "i32.sub\n";
+    }
 
     TypePtr curType = info.symirType;
     for (const auto &acc: lv.accesses) {
       if (auto ai = std::get_if<AccessIndex>(&acc)) {
-        auto at = std::get<ArrayType>(curType->v);
-        std::uint32_t elemSize = getTypeSize(at.elem);
-        emitIndex(ai->index);
-        indent();
-        out_ << "i32.const " << elemSize << "\n";
-        indent();
-        out_ << "i32.mul\n";
-        indent();
-        out_ << "i32.add\n";
-        curType = at.elem;
+        if (auto at = std::get_if<ArrayType>(&curType->v)) {
+          std::uint32_t elemSize = getTypeSize(at->elem);
+          emitIndex(ai->index);
+          indent();
+          out_ << "i32.const " << elemSize << "\n";
+          indent();
+          out_ << "i32.mul\n";
+          indent();
+          out_ << "i32.add\n";
+          curType = at->elem;
+        }
       } else if (auto af = std::get_if<AccessField>(&acc)) {
-        auto st = std::get<StructType>(curType->v);
-        const auto &sinfo = structLayouts_.at(st.name.name);
-        const auto &finfo = sinfo.fields.at(af->field);
-        indent();
-        out_ << "i32.const " << finfo.offset << "\n";
-        indent();
-        out_ << "i32.add\n";
-        curType = finfo.type;
+        if (auto st = std::get_if<StructType>(&curType->v)) {
+          if (structLayouts_.count(st->name.name)) {
+            const auto &sinfo = structLayouts_.at(st->name.name);
+            if (sinfo.fields.count(af->field)) {
+              const auto &finfo = sinfo.fields.at(af->field);
+              indent();
+              out_ << "i32.const " << finfo.offset << "\n";
+              indent();
+              out_ << "i32.add\n";
+              curType = finfo.type;
+            }
+          }
+        }
       }
     }
   }
 
   void WasmBackend::emitLValue(const LValue &lv, bool isStore) {
+    if (!locals_.count(lv.base.name))
+      return;
     const auto &info = locals_.at(lv.base.name);
     if (info.isAggregate || !lv.accesses.empty()) {
       if (!isStore) {
         emitAddress(lv);
         indent();
-        out_ << (info.bitwidth <= 32 ? "i32.load\n" : "i64.load\n");
+        TypePtr curType = info.symirType;
+        for (const auto &acc: lv.accesses) {
+          if (std::get_if<AccessIndex>(&acc)) {
+            if (auto at = std::get_if<ArrayType>(&curType->v))
+              curType = at->elem;
+          } else if (auto af = std::get_if<AccessField>(&acc)) {
+            if (auto st = std::get_if<StructType>(&curType->v)) {
+              auto &fld = af->field;
+              if (structLayouts_.count(st->name.name) &&
+                  structLayouts_.at(st->name.name).fields.count(fld))
+                curType = structLayouts_.at(st->name.name).fields.at(fld).type;
+            }
+          }
+        }
+        std::uint32_t width = getIntWidth(curType);
+        out_ << (width <= 8
+                     ? "i32.load8_s"
+                     : (width <= 16 ? "i32.load16_s" : (width <= 32 ? "i32.load" : "i64.load")))
+             << "\n";
       }
     } else {
       if (isStore) {
@@ -382,23 +500,45 @@ namespace symir {
   }
 
   void WasmBackend::emitCoef(const Coef &coef, std::uint32_t targetWidth) {
+    uint32_t wasmWidth = (targetWidth <= 32 ? 32 : 64);
     std::visit(
-        [this, targetWidth](auto &&arg) {
+        [this, targetWidth, wasmWidth](auto &&arg) {
           using T = std::decay_t<decltype(arg)>;
           if constexpr (std::is_same_v<T, IntLit>) {
             indent();
-            out_ << (targetWidth <= 32 ? "i32.const " : "i64.const ") << arg.value << "\n";
+            out_ << (wasmWidth == 32 ? "i32.const " : "i64.const ") << arg.value << "\n";
           } else {
             std::visit(
-                [this, targetWidth](auto &&id) {
+                [this, targetWidth, wasmWidth](auto &&id) {
                   using ID = std::decay_t<decltype(id)>;
                   if constexpr (std::is_same_v<ID, SymId>) {
                     indent();
                     out_ << "call " << mangleName(getMangledSymbolName(curFuncName_, id.name))
                          << "\n";
+                    std::uint32_t srcWidth = 32;
+                    if (syms_.count(id.name)) {
+                      srcWidth = getIntWidth(syms_.at(id.name));
+                    }
+                    if (srcWidth <= 32 && targetWidth > 32) {
+                      indent();
+                      out_ << "i64.extend_i32_s\n";
+                    } else if (srcWidth > 32 && targetWidth <= 32) {
+                      indent();
+                      out_ << "i32.wrap_i64\n";
+                    }
                   } else {
                     indent();
                     out_ << "local.get " << mangleName(id.name) << "\n";
+                    if (locals_.count(id.name)) {
+                      std::uint32_t srcWidth = getIntWidth(locals_.at(id.name).symirType);
+                      if (srcWidth <= 32 && targetWidth > 32) {
+                        indent();
+                        out_ << "i64.extend_i32_s\n";
+                      } else if (srcWidth > 32 && targetWidth <= 32) {
+                        indent();
+                        out_ << "i32.wrap_i64\n";
+                      }
+                    }
                   }
                 },
                 arg
@@ -407,13 +547,26 @@ namespace symir {
         },
         coef
     );
+    emitSignExtend(targetWidth, wasmWidth);
   }
 
   void WasmBackend::emitSelectVal(const SelectVal &sv, std::uint32_t targetWidth) {
-    if (std::holds_alternative<RValue>(sv))
-      emitLValue(std::get<RValue>(sv), false);
-    else
+    if (std::holds_alternative<RValue>(sv)) {
+      const auto &lv = std::get<RValue>(sv);
+      emitLValue(lv, false);
+      if (locals_.count(lv.base.name)) {
+        std::uint32_t srcWidth = getIntWidth(locals_.at(lv.base.name).symirType);
+        if (srcWidth <= 32 && targetWidth > 32) {
+          indent();
+          out_ << "i64.extend_i32_s\n";
+        } else if (srcWidth > 32 && targetWidth <= 32) {
+          indent();
+          out_ << "i32.wrap_i64\n";
+        }
+      }
+    } else {
       emitCoef(std::get<Coef>(sv), targetWidth);
+    }
   }
 
   void WasmBackend::emitIndex(const Index &idx) {
@@ -428,6 +581,13 @@ namespace symir {
                 [this](auto &&id) {
                   indent();
                   out_ << "local.get " << mangleName(id.name) << "\n";
+                  if (locals_.count(id.name)) {
+                    std::uint32_t srcWidth = getIntWidth(locals_.at(id.name).symirType);
+                    if (srcWidth > 32) {
+                      indent();
+                      out_ << "i32.wrap_i64\n";
+                    }
+                  }
                 },
                 arg
             );
@@ -437,45 +597,72 @@ namespace symir {
     );
   }
 
-  void WasmBackend::emitInitVal(const InitVal &iv, const TypePtr &type, std::uint32_t offset) {
-    if (iv.kind == InitVal::Kind::Int) {
+  void WasmBackend::emitInitVal(const InitVal &iv, const TypePtr &type, std::uint32_t baseOffset) {
+    if (iv.kind == InitVal::Kind::Int || iv.kind == InitVal::Kind::Sym) {
       if (auto at = std::get_if<ArrayType>(&type->v)) {
         std::uint32_t elemSize = getTypeSize(at->elem);
         for (std::uint64_t i = 0; i < at->size; ++i) {
-          emitInitVal(iv, at->elem, offset - i * elemSize);
+          emitInitVal(iv, at->elem, baseOffset - i * elemSize);
         }
       } else if (auto st = std::get_if<StructType>(&type->v)) {
-        const auto &sinfo = structLayouts_.at(st->name.name);
-        for (const auto &fname: sinfo.fieldNames) {
-          const auto &finfo = sinfo.fields.at(fname);
-          emitInitVal(iv, finfo.type, offset - finfo.offset);
+        if (structLayouts_.count(st->name.name)) {
+          const auto &sinfo = structLayouts_.at(st->name.name);
+          for (const auto &fname: sinfo.fieldNames) {
+            const auto &finfo = sinfo.fields.at(fname);
+            emitInitVal(iv, finfo.type, baseOffset - finfo.offset);
+          }
         }
       } else {
         indent();
         out_ << "local.get $__old_sp\n";
         indent();
-        out_ << "i32.const " << offset << "\n";
+        out_ << "i32.const " << baseOffset << "\n";
         indent();
         out_ << "i32.sub\n";
+
+        if (iv.kind == InitVal::Kind::Int) {
+          indent();
+          out_ << (getIntWidth(type) <= 32 ? "i32.const " : "i64.const ")
+               << std::get<IntLit>(iv.value).value << "\n";
+        } else {
+          // Symbol
+          const auto &sid = std::get<SymId>(iv.value);
+          indent();
+          out_ << "call " << mangleName(getMangledSymbolName(curFuncName_, sid.name)) << "\n";
+          std::uint32_t srcWidth = 32;
+          if (syms_.count(sid.name)) {
+            srcWidth = getIntWidth(syms_.at(sid.name));
+          }
+          if (srcWidth <= 32 && getIntWidth(type) > 32) {
+            indent();
+            out_ << "i64.extend_i32_s\n";
+          } else if (srcWidth > 32 && getIntWidth(type) <= 32) {
+            indent();
+            out_ << "i32.wrap_i64\n";
+          }
+        }
+
+        uint32_t w = getIntWidth(type);
         indent();
-        out_ << (getIntWidth(type) <= 32 ? "i32.const " : "i64.const ")
-             << std::get<IntLit>(iv.value).value << "\n";
-        indent();
-        out_ << (getIntWidth(type) <= 32 ? "i32.store\n" : "i64.store\n");
+        out_ << (w <= 8 ? "i32.store8"
+                        : (w <= 16 ? "i32.store16" : (w <= 32 ? "i32.store" : "i64.store")))
+             << "\n";
       }
     } else if (iv.kind == InitVal::Kind::Aggregate) {
       const auto &elements = std::get<std::vector<InitValPtr>>(iv.value);
       if (auto at = std::get_if<ArrayType>(&type->v)) {
         std::uint32_t elemSize = getTypeSize(at->elem);
         for (size_t i = 0; i < elements.size(); ++i) {
-          emitInitVal(*elements[i], at->elem, offset + i * elemSize);
+          emitInitVal(*elements[i], at->elem, baseOffset - i * elemSize);
         }
       } else if (auto st = std::get_if<StructType>(&type->v)) {
-        const auto &sinfo = structLayouts_.at(st->name.name);
-        for (size_t i = 0; i < elements.size() && i < sinfo.fieldNames.size(); ++i) {
-          const auto &fname = sinfo.fieldNames[i];
-          const auto &finfo = sinfo.fields.at(fname);
-          emitInitVal(*elements[i], finfo.type, offset + finfo.offset);
+        if (structLayouts_.count(st->name.name)) {
+          const auto &sinfo = structLayouts_.at(st->name.name);
+          for (size_t i = 0; i < elements.size() && i < sinfo.fieldNames.size(); ++i) {
+            const auto &fname = sinfo.fieldNames[i];
+            const auto &finfo = sinfo.fields.at(fname);
+            emitInitVal(*elements[i], finfo.type, baseOffset - finfo.offset);
+          }
         }
       }
     }
@@ -483,8 +670,10 @@ namespace symir {
 
   void WasmBackend::emit(const Program &prog) {
     computeLayouts(prog);
-    out_ << "(module\n";
-    indent_level_++;
+    if (!noModuleTags_) {
+      out_ << "(module\n";
+      indent_level_++;
+    }
 
     for (const auto &f: prog.funs) {
       for (const auto &s: f.syms) {
@@ -496,14 +685,19 @@ namespace symir {
     }
 
     indent();
-    out_ << "(memory 1)\n";
+    out_ << "(memory 16)\n"; // 1MB
     indent();
-    out_ << "(global $__stack_pointer (mut i32) (i32.const 65536))\n";
+    out_ << "(global $__stack_pointer (mut i32) (i32.const 1048576))\n";
 
     for (const auto &f: prog.funs) {
       curFuncName_ = f.name.name;
       locals_.clear();
+      syms_.clear();
       stackSize_ = 0;
+
+      for (const auto &s: f.syms) {
+        syms_[s.name.name] = s.type;
+      }
 
       for (const auto &p: f.params) {
         locals_[p.name.name] = {getWasmType(p.type), true, getIntWidth(p.type), false, 0, p.type};
@@ -513,6 +707,8 @@ namespace symir {
                      std::holds_alternative<ArrayType>(l.type->v);
         if (isAgg) {
           std::uint32_t size = getTypeSize(l.type);
+          if (stackSize_ % 8 != 0)
+            stackSize_ += 8 - (stackSize_ % 8);
           stackSize_ += size;
           locals_[l.name.name] = {"i32", false, getIntWidth(l.type), true, stackSize_, l.type};
         } else {
@@ -568,6 +764,11 @@ namespace symir {
             indent();
             out_ << (locals_[l.name.name].bitwidth <= 32 ? "i32.const " : "i64.const ")
                  << std::get<IntLit>(l.init->value).value << "\n";
+            emitSignExtend(getIntWidth(l.type), (locals_[l.name.name].wasmType == "i32" ? 32 : 64));
+            indent();
+            out_ << "local.set " << mangleName(l.name.name) << "\n";
+          } else if (l.init->kind == InitVal::Kind::Local) {
+            emitLValue({std::get<LocalId>(l.init->value), {}, l.init->span}, false);
             indent();
             out_ << "local.set " << mangleName(l.name.name) << "\n";
           }
@@ -580,7 +781,7 @@ namespace symir {
       out_ << "local.set $pc\n";
 
       indent();
-      out_ << "(loop $loop\n";
+      out_ << "(loop $__symir_dispatch_loop\n";
       indent_level_++;
 
       for (size_t i = 0; i < f.blocks.size(); ++i) {
@@ -609,16 +810,40 @@ namespace symir {
               [this](auto &&arg) {
                 using T = std::decay_t<decltype(arg)>;
                 if constexpr (std::is_same_v<T, AssignInstr>) {
-                  const auto &info = locals_.at(arg.lhs.base.name);
-                  if (info.isAggregate || !arg.lhs.accesses.empty()) {
-                    emitAddress(arg.lhs);
-                    emitExpr(arg.rhs, info.bitwidth);
-                    indent();
-                    out_ << (info.bitwidth <= 32 ? "i32.store\n" : "i64.store\n");
-                  } else {
-                    emitExpr(arg.rhs, info.bitwidth);
-                    indent();
-                    out_ << "local.set " << mangleName(arg.lhs.base.name) << "\n";
+                  if (locals_.count(arg.lhs.base.name)) {
+                    const auto &info = locals_.at(arg.lhs.base.name);
+                    if (info.isAggregate || !arg.lhs.accesses.empty()) {
+                      emitAddress(arg.lhs);
+                      TypePtr curType = info.symirType;
+                      for (const auto &acc: arg.lhs.accesses) {
+                        if (std::holds_alternative<AccessIndex>(acc)) {
+                          if (auto at = std::get_if<ArrayType>(&curType->v))
+                            curType = at->elem;
+                        } else if (auto af = std::get_if<AccessField>(&acc)) {
+                          if (auto st = std::get_if<StructType>(&curType->v)) {
+                            auto &fld = af->field;
+                            if (structLayouts_.count(st->name.name) &&
+                                structLayouts_.at(st->name.name).fields.count(fld))
+                              curType = structLayouts_.at(st->name.name).fields.at(fld).type;
+                          }
+                        }
+                      }
+                      std::uint32_t width = getIntWidth(curType);
+                      emitExpr(arg.rhs, width);
+                      indent();
+                      if (width <= 8)
+                        out_ << "i32.store8\n";
+                      else if (width <= 16)
+                        out_ << "i32.store16\n";
+                      else if (width <= 32)
+                        out_ << "i32.store\n";
+                      else
+                        out_ << "i64.store\n";
+                    } else {
+                      emitExpr(arg.rhs, info.bitwidth);
+                      indent();
+                      out_ << "local.set " << mangleName(arg.lhs.base.name) << "\n";
+                    }
                   }
                 } else if constexpr (std::is_same_v<T, RequireInstr>) {
                   emitCond(arg.cond);
@@ -671,7 +896,7 @@ namespace symir {
                   indent();
                   out_ << "end\n";
                   indent();
-                  out_ << "br $loop\n";
+                  out_ << "br $__symir_dispatch_loop\n";
                 } else {
                   int destIdx = -1;
                   for (size_t j = 0; j < f_blocks.size(); ++j)
@@ -682,7 +907,7 @@ namespace symir {
                   indent();
                   out_ << "local.set $pc\n";
                   indent();
-                  out_ << "br $loop\n";
+                  out_ << "br $__symir_dispatch_loop\n";
                 }
               } else if constexpr (std::is_same_v<T, RetTerm>) {
                 if (arg.value) {
@@ -707,7 +932,7 @@ namespace symir {
 
       indent_level_--;
       indent();
-      out_ << ") ;; loop\n";
+      out_ << ") ;; dispatch loop\n";
 
       if (f.retType && !f.blocks.empty()) {
         indent();
@@ -718,12 +943,16 @@ namespace symir {
       indent();
       out_ << ")\n\n";
       indent();
-      out_ << "(export \"" << stripSigil(f.name.name) << "\" (func " << mangleName(f.name.name)
-           << "))\n";
+      std::string exportedName = stripSigil(f.name.name);
+      if (exportedName == "main")
+        exportedName = "symir_main";
+      out_ << "(export \"" << exportedName << "\" (func " << mangleName(f.name.name) << "))\n";
     }
 
-    indent_level_--;
-    out_ << ")\n";
+    if (!noModuleTags_) {
+      indent_level_--;
+      out_ << ")\n";
+    }
   }
 
 } // namespace symir

@@ -20,10 +20,13 @@ namespace symir {
      */
     void emit(const Program &prog);
 
+    void setNoModuleTags(bool val) { noModuleTags_ = val; }
+
   private:
     std::ostream &out_;
     int indent_level_ = 0;
     std::string curFuncName_;
+    bool noModuleTags_ = false;
 
     // Maps local/param names to their WASM local index or info
     struct LocalInfo {
@@ -36,6 +39,7 @@ namespace symir {
     };
 
     std::unordered_map<std::string, LocalInfo> locals_;
+    std::unordered_map<std::string, TypePtr> syms_;
     std::uint32_t stackSize_ = 0;
 
     struct FieldInfo {
@@ -75,8 +79,8 @@ namespace symir {
     std::string stripSigil(const std::string &name);
     std::string getMangledSymbolName(const std::string &funcName, const std::string &symName);
 
-    void emitMask(std::uint32_t bitwidth);
-    void emitSignExtend(std::uint32_t fromWidth, std::uint32_t toWidth);
+    void emitMask(std::uint32_t bitwidth, std::uint32_t wasmWidth);
+    void emitSignExtend(std::uint32_t bitwidth, std::uint32_t wasmWidth);
   };
 
 } // namespace symir

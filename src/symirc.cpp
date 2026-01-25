@@ -29,6 +29,7 @@ int main(int argc, char **argv) {
     ("dump-ast", "Dump AST to stdout and exit", cxxopts::value<bool>()->default_value("false"))
     ("w", "Inhibit all warning messages", cxxopts::value<bool>()->default_value("false"))
     ("Werror", "Make all warnings into errors", cxxopts::value<bool>()->default_value("false"))
+    ("no-module-tags", "Omit (module ...) tags in WASM output", cxxopts::value<bool>()->default_value("false"))
     ("h,help", "Print usage");
   // clang-format on
 
@@ -123,6 +124,9 @@ int main(int argc, char **argv) {
       cb.emit(prog);
     } else if (target == "wasm") {
       WasmBackend wb(*outStream);
+      if (result.count("no-module-tags")) {
+        wb.setNoModuleTags(result["no-module-tags"].as<bool>());
+      }
       wb.emit(prog);
     } else {
       std::cerr << "Error: Unsupported target: " << target << "\n";

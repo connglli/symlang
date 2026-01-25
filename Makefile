@@ -62,5 +62,6 @@ test: $(TARGET_INTERP) $(TARGET_COMPILER) $(TARGET_SOLVER)
 	$(PY) -m test.lib.run_interp_tests test/semchecker ./$(TARGET_INTERP) --check
 	$(PY) -m test.lib.run_interp_tests test/interp ./$(TARGET_INTERP)
 	$(PY) -m test.lib.run_interp_tests test/complex ./$(TARGET_INTERP)
-	$(PY) -m test.lib.run_compiler_tests test/ ./$(TARGET_COMPILER)
+	$(PY) -m test.lib.run_compiler_tests test/ ./$(TARGET_COMPILER) --target c
+	$(PY) -m test.lib.run_compiler_tests test/ ./$(TARGET_COMPILER) --target wasm
 	$(PY) -m test.lib.run_solver_tests test/solver ./$(TARGET_SOLVER)
