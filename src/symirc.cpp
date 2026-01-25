@@ -31,9 +31,8 @@ int main(int argc, char **argv) {
     ("Werror", "Make all warnings into errors", cxxopts::value<bool>()->default_value("false"))
     ("no-module-tags", "Omit (module ...) tags in WASM output", cxxopts::value<bool>()->default_value("false"))
     ("h,help", "Print usage");
-  // clang-format on
-
   options.parse_positional({"input"});
+  // clang-format on
 
   auto result = options.parse(argc, argv);
 

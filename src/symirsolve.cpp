@@ -29,6 +29,7 @@ std::vector<std::string> split(const std::string &s, char delimiter) {
 int main(int argc, char **argv) {
   cxxopts::Options options("symirsolve", "SymIR SMT-based Concretizer");
 
+  // clang-format off
   options.add_options()
     ("input", "Input .sir file", cxxopts::value<std::string>())
     ("main", "Function to concretize", cxxopts::value<std::string>()->default_value("@main"))
@@ -40,8 +41,8 @@ int main(int argc, char **argv) {
     ("emit-model", "Emit symbol assignments to a JSON-like file", cxxopts::value<std::string>())
     ("sym", "Fix a symbol to a value (name=val)", cxxopts::value<std::vector<std::string>>())
     ("h,help", "Print usage");
-
   options.parse_positional({"input"});
+  // clang-format on
 
   auto result = options.parse(argc, argv);
 

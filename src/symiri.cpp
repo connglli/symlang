@@ -31,9 +31,8 @@ int main(int argc, char **argv) {
     ("w", "Inhibit all warning messages", cxxopts::value<bool>()->default_value("false"))
     ("Werror", "Make all warnings into errors", cxxopts::value<bool>()->default_value("false"))
     ("h,help", "Print usage");
-  // clang-format on
-
   options.parse_positional({"input"});
+  // clang-format on
 
   auto result = options.parse(argc, argv);
 
