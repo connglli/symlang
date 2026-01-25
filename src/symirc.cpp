@@ -9,6 +9,7 @@
 #include "analysis/unused_name.hpp"
 #include "ast/ast_dumper.hpp"
 #include "backend/c_backend.hpp"
+#include "backend/wasm_backend.hpp"
 #include "cxxopts.hpp"
 #include "frontend/lexer.hpp"
 #include "frontend/parser.hpp"
@@ -121,8 +122,8 @@ int main(int argc, char **argv) {
       CBackend cb(*outStream);
       cb.emit(prog);
     } else if (target == "wasm") {
-      std::cerr << "Error: WebAssembly backend not yet implemented in v0.\n";
-      return 1;
+      WasmBackend wb(*outStream);
+      wb.emit(prog);
     } else {
       std::cerr << "Error: Unsupported target: " << target << "\n";
       return 1;

@@ -17,7 +17,7 @@ COMMON_SRCS = src/frontend/lexer.cpp src/frontend/parser.cpp src/frontend/ast_du
 
 TEST_SRCS =
 INTERP_SRCS = src/symiri.cpp src/interp/interpreter.cpp
-COMPILER_SRCS = src/symirc.cpp src/backend/c_backend.cpp
+COMPILER_SRCS = src/symirc.cpp src/backend/c_backend.cpp src/backend/wasm_backend.cpp
 SOLVER_SRCS = src/symirsolve.cpp src/solver/solver.cpp
 
 COMMON_OBJS = $(COMMON_SRCS:.cpp=.o)
