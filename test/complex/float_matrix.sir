@@ -1,6 +1,5 @@
-// SKIP: WASM
-// EXPECT: PASS
 // SKIP: INTERPRETER
+// EXPECT: PASS
 // ARGS: --main @matmul --path ^entry
 
 // 2x2 Matrix Mul: A * B = C

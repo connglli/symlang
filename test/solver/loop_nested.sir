@@ -1,5 +1,3 @@
-// SKIP: COMPILER
-// SKIP: INTERPRETER
 // EXPECT: PASS
 // ARGS: --main @main --path '^entry,^outer,^inner,^inner,^outer_inc,^outer,^inner,^inner,^outer_inc,^exit'
 fun @main() : i32 {

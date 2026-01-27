@@ -1,6 +1,3 @@
-// SKIP: WASM
-// SKIP: COMPILER
-// SKIP: INTERPRETER
 // EXPECT: PASS
 // ARGS: --main @test --path ^entry
 

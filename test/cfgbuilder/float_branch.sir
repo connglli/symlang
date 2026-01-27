@@ -1,4 +1,3 @@
-// SKIP: WASM
 // EXPECT: PASS
 fun @test(%cond: f32) : i32 {
 ^entry:

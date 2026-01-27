@@ -1,4 +1,3 @@
-// SKIP: WASM
 // EXPECT: PASS
 fun @test() : i32 {
   let mut %x: f32 = 0.0;

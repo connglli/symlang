@@ -1,5 +1,4 @@
 // EXPECT: FAIL
-// SKIP: COMPILER
 fun @main() : i32 {
   let %v: [2] i32 = {1, undef};
 ^entry:

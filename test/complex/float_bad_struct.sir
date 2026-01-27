@@ -1,4 +1,3 @@
-// SKIP: WASM
 // EXPECT: FAIL
 struct @Bad { x: f32; }
 

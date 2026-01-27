@@ -1,5 +1,3 @@
-// SKIP: COMPILER
-// SKIP: INTERPRETER
 // EXPECT: PASS
 // ARGS: --main @main --path '^entry,^then'
 

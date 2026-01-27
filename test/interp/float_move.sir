@@ -1,6 +1,4 @@
-// SKIP: WASM
-// SKIP: COMPILER
-// EXPECT: FAIL
+// EXPECT: PASS
 fun @main() : f32 {
   let %a: f32 = 1.0;
 ^entry:

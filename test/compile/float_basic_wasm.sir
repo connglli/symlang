@@ -1,4 +1,3 @@
-// SKIP: WASM
 // EXPECT: PASS
 fun @main() : f64 {
   let %a: f64 = 1.0;
