@@ -44,4 +44,9 @@ namespace symir {
     }
   };
 
+  void printMessage(
+      std::ostream &os, const std::string &src, const SourceSpan &span, const std::string &msg,
+      DiagLevel level = DiagLevel::Error
+  );
+
 } // namespace symir

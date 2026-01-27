@@ -101,8 +101,7 @@ int main(int argc, char **argv) {
       std::cerr << "Errors:\n";
       for (const auto &d: diags.diags) {
         if (d.level == DiagLevel::Error || (werror && d.level == DiagLevel::Warning)) {
-          std::cerr << "  " << (d.level == DiagLevel::Warning ? "error (warning): " : "")
-                    << d.message << " at " << d.span.begin.line << ":" << d.span.begin.col << "\n";
+          printMessage(std::cerr, src, d.span, d.message, d.level);
         }
       }
       return 1;
@@ -111,8 +110,7 @@ int main(int argc, char **argv) {
     if (!nowarn) {
       for (const auto &d: diags.diags) {
         if (d.level == DiagLevel::Warning) {
-          std::cout << "Warning: " << d.message << " at " << d.span.begin.line << ":"
-                    << d.span.begin.col << "\n";
+          printMessage(std::cout, src, d.span, d.message, d.level);
         }
       }
     }
@@ -125,6 +123,9 @@ int main(int argc, char **argv) {
     Interpreter interp(prog);
     interp.run(mainFunc, symBindings, result["dump-trace"].as<bool>());
 
+  } catch (const ParseError &e) {
+    printMessage(std::cerr, src, e.span, e.what(), DiagLevel::Error);
+    return 1;
   } catch (const std::exception &e) {
     std::cerr << "Exception: " << e.what() << "\n";
     return 1;

@@ -99,8 +99,7 @@ int main(int argc, char **argv) {
       std::cerr << "Errors in input program:" << std::endl;
       for (const auto &d: diags.diags) {
         if (d.level == DiagLevel::Error)
-          std::cerr << "  " << d.message << " at " << d.span.begin.line << ":" << d.span.begin.col
-                    << std::endl;
+          printMessage(std::cerr, src, d.span, d.message, d.level);
       }
       return 1;
     }
@@ -154,6 +153,9 @@ int main(int argc, char **argv) {
       return 1;
     }
 
+  } catch (const ParseError &e) {
+    printMessage(std::cerr, src, e.span, e.what(), DiagLevel::Error);
+    return 1;
   } catch (const std::exception &e) {
     std::cerr << "Exception: " << e.what() << std::endl;
     return 1;
