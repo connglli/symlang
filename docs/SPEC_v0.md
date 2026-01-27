@@ -67,12 +67,14 @@ SymIR uses **strict UB** on the chosen path:
   - Hexadecimal: `"-"? "0x" [0-9A-Fa-f]+`
   - Octal: `"-"? "0o" [0-7]+`
   - Binary: `"-"? "0b" [01]+`
+- `FloatLit` : standard floating point literal (e.g. `1.5`, `-0.2`, `1e-5`, `3.14E+2`).
 - `StringLit` : double-quoted string (implementation-defined escapes)
 
 ### 3.2 Types
 ```ebnf
-Type        := IntType | StructName | ArrayType ;
+Type        := IntType | FloatType | StructName | ArrayType ;
 IntType     := "i" Nat ;
+FloatType   := "f32" | "f64" ;
 ArrayType   := "[" Nat "]" Type ;
 StructName  := GlobalId ;     (* recommended: use @TypeName for struct names *)
 ```
@@ -82,6 +84,7 @@ Notes:
 - `Nat` is a literal (no symbolic sizes in v0).
 - **Multidimensional arrays** are supported by nesting `ArrayType`. For example, `[3][4] i32` represents a 3x4 grid of integers. Whitespace between brackets is optional.
 - **Integer Types:** Common bit-widths like `i1`, `i8`, `i16`, `i32`, `i64` are all supported via the `i<Nat>` syntax.
+- **Floating-point Types:** `f32` (IEEE 754 single-precision) and `f64` (IEEE 754 double-precision) are supported.
 
 ### 3.3 Program structure
 ```ebnf
@@ -116,7 +119,7 @@ Domains are strongly recommended (especially for `coef` and `index`) to keep sol
 ```ebnf
 LetDecl     := "let" ("mut")? LocalId ":" Type ("=" InitVal)? ";" ;
 InitVal     := ScalarInit | "undef" | BraceInit ;
-ScalarInit  := IntLit | SymId | LocalId ;
+ScalarInit  := IntLit | FloatLit | SymId | LocalId ;
 BraceInit   := "{" InitVal ("," InitVal)* "}" ;
 ```
 
@@ -204,7 +207,7 @@ SelectVal   := RValue | Coef ;     (* v0 restriction: no nested expressions *)
 
 Cast        := RValue "as" Type ;
 
-Coef        := IntLit | LocalId | SymId ;
+Coef        := IntLit | FloatLit | LocalId | SymId ;
 RValue      := LValue ;
 ```
 
@@ -275,6 +278,12 @@ For `select c, a, b`:
 - If `c` is true, evaluate only `a`. UB in `a` makes the path infeasible. `b` is not evaluated.
 - If `c` is false, evaluate only `b`. UB in `b` makes the path infeasible. `a` is not evaluated.
 
+
+### 7.3 Floating-point arithmetic
+- Floating-point operations (`+`, `-`, `*`, `/`, `%`) use **Round Nearest Ties To Even (RNE)**.
+- Comparisons (`==`, `!=`, `<`, `<=`, `>`, `>=`) follow IEEE 754 semantics.
+- Mixed arithmetic between integer and floating-point types is **forbidden** without explicit casts (`as`).
+- Bitwise operators (`&`, `|`, `^`, `<<`, `>>`, `>>>`) are **not supported** for floating-point types.
 
 ## 8. Integer division and modulo (round toward 0)
 
@@ -483,6 +492,5 @@ A path like `^entry -> ^b1 -> ^body -> ^b1 -> ^body -> ... -> ^exit` is feasible
 ## 11. Non-goals for v0 (planned extensions)
 - Heap, pointers, aliasing, pointer arithmetic.
 - Parentheses, operator precedence, general expression trees.
-- Floating-point.
 - SSA/phi.
 - Interprocedural calls and summaries.
