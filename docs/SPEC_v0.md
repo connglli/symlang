@@ -70,6 +70,8 @@ SymIR uses **strict UB** on the chosen path:
 - `FloatLit` : standard floating point literal (e.g. `1.5`, `-0.2`, `1e-5`, `3.14E+2`).
 - `StringLit` : double-quoted string (implementation-defined escapes)
 
+*Note: For the typing of literals, see [Section 6.8](#68-literal-typing-and-inference).*
+
 ### 3.2 Types
 ```ebnf
 Type        := IntType | FloatType | StructName | ArrayType ;
@@ -256,6 +258,12 @@ This supports integer resizing, integer-to-float, float-to-integer, and float-re
 - `Expr` involving floating-point atoms must be homogeneous: all atoms in the same addition/subtraction chain must have the exact same floating-point type (`f32` or `f64`).
 - `OpAtom` (`*`, `/`, `%`) involving floating-point must have both operands of the same floating-point type.
 - Mixed arithmetic between different floating-point widths or between integers and floats is **forbidden** without explicit `as` casts.
+
+### 6.8 Literal typing and inference
+Literals do not have fixed types but are inferred from their context:
+- **Integer Literals:** Inferred to match the bit-width of the operation target or neighboring operands. If no context is available, they default to **`i32`**. The value must fit in the range of the inferred type.
+- **Floating-point Literals:** Inferred to match the width of the target or neighbors (`f32` or `f64`). If no context is available, they default to **`f32`**.
+- **Homogeneity Requirement:** Since mixed arithmetic is forbidden, a literal in an expression `x + <lit>` will always be inferred to match the type of `x`.
 
 
 ## 7. Strict UB rules (v0)
