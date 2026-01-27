@@ -2,6 +2,7 @@
 #include <iostream>
 #include <stdexcept>
 #include "analysis/cfg.hpp"
+#include "analysis/type_utils.hpp"
 #include "frontend/diagnostics.hpp"
 
 namespace symir {
@@ -46,20 +47,6 @@ namespace symir {
     return "?";
   }
 
-  static std::uint32_t getTypeBits(const TypePtr &t) {
-    if (auto it = std::get_if<IntType>(&t->v)) {
-      switch (it->kind) {
-        case IntType::Kind::I32:
-          return 32;
-        case IntType::Kind::I64:
-          return 64;
-        case IntType::Kind::ICustom:
-          return it->bits.value_or(32);
-      }
-    }
-    return 64;
-  }
-
   static std::int64_t canonicalize(std::int64_t val, std::uint32_t bits) {
     if (bits >= 64)
       return val;
@@ -73,11 +60,11 @@ namespace symir {
 
   Interpreter::RuntimeValue Interpreter::makeUndef(const TypePtr &t) {
     RuntimeValue res;
-    if (auto at = std::get_if<ArrayType>(&t->v)) {
+    if (auto at = TypeUtils::asArray(t)) {
       res.kind = RuntimeValue::Kind::Array;
       for (size_t i = 0; i < at->size; ++i)
         res.arrayVal.push_back(makeUndef(at->elem));
-    } else if (auto st = std::get_if<StructType>(&t->v)) {
+    } else if (auto st = TypeUtils::asStruct(t)) {
       res.kind = RuntimeValue::Kind::Struct;
       auto it = structs_.find(st->name.name);
       if (it != structs_.end()) {
@@ -86,23 +73,22 @@ namespace symir {
       }
     } else {
       res.kind = RuntimeValue::Kind::Undef;
-      res.bits = getTypeBits(t);
+      res.bits = TypeUtils::getBitWidth(t).value_or(64);
     }
     return res;
   }
 
   Interpreter::RuntimeValue Interpreter::broadcast(const TypePtr &t, const RuntimeValue &v) {
-    if (std::holds_alternative<ArrayType>(t->v)) {
+    if (auto at = TypeUtils::asArray(t)) {
       RuntimeValue res;
       res.kind = RuntimeValue::Kind::Array;
-      const auto &at = std::get<ArrayType>(t->v);
-      for (size_t i = 0; i < at.size; ++i)
-        res.arrayVal.push_back(broadcast(at.elem, v));
+      for (size_t i = 0; i < at->size; ++i)
+        res.arrayVal.push_back(broadcast(at->elem, v));
       return res;
-    } else if (std::holds_alternative<StructType>(t->v)) {
+    } else if (auto st = TypeUtils::asStruct(t)) {
       RuntimeValue res;
       res.kind = RuntimeValue::Kind::Struct;
-      auto it = structs_.find(std::get<StructType>(t->v).name.name);
+      auto it = structs_.find(st->name.name);
       if (it != structs_.end()) {
         for (const auto &f: it->second->fields)
           res.structVal[f.name] = broadcast(f.type, v);
@@ -110,7 +96,7 @@ namespace symir {
       return res;
     } else {
       RuntimeValue res = v;
-      res.bits = getTypeBits(t);
+      res.bits = TypeUtils::getBitWidth(t).value_or(64);
       res.intVal = canonicalize(res.intVal, res.bits);
       return res;
     }
@@ -123,13 +109,13 @@ namespace symir {
 
     if (iv.kind == InitVal::Kind::Aggregate) {
       const auto &elements = std::get<std::vector<InitValPtr>>(iv.value);
-      if (auto at = std::get_if<ArrayType>(&t->v)) {
+      if (auto at = TypeUtils::asArray(t)) {
         RuntimeValue res;
         res.kind = RuntimeValue::Kind::Array;
         for (size_t i = 0; i < elements.size(); ++i)
           res.arrayVal.push_back(evalInit(*elements[i], at->elem, store));
         return res;
-      } else if (auto st = std::get_if<StructType>(&t->v)) {
+      } else if (auto st = TypeUtils::asStruct(t)) {
         RuntimeValue res;
         res.kind = RuntimeValue::Kind::Struct;
         auto sit = structs_.find(st->name.name);
@@ -153,10 +139,10 @@ namespace symir {
     } else {
       v = store.at(std::get<LocalId>(iv.value).name);
     }
-    v.bits = getTypeBits(t);
+    v.bits = TypeUtils::getBitWidth(t).value_or(64);
     v.intVal = canonicalize(v.intVal, v.bits);
 
-    if (std::holds_alternative<ArrayType>(t->v) || std::holds_alternative<StructType>(t->v)) {
+    if (TypeUtils::asArray(t) || TypeUtils::asStruct(t)) {
       return broadcast(t, v);
     }
     return v;
@@ -171,7 +157,7 @@ namespace symir {
 
     for (size_t i = 0; i < f.params.size(); ++i) {
       RuntimeValue v = args[i];
-      v.bits = getTypeBits(f.params[i].type);
+      v.bits = TypeUtils::getBitWidth(f.params[i].type).value_or(64);
       v.intVal = canonicalize(v.intVal, v.bits);
       store[f.params[i].name.name] = v;
     }
@@ -181,7 +167,7 @@ namespace symir {
         RuntimeValue v;
         v.kind = RuntimeValue::Kind::Int;
         v.intVal = symBindings.at(s.name.name);
-        v.bits = getTypeBits(s.type);
+        v.bits = TypeUtils::getBitWidth(s.type).value_or(64);
         v.intVal = canonicalize(v.intVal, v.bits);
         store[s.name.name] = v;
       }
@@ -410,7 +396,7 @@ namespace symir {
 
             RuntimeValue res;
             res.kind = RuntimeValue::Kind::Int;
-            res.bits = getTypeBits(arg.dstType);
+            res.bits = TypeUtils::getBitWidth(arg.dstType).value_or(64);
             res.intVal = canonicalize(v.intVal, res.bits);
             return res;
           }

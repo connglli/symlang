@@ -1,5 +1,6 @@
 #include "frontend/typechecker.hpp"
 #include "analysis/cfg.hpp"
+#include "analysis/type_utils.hpp"
 
 namespace symir {
 
@@ -12,40 +13,16 @@ namespace symir {
     return diags.hasErrors() ? symir::PassResult::Error : symir::PassResult::Success;
   }
 
-  void TypeChecker::collectStructs(const Program &prog, DiagBag &diags) {
+  void TypeChecker::collectStructs(const Program &prog, [[maybe_unused]] DiagBag &diags) {
     for (const auto &sd: prog.structs) {
-      if (structs_.count(sd.name.name)) {
-        diags.error("Duplicate struct declaration: " + sd.name.name, sd.span);
-        continue;
-      }
       StructInfo si;
       si.declSpan = sd.span;
       for (const auto &fd: sd.fields) {
-        if (si.fields.count(fd.name)) {
-          diags.error("Duplicate field '" + fd.name + "' in struct " + sd.name.name, fd.span);
-          continue;
-        }
         si.fields[fd.name] = fd.type;
         si.fieldList.push_back({fd.name, fd.type});
       }
       structs_[sd.name.name] = std::move(si);
     }
-  }
-
-  [[maybe_unused]] static bool isArrayType(const TypePtr &t) {
-    return t && std::holds_alternative<ArrayType>(t->v);
-  }
-
-  [[maybe_unused]] static bool isStructType(const TypePtr &t) {
-    return t && std::holds_alternative<StructType>(t->v);
-  }
-
-  static const ArrayType *asArrayType(const TypePtr &t) {
-    return t ? std::get_if<ArrayType>(&t->v) : nullptr;
-  }
-
-  static const StructType *asStructType(const TypePtr &t) {
-    return t ? std::get_if<StructType>(&t->v) : nullptr;
   }
 
   void TypeChecker::checkInitVal(
@@ -56,8 +33,8 @@ namespace symir {
     if (iv.kind == InitVal::Kind::Undef)
       return;
 
-    auto at = asArrayType(targetType);
-    auto st = asStructType(targetType);
+    auto at = TypeUtils::asArray(targetType);
+    auto st = TypeUtils::asStruct(targetType);
 
     if (iv.kind == InitVal::Kind::Aggregate) {
       const auto &elements = std::get<std::vector<InitValPtr>>(iv.value);
@@ -99,9 +76,9 @@ namespace symir {
     // Broadcast check: scalar must be compatible with ALL leaf scalar elements.
     std::vector<TypePtr> targetLeaves;
     std::function<void(const TypePtr &)> collect = [&](const TypePtr &t) {
-      if (auto inner_at = asArrayType(t)) {
+      if (auto inner_at = TypeUtils::asArray(t)) {
         collect(inner_at->elem);
-      } else if (auto inner_st = asStructType(t)) {
+      } else if (auto inner_st = TypeUtils::asStruct(t)) {
         auto sit = structs_.find(inner_st->name.name);
         if (sit != structs_.end()) {
           for (const auto &fld: sit->second.fieldList)
@@ -116,7 +93,7 @@ namespace symir {
     TypePtr initType = nullptr;
     if (iv.kind == InitVal::Kind::Int) {
       // Literals must fit in the target type's range
-      auto bits = getBVWidth(targetType, diags, iv.span);
+      auto bits = TypeUtils::getBitWidth(targetType);
       if (bits) {
         checkLiteralRange(std::get<IntLit>(iv.value).value, *bits, iv.span, diags);
       }
@@ -133,55 +110,12 @@ namespace symir {
 
     if (initType) {
       for (const auto &leaf: targetLeaves) {
-        if (!typeEquals(leaf, initType)) {
+        if (!TypeUtils::areTypesEqual(leaf, initType)) {
           diags.error("Type mismatch in initializer", iv.span);
           return;
         }
       }
     }
-  }
-
-  bool TypeChecker::typeEquals(const TypePtr &a, const TypePtr &b) {
-    if (a.get() == b.get())
-      return true;
-    if (!a || !b)
-      return false;
-    if (a->v.index() != b->v.index())
-      return false;
-    if (auto ia = std::get_if<IntType>(&a->v)) {
-      auto ib = std::get_if<IntType>(&b->v);
-      if (ia->kind != ib->kind)
-        return false;
-      if (ia->kind == IntType::Kind::ICustom)
-        return ia->bits == ib->bits;
-      return true;
-    }
-    if (auto sa = std::get_if<StructType>(&a->v)) {
-      return sa->name.name == std::get<StructType>(b->v).name.name;
-    }
-    if (auto aa = std::get_if<ArrayType>(&a->v)) {
-      auto ab = std::get_if<ArrayType>(&b->v);
-      return aa->size == ab->size && typeEquals(aa->elem, ab->elem);
-    }
-    return false;
-  }
-
-  std::optional<std::uint32_t> TypeChecker::getBVWidth(
-      const TypePtr &t, [[maybe_unused]] DiagBag &diags, [[maybe_unused]] SourceSpan sp
-  ) {
-    if (!t)
-      return std::nullopt;
-    if (auto it = std::get_if<IntType>(&t->v)) {
-      switch (it->kind) {
-        case IntType::Kind::I32:
-          return 32;
-        case IntType::Kind::I64:
-          return 64;
-        case IntType::Kind::ICustom:
-          return it->bits.value_or(0);
-      }
-    }
-    return std::nullopt;
   }
 
   void TypeChecker::checkFunction(const FunDecl &f, TypeAnnotations &ann, DiagBag &diags) {
@@ -206,7 +140,7 @@ namespace symir {
 
     CFG::build(f, diags);
 
-    auto retBits = getBVWidth(f.retType, diags, f.span);
+    auto retBits = TypeUtils::getBitWidth(f.retType);
     if (!retBits)
       diags.error("Return type must be an integer BV type in v0", f.span);
 
@@ -222,7 +156,7 @@ namespace symir {
                 }
                 auto lt = typeOfLValue(arg.lhs, vars, syms, diags);
                 if (lt) {
-                  auto lb = getBVWidth(lt, diags, arg.lhs.span);
+                  auto lb = TypeUtils::getBitWidth(lt);
                   if (lb)
                     typeOfExpr(arg.rhs, vars, syms, ann, diags, *lb);
                 }
@@ -265,7 +199,7 @@ namespace symir {
     TypePtr cur = it->second.type;
     for (const auto &acc: lv.accesses) {
       if (auto ai = std::get_if<AccessIndex>(&acc)) {
-        auto at = asArrayType(cur);
+        auto at = TypeUtils::asArray(cur);
         if (!at) {
           diags.error("Indexing non-array", ai->span);
           return nullptr;
@@ -273,7 +207,7 @@ namespace symir {
         checkIndex(ai->index, vars, syms, diags);
         cur = at->elem;
       } else if (auto af = std::get_if<AccessField>(&acc)) {
-        auto st = asStructType(cur);
+        auto st = TypeUtils::asStruct(cur);
         if (!st) {
           diags.error("Field access on non-struct", af->span);
           return nullptr;
@@ -307,7 +241,7 @@ namespace symir {
         diags.error("Undeclared local index: " + lid->name, lid->span);
         return;
       }
-      if (!getBVWidth(it->second.type, diags, lid->span))
+      if (!TypeUtils::getBitWidth(it->second.type))
         diags.error("Non-integer index", lid->span);
     } else {
       auto sid = std::get_if<SymId>(&id);
@@ -316,7 +250,7 @@ namespace symir {
         diags.error("Undeclared symbol index: " + sid->name, sid->span);
         return;
       }
-      if (!getBVWidth(it->second.type, diags, sid->span))
+      if (!TypeUtils::getBitWidth(it->second.type))
         diags.error("Non-integer symbol index", sid->span);
     }
   }
@@ -347,19 +281,19 @@ namespace symir {
           using T = std::decay_t<decltype(arg)>;
           if constexpr (std::is_same_v<T, OpAtom>) {
             auto rt = typeOfLValue(arg.rval, vars, syms, diags);
-            auto rb = getBVWidth(rt, diags, arg.rval.span);
+            auto rb = TypeUtils::getBitWidth(rt);
 
             // Use rb as expectation for coef if available, otherwise use incoming expectedBits
             auto targetBits = rb ? rb : expectedBits;
             auto ct = typeOfCoef(arg.coef, vars, syms, diags, targetBits);
-            auto cb = getBVWidth(ct, diags, arg.span);
+            auto cb = TypeUtils::getBitWidth(ct);
 
             if (cb && rb && *cb != *rb)
               diags.error("Bitwidth mismatch in operation", arg.span);
             return Ty{Ty::BVTy{cb.value_or(32)}};
           } else if constexpr (std::is_same_v<T, UnaryAtom>) {
             auto rt = typeOfLValue(arg.rval, vars, syms, diags);
-            return Ty{Ty::BVTy{getBVWidth(rt, diags, arg.rval.span).value_or(32)}};
+            return Ty{Ty::BVTy{TypeUtils::getBitWidth(rt).value_or(32)}};
           } else if constexpr (std::is_same_v<T, SelectAtom>) {
             checkCond(*arg.cond, vars, syms, ann, diags);
             auto t1 = typeOfSelectVal(arg.vtrue, vars, syms, ann, diags, expectedBits);
@@ -369,10 +303,10 @@ namespace symir {
             return t1;
           } else if constexpr (std::is_same_v<T, CoefAtom>) {
             auto ct = typeOfCoef(arg.coef, vars, syms, diags, expectedBits);
-            return Ty{Ty::BVTy{getBVWidth(ct, diags, arg.span).value_or(32)}};
+            return Ty{Ty::BVTy{TypeUtils::getBitWidth(ct).value_or(32)}};
           } else if constexpr (std::is_same_v<T, RValueAtom>) {
             auto rt = typeOfLValue(arg.rval, vars, syms, diags);
-            return Ty{Ty::BVTy{getBVWidth(rt, diags, arg.rval.span).value_or(32)}};
+            return Ty{Ty::BVTy{TypeUtils::getBitWidth(rt).value_or(32)}};
           } else if constexpr (std::is_same_v<T, CastAtom>) {
             auto st = std::visit(
                 [&](auto &&src) -> Ty {
@@ -382,19 +316,17 @@ namespace symir {
                   } else if constexpr (std::is_same_v<S, SymId>) {
                     auto it = syms.find(src.name);
                     if (it != syms.end())
-                      return Ty{Ty::BVTy{getBVWidth(it->second.type, diags, src.span).value_or(32)}
-                      };
+                      return Ty{Ty::BVTy{TypeUtils::getBitWidth(it->second.type).value_or(32)}};
                     return Ty{std::monostate{}};
                   } else {
-                    return Ty{
-                        Ty::BVTy{getBVWidth(typeOfLValue(src, vars, syms, diags), diags, src.span)
-                                     .value_or(32)}
-                    };
+                    return Ty{Ty::BVTy{
+                        TypeUtils::getBitWidth(typeOfLValue(src, vars, syms, diags)).value_or(32)
+                    }};
                   }
                 },
                 arg.src
             );
-            auto db = getBVWidth(arg.dstType, diags, arg.dstType->span);
+            auto db = TypeUtils::getBitWidth(arg.dstType);
             if (std::holds_alternative<std::monostate>(st.v))
               diags.error("Source of 'as' must be an integer type", arg.span);
             if (!db)
@@ -463,15 +395,13 @@ namespace symir {
       DiagBag &diags, std::optional<std::uint32_t> expectedBits
   ) {
     if (auto rv = std::get_if<RValue>(&sv)) {
-      return Ty{
-          Ty::BVTy{getBVWidth(typeOfLValue(*rv, vars, syms, diags), diags, rv->span).value_or(32)}
+      return Ty{Ty::BVTy{TypeUtils::getBitWidth(typeOfLValue(*rv, vars, syms, diags)).value_or(32)}
       };
     } else {
-      return Ty{Ty::BVTy{getBVWidth(
-                             typeOfCoef(std::get<Coef>(sv), vars, syms, diags, expectedBits), diags,
-                             SourceSpan{}
-      )
-                             .value_or(32)}};
+      return Ty{Ty::BVTy{
+          TypeUtils::getBitWidth(typeOfCoef(std::get<Coef>(sv), vars, syms, diags, expectedBits))
+              .value_or(32)
+      }};
     }
   }
 

@@ -117,9 +117,6 @@ namespace symir {
     );
 
     void checkLiteralRange(int64_t val, std::uint32_t bits, SourceSpan sp, DiagBag &diags);
-
-    std::optional<std::uint32_t> getBVWidth(const TypePtr &t, DiagBag &diags, SourceSpan sp);
-    bool typeEquals(const TypePtr &a, const TypePtr &b);
   };
 
 } // namespace symir
