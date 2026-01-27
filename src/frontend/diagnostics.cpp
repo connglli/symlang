@@ -33,12 +33,11 @@ namespace symir {
     std::string levelStr =
         (level == DiagLevel::Error) ? "error" : (level == DiagLevel::Warning ? "warning" : "note");
 
-    os << span.begin.line << ":" << span.begin.col << ": " << levelStr << ": " << msg << "\n";
-    os << lineContent << "\n";
+    // Print line with margin
+    os << std::setw(4) << span.begin.line << " | " << lineContent << "\n";
 
     // Print caret
-    // We strictly follow the byte offset for column alignment relative to the printed line.
-    // We replicate the whitespace prefix exactly to handle tabs correctly if they exist.
+    os << "     | ";
     for (size_t i = 0; i < (span.begin.offset - lineStart); ++i) {
       if (lineContent[i] == '\t')
         os << '\t';
@@ -46,6 +45,16 @@ namespace symir {
         os << ' ';
     }
     os << "^\n";
+
+    // Print message aligned with caret line start (or just indented)
+    os << "     | ";
+    for (size_t i = 0; i < (span.begin.offset - lineStart); ++i) {
+      if (lineContent[i] == '\t')
+        os << '\t';
+      else
+        os << ' ';
+    }
+    os << levelStr << ": " << msg << "\n";
   }
 
 } // namespace symir
