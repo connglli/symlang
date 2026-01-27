@@ -224,7 +224,7 @@ Evaluation order:
 ## 6. Typing and well-formedness (v0)
 
 ### 6.1 Scalar arithmetic restriction
-Arithmetic (`Expr`) is defined only over **scalar integer leaves**. Arrays and structs exist to provide addressable structure, but only their scalar elements/fields may be used in arithmetic or comparisons.
+Arithmetic (`Expr`) is defined over **scalar integer and floating-point leaves**. Arrays and structs exist to provide addressable structure, but only their scalar elements/fields may be used in arithmetic or comparisons.
 
 ### 6.2 LValue typing
 - If `%x : T` then `%x` has type `T`.
@@ -234,22 +234,28 @@ Arithmetic (`Expr`) is defined only over **scalar integer leaves**. Arrays and s
 ### 6.3 `select` typing
 `select c, a, b` is well-typed iff:
 - `c` is a boolean condition, and
-- `a` and `b` have the same integer type.
+- `a` and `b` have the same scalar type (integer or floating-point).
 The result has that type.
 
 ### 6.4 `as` typing
 `rval as T` is well-typed iff:
-- `rval` is a scalar integer.
-- `T` is a scalar integer type.
+- `rval` is a scalar (integer or floating-point).
+- `T` is a scalar (integer or floating-point).
+This supports integer resizing, integer-to-float, float-to-integer, and float-resizing conversions.
 
 ### 6.5 Bitwise and Shift typing
-- `Coef op RValue` (`&`, `|`, `^`, `<<`, `>>`, `>>>`): well-typed iff both operands are scalar integers of the same bit-width.
+- `Coef op RValue` (`&`, `|`, `^`, `<<`, `>>`, `>>>`): well-typed iff both operands are scalar integers of the same bit-width. Floating-point types are **disallowed**.
 - `~ RValue`: well-typed iff the operand is a scalar integer.
 
 ### 6.6 Mutability rules
 - The LHS of `=` must be an lvalue rooted at a `let mut` local.
 - `sym` identifiers and `let` (immutable) locals cannot appear on the LHS.
 - Parameters are immutable and cannot appear on the LHS.
+
+### 6.7 Floating-point arithmetic typing
+- `Expr` involving floating-point atoms must be homogeneous: all atoms in the same addition/subtraction chain must have the exact same floating-point type (`f32` or `f64`).
+- `OpAtom` (`*`, `/`, `%`) involving floating-point must have both operands of the same floating-point type.
+- Mixed arithmetic between different floating-point widths or between integers and floats is **forbidden** without explicit `as` casts.
 
 
 ## 7. Strict UB rules (v0)
@@ -279,11 +285,10 @@ For `select c, a, b`:
 - If `c` is false, evaluate only `b`. UB in `b` makes the path infeasible. `a` is not evaluated.
 
 
-### 7.3 Floating-point arithmetic
+### 7.3 Floating-point arithmetic semantics
 - Floating-point operations (`+`, `-`, `*`, `/`, `%`) use **Round Nearest Ties To Even (RNE)**.
 - Comparisons (`==`, `!=`, `<`, `<=`, `>`, `>=`) follow IEEE 754 semantics.
-- Mixed arithmetic between integer and floating-point types is **forbidden** without explicit casts (`as`).
-- Bitwise operators (`&`, `|`, `^`, `<<`, `>>`, `>>>`) are **not supported** for floating-point types.
+- Note: `%` for floating-point corresponds to the IEEE 754 `remainder` operation.
 
 ## 8. Integer division and modulo (round toward 0)
 
