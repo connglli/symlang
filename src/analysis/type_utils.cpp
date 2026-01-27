@@ -34,6 +34,10 @@ namespace symir {
         return ia->bits == ib->bits;
       return true;
     }
+    if (auto fa = std::get_if<FloatType>(&a->v)) {
+      auto fb = std::get_if<FloatType>(&b->v);
+      return fa->kind == fb->kind;
+    }
     if (auto sa = std::get_if<StructType>(&a->v)) {
       return sa->name.name == std::get<StructType>(b->v).name.name;
     }

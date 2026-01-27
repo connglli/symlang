@@ -122,15 +122,25 @@ int main(int argc, char **argv) {
         for (const auto &[name, val]: res.model) {
           if (!first)
             mfs << ",\n";
-          mfs << "    \"" << name << "\": " << val;
+          mfs << "    \"" << name << "\": ";
+          if (std::holds_alternative<int64_t>(val))
+            mfs << std::get<int64_t>(val);
+          else
+            mfs << std::get<double>(val);
           first = false;
         }
         mfs << "\n  }\n";
         mfs << "}\n";
       }
 
+      std::unordered_map<std::string, int64_t> intModel;
+      for (const auto &[name, val]: res.model) {
+        if (std::holds_alternative<int64_t>(val))
+          intModel[name] = std::get<int64_t>(val);
+      }
+
       if (result["dump-ast"].as<bool>()) {
-        ASTDumper dumper(std::cout, res.model);
+        ASTDumper dumper(std::cout, intModel);
         dumper.dump(prog);
       }
 
@@ -141,7 +151,7 @@ int main(int argc, char **argv) {
                     << std::endl;
           return 1;
         }
-        SIRPrinter printer(ofs, res.model);
+        SIRPrinter printer(ofs, intModel);
         printer.print(prog);
       }
 

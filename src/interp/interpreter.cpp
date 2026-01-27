@@ -134,6 +134,8 @@ namespace symir {
     if (iv.kind == InitVal::Kind::Int) {
       v.kind = RuntimeValue::Kind::Int;
       v.intVal = std::get<IntLit>(iv.value).value;
+    } else if (iv.kind == InitVal::Kind::Float) {
+      throw std::runtime_error("Interpreter does not support floating-point values");
     } else if (iv.kind == InitVal::Kind::Sym) {
       v = store.at(std::get<SymId>(iv.value).name);
     } else {
@@ -381,6 +383,8 @@ namespace symir {
                     rv.intVal = src.value;
                     rv.bits = 64;
                     return rv;
+                  } else if constexpr (std::is_same_v<S, FloatLit>) {
+                    throw std::runtime_error("Interpreter does not support floating-point values");
                   } else if constexpr (std::is_same_v<S, SymId>) {
                     return store.at(src.name);
                   } else {
@@ -413,6 +417,9 @@ namespace symir {
       rv.intVal = std::get<IntLit>(c).value;
       rv.bits = 64;
       return rv;
+    }
+    if (std::holds_alternative<FloatLit>(c)) {
+      throw std::runtime_error("Interpreter does not support floating-point values");
     }
     const auto &id = std::get<LocalOrSymId>(c);
     if (auto lid = std::get_if<LocalId>(&id))

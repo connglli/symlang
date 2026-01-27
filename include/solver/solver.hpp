@@ -31,7 +31,8 @@ namespace symir {
       bool unsat = false;
       bool unknown = false;
       std::string message;
-      std::unordered_map<std::string, int64_t> model;
+      using ModelVal = std::variant<int64_t, double>;
+      std::unordered_map<std::string, ModelVal> model;
     };
 
     /**

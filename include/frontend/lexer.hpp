@@ -21,6 +21,7 @@ namespace symir {
 
     Ident, // bare identifier (field names, keywords disambiguated)
     IntLit,
+    FloatLit,
     StringLit,
 
     // Punctuators / operators
@@ -67,7 +68,8 @@ namespace symir {
     KwUnreachable,
     KwIn, // domain
     KwSelect,
-    IntType, // i1, i8, i16, i32, i64, iN
+    IntType,   // i1, i8, i16, i32, i64, iN
+    FloatType, // f32, f64
     KwUndef,
     KwAs, // "as"
   };

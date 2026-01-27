@@ -98,6 +98,14 @@ namespace symir {
         checkLiteralRange(std::get<IntLit>(iv.value).value, *bits, iv.span, diags);
       }
       return;
+    } else if (iv.kind == InitVal::Kind::Float) {
+      for (const auto &leaf: targetLeaves) {
+        if (!std::holds_alternative<FloatType>(leaf->v)) {
+          diags.error("Cannot initialize non-float with float literal", iv.span);
+          return;
+        }
+      }
+      return;
     } else if (iv.kind == InitVal::Kind::Sym) {
       auto it = syms.find(std::get<SymId>(iv.value).name);
       if (it != syms.end())
@@ -141,8 +149,10 @@ namespace symir {
     CFG::build(f, diags);
 
     auto retBits = TypeUtils::getBitWidth(f.retType);
-    if (!retBits)
-      diags.error("Return type must be an integer BV type in v0", f.span);
+    bool isRetFloat = f.retType && std::holds_alternative<FloatType>(f.retType->v);
+
+    if (!retBits && !isRetFloat)
+      diags.error("Return type must be a scalar type (integer or float)", f.span);
 
     for (const auto &b: f.blocks) {
       for (const auto &ins: b.instrs) {
@@ -176,9 +186,15 @@ namespace symir {
               if (arg.isConditional && arg.cond)
                 checkCond(*arg.cond, vars, syms, ann, diags);
             } else if constexpr (std::is_same_v<T, RetTerm>) {
-              if (arg.value && retBits)
-                typeOfExpr(*arg.value, vars, syms, ann, diags, *retBits);
-              else if (!arg.value)
+              if (arg.value) {
+                if (retBits)
+                  typeOfExpr(*arg.value, vars, syms, ann, diags, *retBits);
+                else if (isRetFloat) {
+                  auto const &ft = std::get<FloatType>(f.retType->v);
+                  uint32_t bits = (ft.kind == FloatType::Kind::F32) ? 32 : 64;
+                  typeOfExpr(*arg.value, vars, syms, ann, diags, bits);
+                }
+              } else if (!arg.value)
                 diags.error("Missing return value", arg.span);
             }
           },
@@ -263,10 +279,17 @@ namespace symir {
     auto t = typeOfAtom(e.first, vars, syms, ann, diags, expectedBits);
     for (const auto &tail: e.rest) {
       auto ti = typeOfAtom(
-          tail.atom, vars, syms, ann, diags, t.isBV() ? std::optional(t.bvBits()) : expectedBits
+          tail.atom, vars, syms, ann, diags,
+          t.isBV()      ? std::optional(t.bvBits())
+          : t.isFloat() ? std::optional(t.floatBits())
+                        : expectedBits
       );
       if (t.isBV() && ti.isBV() && t.bvBits() != ti.bvBits())
         diags.error("Bitwidth mismatch", tail.span);
+      if (t.isFloat() && ti.isFloat() && t.floatBits() != ti.floatBits())
+        diags.error("Float width mismatch", tail.span);
+      if (t.isBV() != ti.isBV() || t.isFloat() != ti.isFloat())
+        diags.error("Mixed integer/float arithmetic not allowed", tail.span);
     }
     return t;
   }
@@ -283,55 +306,97 @@ namespace symir {
             auto rt = typeOfLValue(arg.rval, vars, syms, diags);
             auto rb = TypeUtils::getBitWidth(rt);
 
-            // Use rb as expectation for coef if available, otherwise use incoming expectedBits
-            auto targetBits = rb ? rb : expectedBits;
-            auto ct = typeOfCoef(arg.coef, vars, syms, diags, targetBits);
-            auto cb = TypeUtils::getBitWidth(ct);
+            if (rb) {
+              // Integer case
+              auto targetBits = rb; // Use rval bits as truth
+              auto ct = typeOfCoef(arg.coef, vars, syms, diags, targetBits);
+              auto cb = TypeUtils::getBitWidth(ct);
+              if (cb && rb && *cb != *rb)
+                diags.error("Bitwidth mismatch in operation", arg.span);
+              return Ty{Ty::BVTy{rb.value()}};
+            } else if (rt && std::holds_alternative<FloatType>(rt->v)) {
+              // Float case
+              auto &ft = std::get<FloatType>(rt->v);
+              uint32_t bits = (ft.kind == FloatType::Kind::F32) ? 32 : 64;
 
-            if (cb && rb && *cb != *rb)
-              diags.error("Bitwidth mismatch in operation", arg.span);
-            return Ty{Ty::BVTy{cb.value_or(32)}};
+              if (arg.op != AtomOpKind::Mul && arg.op != AtomOpKind::Div &&
+                  arg.op != AtomOpKind::Mod) {
+                diags.error("Invalid operator for float type", arg.span);
+              }
+
+              auto ct = typeOfCoef(arg.coef, vars, syms, diags, bits);
+              if (!ct || !std::holds_alternative<FloatType>(ct->v)) {
+                diags.error("Coefficient must be float", arg.span);
+              } else {
+                auto &cft = std::get<FloatType>(ct->v);
+                uint32_t cbits = (cft.kind == FloatType::Kind::F32) ? 32 : 64;
+                if (cbits != bits)
+                  diags.error("Float width mismatch in operation", arg.span);
+              }
+              return Ty{Ty::FloatTy{bits}};
+            }
+            return Ty{std::monostate{}};
           } else if constexpr (std::is_same_v<T, UnaryAtom>) {
             auto rt = typeOfLValue(arg.rval, vars, syms, diags);
-            return Ty{Ty::BVTy{TypeUtils::getBitWidth(rt).value_or(32)}};
+            if (auto rb = TypeUtils::getBitWidth(rt)) {
+              return Ty{Ty::BVTy{*rb}};
+            }
+            diags.error("Unary op not supported for float", arg.span);
+            return Ty{std::monostate{}};
           } else if constexpr (std::is_same_v<T, SelectAtom>) {
             checkCond(*arg.cond, vars, syms, ann, diags);
             auto t1 = typeOfSelectVal(arg.vtrue, vars, syms, ann, diags, expectedBits);
             auto t2 = typeOfSelectVal(arg.vfalse, vars, syms, ann, diags, expectedBits);
             if (t1.isBV() && t2.isBV() && t1.bvBits() != t2.bvBits())
               diags.error("Select width mismatch", arg.span);
+            if (t1.isFloat() && t2.isFloat() && t1.floatBits() != t2.floatBits())
+              diags.error("Select float width mismatch", arg.span);
+            if (t1.isBV() != t2.isBV() || t1.isFloat() != t2.isFloat())
+              diags.error("Select type mismatch", arg.span);
             return t1;
           } else if constexpr (std::is_same_v<T, CoefAtom>) {
             auto ct = typeOfCoef(arg.coef, vars, syms, diags, expectedBits);
-            return Ty{Ty::BVTy{TypeUtils::getBitWidth(ct).value_or(32)}};
+            if (auto cb = TypeUtils::getBitWidth(ct))
+              return Ty{Ty::BVTy{*cb}};
+            if (ct && std::holds_alternative<FloatType>(ct->v))
+              return Ty{
+                  Ty::FloatTy{(std::get<FloatType>(ct->v).kind == FloatType::Kind::F32) ? 32u : 64u}
+              };
+            return Ty{std::monostate{}};
           } else if constexpr (std::is_same_v<T, RValueAtom>) {
             auto rt = typeOfLValue(arg.rval, vars, syms, diags);
-            return Ty{Ty::BVTy{TypeUtils::getBitWidth(rt).value_or(32)}};
+            if (auto rb = TypeUtils::getBitWidth(rt))
+              return Ty{Ty::BVTy{*rb}};
+            if (rt && std::holds_alternative<FloatType>(rt->v))
+              return Ty{
+                  Ty::FloatTy{(std::get<FloatType>(rt->v).kind == FloatType::Kind::F32) ? 32u : 64u}
+              };
+            return Ty{std::monostate{}};
           } else if constexpr (std::is_same_v<T, CastAtom>) {
-            auto st = std::visit(
-                [&](auto &&src) -> Ty {
-                  using S = std::decay_t<decltype(src)>;
-                  if constexpr (std::is_same_v<S, IntLit>) {
-                    return Ty{Ty::BVTy{32}};
-                  } else if constexpr (std::is_same_v<S, SymId>) {
-                    auto it = syms.find(src.name);
-                    if (it != syms.end())
-                      return Ty{Ty::BVTy{TypeUtils::getBitWidth(it->second.type).value_or(32)}};
-                    return Ty{std::monostate{}};
-                  } else {
-                    return Ty{Ty::BVTy{
-                        TypeUtils::getBitWidth(typeOfLValue(src, vars, syms, diags)).value_or(32)
-                    }};
-                  }
-                },
-                arg.src
-            );
-            auto db = TypeUtils::getBitWidth(arg.dstType);
-            if (std::holds_alternative<std::monostate>(st.v))
-              diags.error("Source of 'as' must be an integer type", arg.span);
-            if (!db)
-              diags.error("Destination of 'as' must be an integer type", arg.dstType->span);
-            return Ty{Ty::BVTy{db.value_or(32)}};
+            // 'as' can cast between Int and Float or Int resizing
+            TypePtr srcType = nullptr;
+            if (auto lit = std::get_if<IntLit>(&arg.src)) {
+              // IntLit -> infer as default i32 unless dstType hints otherwise
+            } else if (auto flit = std::get_if<FloatLit>(&arg.src)) {
+              // FloatLit
+            } else if (auto sid = std::get_if<SymId>(&arg.src)) {
+              auto it = syms.find(sid->name);
+              if (it != syms.end())
+                srcType = it->second.type;
+            } else if (auto lv = std::get_if<LValue>(&arg.src)) {
+              srcType = typeOfLValue(*lv, vars, syms, diags);
+            }
+
+            // Check destination
+            if (auto it = std::get_if<IntType>(&arg.dstType->v)) {
+              return Ty{Ty::BVTy{
+                  static_cast<uint32_t>(it->bits.value_or(it->kind == IntType::Kind::I32 ? 32 : 64))
+              }};
+            } else if (auto ft = std::get_if<FloatType>(&arg.dstType->v)) {
+              return Ty{Ty::FloatTy{ft->kind == FloatType::Kind::F32 ? 32u : 64u}};
+            }
+            diags.error("Destination of 'as' must be scalar", arg.dstType->span);
+            return Ty{std::monostate{}};
           }
           return Ty{std::monostate{}};
         },
@@ -360,6 +425,16 @@ namespace symir {
       it.span = lit->span;
       t->v = it;
       t->span = lit->span;
+      return t;
+    }
+    if (auto flit = std::get_if<FloatLit>(&c)) {
+      uint32_t bits = expectedBits.value_or(32);
+      auto t = std::make_shared<Type>();
+      FloatType ft;
+      ft.kind = (bits == 64) ? FloatType::Kind::F64 : FloatType::Kind::F32;
+      ft.span = flit->span;
+      t->v = ft;
+      t->span = flit->span;
       return t;
     }
     auto id = std::get<LocalOrSymId>(c);
@@ -394,15 +469,21 @@ namespace symir {
       const std::unordered_map<std::string, SymInfo> &syms, [[maybe_unused]] TypeAnnotations &ann,
       DiagBag &diags, std::optional<std::uint32_t> expectedBits
   ) {
+    TypePtr t;
     if (auto rv = std::get_if<RValue>(&sv)) {
-      return Ty{Ty::BVTy{TypeUtils::getBitWidth(typeOfLValue(*rv, vars, syms, diags)).value_or(32)}
-      };
+      t = typeOfLValue(*rv, vars, syms, diags);
     } else {
-      return Ty{Ty::BVTy{
-          TypeUtils::getBitWidth(typeOfCoef(std::get<Coef>(sv), vars, syms, diags, expectedBits))
-              .value_or(32)
-      }};
+      t = typeOfCoef(std::get<Coef>(sv), vars, syms, diags, expectedBits);
     }
+
+    if (auto bits = TypeUtils::getBitWidth(t)) {
+      return Ty{Ty::BVTy{*bits}};
+    }
+    if (t && std::holds_alternative<FloatType>(t->v)) {
+      auto &ft = std::get<FloatType>(t->v);
+      return Ty{Ty::FloatTy{ft.kind == FloatType::Kind::F32 ? 32u : 64u}};
+    }
+    return Ty{std::monostate{}};
   }
 
   void TypeChecker::checkCond(

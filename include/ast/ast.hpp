@@ -103,6 +103,14 @@ namespace symir {
   };
 
   /**
+   * Represents floating-point types.
+   */
+  struct FloatType {
+    enum class Kind { F32, F64 } kind = Kind::F32;
+    SourceSpan span;
+  };
+
+  /**
    * Represents user-defined struct types.
    */
   struct StructType {
@@ -127,7 +135,7 @@ namespace symir {
    * Wrapper for all possible types in SymIR.
    */
   struct Type {
-    using Variant = std::variant<IntType, StructType, ArrayType>;
+    using Variant = std::variant<IntType, FloatType, StructType, ArrayType>;
     Variant v;
     SourceSpan span;
   };
@@ -145,9 +153,17 @@ namespace symir {
   };
 
   /**
+   * Literal floating-point value.
+   */
+  struct FloatLit {
+    double value = 0.0;
+    SourceSpan span;
+  };
+
+  /**
    * A coefficient in an expression (literal or variable).
    */
-  using Coef = std::variant<IntLit, LocalOrSymId>;
+  using Coef = std::variant<IntLit, FloatLit, LocalOrSymId>;
 
   /**
    * An index for array access.
@@ -249,7 +265,7 @@ namespace symir {
    * Type cast atom.
    */
   struct CastAtom {
-    using Variant = std::variant<IntLit, SymId, LValue>;
+    using Variant = std::variant<IntLit, FloatLit, SymId, LValue>;
     Variant src;
     TypePtr dstType;
     SourceSpan span;
@@ -415,8 +431,8 @@ namespace symir {
    * Initializer value for variables.
    */
   struct InitVal {
-    enum class Kind { Int, Sym, Local, Undef, Aggregate } kind;
-    std::variant<IntLit, SymId, LocalId, std::vector<InitValPtr>> value;
+    enum class Kind { Int, Float, Sym, Local, Undef, Aggregate } kind;
+    std::variant<IntLit, FloatLit, SymId, LocalId, std::vector<InitValPtr>> value;
     SourceSpan span;
   };
 

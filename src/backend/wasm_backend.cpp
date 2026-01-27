@@ -48,6 +48,8 @@ namespace symir {
             if (arg.kind == IntType::Kind::I64 || (arg.bits.has_value() && *arg.bits > 32))
               return "i64";
             return "i32";
+          } else if constexpr (std::is_same_v<T, FloatType>) {
+            return arg.kind == FloatType::Kind::F32 ? "f32" : "f64";
           } else {
             return "i32";
           }
@@ -90,6 +92,8 @@ namespace symir {
             if (bits <= 32)
               return 4;
             return 8;
+          } else if constexpr (std::is_same_v<T, FloatType>) {
+            return arg.kind == FloatType::Kind::F32 ? 4 : 8;
           } else if constexpr (std::is_same_v<T, StructType>) {
             if (structLayouts_.count(arg.name.name))
               return structLayouts_.at(arg.name.name).totalSize;
@@ -311,6 +315,10 @@ namespace symir {
                     srcWidth = (src.value > INT32_MAX || src.value < INT32_MIN) ? 64 : 32;
                     indent();
                     out_ << (srcWidth <= 32 ? "i32.const " : "i64.const ") << src.value << "\n";
+                  } else if constexpr (std::is_same_v<S, FloatLit>) {
+                    srcWidth = 64; // treat as max width
+                    indent();
+                    out_ << "f64.const " << src.value << "\n";
                   } else if constexpr (std::is_same_v<S, SymId>) {
                     indent();
                     out_ << "call " << mangleName(getMangledSymbolName(curFuncName_, src.name))
@@ -507,6 +515,9 @@ namespace symir {
           if constexpr (std::is_same_v<T, IntLit>) {
             indent();
             out_ << (wasmWidth == 32 ? "i32.const " : "i64.const ") << arg.value << "\n";
+          } else if constexpr (std::is_same_v<T, FloatLit>) {
+            indent();
+            out_ << (wasmWidth == 32 ? "f32.const " : "f64.const ") << arg.value << "\n";
           } else {
             std::visit(
                 [this, targetWidth, wasmWidth](auto &&id) {
@@ -765,6 +776,12 @@ namespace symir {
             out_ << (locals_[l.name.name].bitwidth <= 32 ? "i32.const " : "i64.const ")
                  << std::get<IntLit>(l.init->value).value << "\n";
             emitSignExtend(getIntWidth(l.type), (locals_[l.name.name].wasmType == "i32" ? 32 : 64));
+            indent();
+            out_ << "local.set " << mangleName(l.name.name) << "\n";
+          } else if (l.init->kind == InitVal::Kind::Float) {
+            indent();
+            out_ << (locals_[l.name.name].wasmType == "f32" ? "f32.const " : "f64.const ")
+                 << std::get<FloatLit>(l.init->value).value << "\n";
             indent();
             out_ << "local.set " << mangleName(l.name.name) << "\n";
           } else if (l.init->kind == InitVal::Kind::Local) {

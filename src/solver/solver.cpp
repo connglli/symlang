@@ -1,4 +1,5 @@
 #include "solver/solver.hpp"
+#include <cstring>
 #include <functional>
 #include <iostream>
 #include <stdexcept>
@@ -28,6 +29,12 @@ namespace symir {
           break;
       }
       return tm.mk_bv_sort(bits);
+    }
+    if (auto ft = std::get_if<FloatType>(&t->v)) {
+      if (ft->kind == FloatType::Kind::F32)
+        return tm.mk_fp_sort(8, 24);
+      else
+        return tm.mk_fp_sort(11, 53);
     }
     throw std::runtime_error("Aggregate types do not have a single SMT sort in this encoding");
   }
@@ -140,6 +147,11 @@ namespace symir {
     if (iv.kind == InitVal::Kind::Int) {
       auto lit = std::get<IntLit>(iv.value);
       val = tm.mk_bv_value(getSort(t, tm), std::to_string(lit.value), 10);
+    } else if (iv.kind == InitVal::Kind::Float) {
+      auto lit = std::get<FloatLit>(iv.value);
+      val = tm.mk_fp_value(
+          getSort(t, tm), tm.mk_rm_value(bitwuzla::RoundingMode::RNE), std::to_string(lit.value)
+      );
     } else if (iv.kind == InitVal::Kind::Sym) {
       val = store.at(std::get<SymId>(iv.value).name).term;
     } else if (iv.kind == InitVal::Kind::Local) {
@@ -309,8 +321,27 @@ namespace symir {
       for (const auto &s: entry->syms) {
         auto term = store.at(s.name.name).term;
         auto val_term = solver.get_value(term);
-        auto val_str = val_term.value<std::string>(10);
-        finalRes.model[s.name.name] = parseIntegerLiteral(val_str);
+
+        if (term.sort().is_fp()) {
+          std::string bin = val_term.value<std::string>(2);
+          uint64_t bits = 0;
+          for (char c: bin) {
+            bits = (bits << 1) | (c - '0');
+          }
+          double d;
+          if (bin.size() <= 32) {
+            uint32_t b32 = (uint32_t) bits;
+            float f;
+            std::memcpy(&f, &b32, sizeof(f));
+            d = f;
+          } else {
+            std::memcpy(&d, &bits, sizeof(d));
+          }
+          finalRes.model[s.name.name] = d;
+        } else {
+          auto val_str = val_term.value<std::string>(10);
+          finalRes.model[s.name.name] = parseIntegerLiteral(val_str);
+        }
       }
     } else if (res == bitwuzla::Result::UNSAT) {
       finalRes.unsat = true;
@@ -518,13 +549,23 @@ namespace symir {
     for (const auto &tail: e.rest) {
       bitwuzla::Term right = evalAtom(tail.atom, tm, solver, store, pc, expectedSort);
       if (tail.op == AddOp::Plus) {
-        auto overflow = tm.mk_term(bitwuzla::Kind::BV_SADD_OVERFLOW, {res, right});
-        pc.push_back(tm.mk_term(bitwuzla::Kind::NOT, {overflow}));
-        res = tm.mk_term(bitwuzla::Kind::BV_ADD, {res, right});
+        if (res.sort().is_fp()) {
+          auto rm = tm.mk_rm_value(bitwuzla::RoundingMode::RNE);
+          res = tm.mk_term(bitwuzla::Kind::FP_ADD, {rm, res, right});
+        } else {
+          auto overflow = tm.mk_term(bitwuzla::Kind::BV_SADD_OVERFLOW, {res, right});
+          pc.push_back(tm.mk_term(bitwuzla::Kind::NOT, {overflow}));
+          res = tm.mk_term(bitwuzla::Kind::BV_ADD, {res, right});
+        }
       } else {
-        auto overflow = tm.mk_term(bitwuzla::Kind::BV_SSUB_OVERFLOW, {res, right});
-        pc.push_back(tm.mk_term(bitwuzla::Kind::NOT, {overflow}));
-        res = tm.mk_term(bitwuzla::Kind::BV_SUB, {res, right});
+        if (res.sort().is_fp()) {
+          auto rm = tm.mk_rm_value(bitwuzla::RoundingMode::RNE);
+          res = tm.mk_term(bitwuzla::Kind::FP_SUB, {rm, res, right});
+        } else {
+          auto overflow = tm.mk_term(bitwuzla::Kind::BV_SSUB_OVERFLOW, {res, right});
+          pc.push_back(tm.mk_term(bitwuzla::Kind::NOT, {overflow}));
+          res = tm.mk_term(bitwuzla::Kind::BV_SUB, {res, right});
+        }
       }
     }
     return res;
@@ -540,6 +581,18 @@ namespace symir {
           if constexpr (std::is_same_v<T, OpAtom>) {
             bitwuzla::Term c = evalCoef(arg.coef, tm, solver, store, expectedSort);
             bitwuzla::Term r = evalLValue(arg.rval, tm, solver, store, pc).term;
+
+            if (c.sort().is_fp()) {
+              auto rm = tm.mk_rm_value(bitwuzla::RoundingMode::RNE);
+              if (arg.op == AtomOpKind::Mul)
+                return tm.mk_term(bitwuzla::Kind::FP_MUL, {rm, c, r});
+              if (arg.op == AtomOpKind::Div)
+                return tm.mk_term(bitwuzla::Kind::FP_DIV, {rm, c, r});
+              if (arg.op == AtomOpKind::Mod)
+                return tm.mk_term(bitwuzla::Kind::FP_REM, {c, r});
+              return {};
+            }
+
             if (arg.op == AtomOpKind::Div || arg.op == AtomOpKind::Mod) {
               auto zero = tm.mk_bv_zero(r.sort());
               pc.push_back(tm.mk_term(bitwuzla::Kind::DISTINCT, {r, zero}));
@@ -560,7 +613,7 @@ namespace symir {
               return tm.mk_term(bitwuzla::Kind::BV_SDIV, {c, r});
             }
             if (arg.op == AtomOpKind::Mod) {
-              // Check overflow for mod? Yes, if div overflows, mod is problematic/UB in C.
+              // Check overflow for mod
               auto min_signed = tm.mk_bv_min_signed(c.sort());
               auto minus_one = tm.mk_bv_value_int64(r.sort(), -1);
               auto is_min = tm.mk_term(bitwuzla::Kind::EQUAL, {c, min_signed});
@@ -614,6 +667,12 @@ namespace symir {
                   using S = std::decay_t<decltype(s)>;
                   if constexpr (std::is_same_v<S, IntLit>) {
                     return tm.mk_bv_value(tm.mk_bv_sort(32), std::to_string(s.value), 10);
+                  } else if constexpr (std::is_same_v<S, FloatLit>) {
+                    // Default to f32 if implied
+                    return tm.mk_fp_value(
+                        tm.mk_fp_sort(8, 24), tm.mk_rm_value(bitwuzla::RoundingMode::RNE),
+                        std::to_string(s.value)
+                    );
                   } else if constexpr (std::is_same_v<S, SymId>) {
                     return store.at(s.name).term;
                   } else {
@@ -623,6 +682,25 @@ namespace symir {
                 arg.src
             );
             auto dstSort = getSort(arg.dstType, tm);
+
+            if (src.sort().is_fp() && dstSort.is_fp()) {
+              auto rm = tm.mk_rm_value(bitwuzla::RoundingMode::RNE);
+              return tm.mk_term(
+                  bitwuzla::Kind::FP_TO_FP_FROM_FP, {rm, src},
+                  {dstSort.fp_exp_size(), dstSort.fp_sig_size()}
+              );
+            } else if (src.sort().is_fp() && dstSort.is_bv()) {
+              auto rm = tm.mk_rm_value(bitwuzla::RoundingMode::RNE);
+              return tm.mk_term(bitwuzla::Kind::FP_TO_SBV, {rm, src}, {dstSort.bv_size()});
+            } else if (src.sort().is_bv() && dstSort.is_fp()) {
+              auto rm = tm.mk_rm_value(bitwuzla::RoundingMode::RNE);
+              return tm.mk_term(
+                  bitwuzla::Kind::FP_TO_FP_FROM_SBV, {rm, src},
+                  {dstSort.fp_exp_size(), dstSort.fp_sig_size()}
+              );
+            }
+
+            // BV -> BV resizing
             uint32_t srcWidth = src.sort().bv_size();
             uint32_t dstWidth = dstSort.bv_size();
             if (srcWidth == dstWidth)
@@ -646,6 +724,12 @@ namespace symir {
       bitwuzla::Sort s = expectedSort.value_or(tm.mk_bv_sort(32));
       return tm.mk_bv_value(s, std::to_string(lit->value), 10);
     }
+    if (auto flit = std::get_if<FloatLit>(&c)) {
+      bitwuzla::Sort s = expectedSort.value_or(tm.mk_fp_sort(8, 24));
+      return tm.mk_fp_value(
+          s, tm.mk_rm_value(bitwuzla::RoundingMode::RNE), std::to_string(flit->value)
+      );
+    }
     auto id = std::get<LocalOrSymId>(c);
     return std::visit([&](auto &&v) { return store.at(v.name).term; }, id);
   }
@@ -666,6 +750,26 @@ namespace symir {
   ) {
     bitwuzla::Term lhs = evalExpr(c.lhs, tm, solver, store, pc);
     bitwuzla::Term rhs = evalExpr(c.rhs, tm, solver, store, pc, lhs.sort());
+
+    if (lhs.sort().is_fp()) {
+      switch (c.op) {
+        case RelOp::EQ:
+          return tm.mk_term(bitwuzla::Kind::FP_EQUAL, {lhs, rhs});
+        case RelOp::NE:
+          return tm.mk_term(
+              bitwuzla::Kind::NOT, {tm.mk_term(bitwuzla::Kind::FP_EQUAL, {lhs, rhs})}
+          );
+        case RelOp::LT:
+          return tm.mk_term(bitwuzla::Kind::FP_LT, {lhs, rhs});
+        case RelOp::LE:
+          return tm.mk_term(bitwuzla::Kind::FP_LEQ, {lhs, rhs});
+        case RelOp::GT:
+          return tm.mk_term(bitwuzla::Kind::FP_GT, {lhs, rhs});
+        case RelOp::GE:
+          return tm.mk_term(bitwuzla::Kind::FP_GEQ, {lhs, rhs});
+      }
+    }
+
     switch (c.op) {
       case RelOp::EQ:
         return tm.mk_term(bitwuzla::Kind::EQUAL, {lhs, rhs});

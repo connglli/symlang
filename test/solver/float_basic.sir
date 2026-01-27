@@ -1,0 +1,16 @@
+// EXPECT: PASS
+// ARGS: --main @float_test --path ^entry
+
+fun @float_test() : f32 {
+  sym %?x: value f32;
+  let %a: f32 = 1.5;
+  let %b: f32 = 2.5;
+
+^entry:
+  require %a + %b == 4.0;
+
+  assume %?x > 10.0;
+  assume %?x < 11.0;
+
+  ret %?x;
+}

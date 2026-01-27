@@ -219,6 +219,8 @@ namespace symir {
                   using S = std::decay_t<decltype(src)>;
                   if constexpr (std::is_same_v<S, IntLit>) {
                     out_ << src.value;
+                  } else if constexpr (std::is_same_v<S, FloatLit>) {
+                    out_ << src.value;
                   } else if constexpr (std::is_same_v<S, SymId>) {
                     out_ << src.name;
                   } else {
@@ -259,6 +261,8 @@ namespace symir {
         [this, &c](auto &&arg) {
           using T = std::decay_t<decltype(arg)>;
           if constexpr (std::is_same_v<T, IntLit>) {
+            out_ << arg.value;
+          } else if constexpr (std::is_same_v<T, FloatLit>) {
             out_ << arg.value;
           } else {
             std::visit(
@@ -310,6 +314,9 @@ namespace symir {
     switch (iv.kind) {
       case InitVal::Kind::Int:
         out_ << std::get<IntLit>(iv.value).value;
+        break;
+      case InitVal::Kind::Float:
+        out_ << std::get<FloatLit>(iv.value).value;
         break;
       case InitVal::Kind::Sym: {
         auto name = std::get<SymId>(iv.value).name;

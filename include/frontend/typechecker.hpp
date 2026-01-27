@@ -15,7 +15,11 @@ namespace symir {
       std::uint32_t bits;
     };
 
-    using Variant = std::variant<BoolTy, BVTy, std::monostate>;
+    struct FloatTy {
+      std::uint32_t bits;
+    };
+
+    using Variant = std::variant<BoolTy, BVTy, FloatTy, std::monostate>;
     Variant v;
 
     bool isBool() const { return std::holds_alternative<BoolTy>(v); }
@@ -23,6 +27,10 @@ namespace symir {
     bool isBV() const { return std::holds_alternative<BVTy>(v); }
 
     std::uint32_t bvBits() const { return std::get<BVTy>(v).bits; }
+
+    bool isFloat() const { return std::holds_alternative<FloatTy>(v); }
+
+    std::uint32_t floatBits() const { return std::get<FloatTy>(v).bits; }
   };
 
   /**

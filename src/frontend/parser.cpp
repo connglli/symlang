@@ -90,6 +90,13 @@ namespace symir {
       it.span = SourceSpan{b, prevEnd()};
       return std::make_shared<Type>(it, SourceSpan{b, prevEnd()});
     }
+    if (is(TokenKind::FloatType)) {
+      std::string lex = consume(TokenKind::FloatType, "float type").lexeme;
+      FloatType ft;
+      ft.kind = (lex == "f32") ? FloatType::Kind::F32 : FloatType::Kind::F64;
+      ft.span = SourceSpan{b, prevEnd()};
+      return std::make_shared<Type>(ft, SourceSpan{b, prevEnd()});
+    }
     if (is(TokenKind::GlobalId)) {
       GlobalId name = parseGlobalId();
       return std::make_shared<Type>(
@@ -300,6 +307,16 @@ namespace symir {
       return iv;
     }
 
+    if (is(TokenKind::FloatLit)) {
+      const Token &t = consume(TokenKind::FloatLit, "float literal");
+      FloatLit lit{std::stod(t.lexeme), t.span};
+      InitVal iv;
+      iv.kind = InitVal::Kind::Float;
+      iv.value = lit;
+      iv.span = SourceSpan{b, prevEnd()};
+      return iv;
+    }
+
     if (is(TokenKind::SymId)) {
       SymId sid = parseSymId();
       InitVal iv;
@@ -478,6 +495,10 @@ namespace symir {
       const Token &t = consume(TokenKind::IntLit, "coefficient");
       return Coef{IntLit{parseIntegerLiteral(t.lexeme), t.span}};
     }
+    if (is(TokenKind::FloatLit)) {
+      const Token &t = consume(TokenKind::FloatLit, "float coefficient");
+      return Coef{FloatLit{std::stod(t.lexeme), t.span}};
+    }
     if (is(TokenKind::LocalId)) {
       return Coef{LocalOrSymId{parseLocalId()}};
     }
@@ -589,6 +610,8 @@ namespace symir {
         CastAtom ca;
         if (auto lit = std::get_if<IntLit>(&c)) {
           ca.src = *lit;
+        } else if (auto flit = std::get_if<FloatLit>(&c)) {
+          ca.src = *flit;
         } else {
           auto &lsid = std::get<LocalOrSymId>(c);
           if (auto sid = std::get_if<SymId>(&lsid)) {
@@ -613,7 +636,8 @@ namespace symir {
     idx_ = save;
 
     // Leaf Atom
-    if (is(TokenKind::IntLit) || is(TokenKind::SymId) || is(TokenKind::LocalId)) {
+    if (is(TokenKind::IntLit) || is(TokenKind::FloatLit) || is(TokenKind::SymId) ||
+        is(TokenKind::LocalId)) {
       std::size_t save_leaf = idx_;
       Coef c = parseCoef();
       if (auto lsid = std::get_if<LocalOrSymId>(&c)) {
@@ -658,7 +682,7 @@ namespace symir {
       RValue rv = parseLValue();
       return SelectVal{rv};
     }
-    if (is(TokenKind::IntLit) || is(TokenKind::SymId)) {
+    if (is(TokenKind::IntLit) || is(TokenKind::FloatLit) || is(TokenKind::SymId)) {
       Coef c = parseCoef();
       return SelectVal{c};
     }

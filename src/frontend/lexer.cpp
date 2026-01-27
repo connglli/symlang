@@ -157,33 +157,73 @@ namespace symir {
       }
     }
 
-    // Integer literal
+    // Number literal (Int or Float)
     if (std::isdigit(static_cast<unsigned char>(c)) ||
         (c == '-' && std::isdigit(static_cast<unsigned char>(peek(1))))) {
       std::string num;
       if (c == '-')
         num.push_back(get());
 
-      if (peek() == '0' && (peek(1) == 'x' || peek(1) == 'X')) {
-        num.push_back(get()); // '0'
-        num.push_back(get()); // 'x'
+      bool isHex = false, isOct = false, isBin = false;
+
+      if (peek() == '0') {
+        if (peek(1) == 'x' || peek(1) == 'X') {
+          isHex = true;
+          num.push_back(get()); // '0'
+          num.push_back(get()); // 'x'
+        } else if (peek(1) == 'o' || peek(1) == 'O') {
+          isOct = true;
+          num.push_back(get()); // '0'
+          num.push_back(get()); // 'o'
+        } else if (peek(1) == 'b' || peek(1) == 'B') {
+          isBin = true;
+          num.push_back(get()); // '0'
+          num.push_back(get()); // 'b'
+        }
+      }
+
+      if (isHex) {
         while (std::isxdigit(static_cast<unsigned char>(peek())))
           num.push_back(get());
-      } else if (peek() == '0' && (peek(1) == 'o' || peek(1) == 'O')) {
-        num.push_back(get()); // '0'
-        num.push_back(get()); // 'o'
+        return make(TokenKind::IntLit, num, b, pos());
+      } else if (isOct) {
         while (peek() >= '0' && peek() <= '7')
           num.push_back(get());
-      } else if (peek() == '0' && (peek(1) == 'b' || peek(1) == 'B')) {
-        num.push_back(get()); // '0'
-        num.push_back(get()); // 'b'
+        return make(TokenKind::IntLit, num, b, pos());
+      } else if (isBin) {
         while (peek() == '0' || peek() == '1')
           num.push_back(get());
-      } else {
+        return make(TokenKind::IntLit, num, b, pos());
+      }
+
+      // Decimal (potentially Float)
+      while (std::isdigit(static_cast<unsigned char>(peek())))
+        num.push_back(get());
+
+      bool isFloat = false;
+
+      // Fraction
+      if (peek() == '.') {
+        isFloat = true;
+        num.push_back(get()); // '.'
         while (std::isdigit(static_cast<unsigned char>(peek())))
           num.push_back(get());
       }
-      return make(TokenKind::IntLit, num, b, pos());
+
+      // Exponent
+      if (peek() == 'e' || peek() == 'E') {
+        isFloat = true;
+        num.push_back(get()); // 'e'
+        if (peek() == '+' || peek() == '-')
+          num.push_back(get());
+        if (!std::isdigit(static_cast<unsigned char>(peek()))) {
+          throw ParseError("Expected digits in exponent", SourceSpan{b, pos()});
+        }
+        while (std::isdigit(static_cast<unsigned char>(peek())))
+          num.push_back(get());
+      }
+
+      return make(isFloat ? TokenKind::FloatLit : TokenKind::IntLit, num, b, pos());
     }
 
     // Punctuators / three-char ops
@@ -342,6 +382,10 @@ namespace symir {
         }
         if (allDigits)
           return make(TokenKind::IntType, name, b, pos());
+      }
+
+      if (name == "f32" || name == "f64") {
+        return make(TokenKind::FloatType, name, b, pos());
       }
 
       return make(TokenKind::Ident, name, b, pos());

@@ -65,6 +65,8 @@ namespace symir {
               else
                 out_ << "int64_t";
             }
+          } else if constexpr (std::is_same_v<T, FloatType>) {
+            out_ << (arg.kind == FloatType::Kind::F32 ? "float" : "double");
           } else if constexpr (std::is_same_v<T, StructType>) {
             out_ << "struct " << mangleName(arg.name.name);
           } else if constexpr (std::is_same_v<T, ArrayType>) {
@@ -397,6 +399,8 @@ namespace symir {
                   using S = std::decay_t<decltype(src)>;
                   if constexpr (std::is_same_v<S, IntLit>) {
                     out_ << src.value;
+                  } else if constexpr (std::is_same_v<S, FloatLit>) {
+                    out_ << src.value;
                   } else if constexpr (std::is_same_v<S, SymId>) {
                     out_ << getMangledSymbolName(curFuncName_, src.name) << "()";
                   } else {
@@ -457,6 +461,8 @@ namespace symir {
           using T = std::decay_t<decltype(arg)>;
           if constexpr (std::is_same_v<T, IntLit>) {
             out_ << arg.value;
+          } else if constexpr (std::is_same_v<T, FloatLit>) {
+            out_ << arg.value;
           } else {
             std::visit(
                 [this](auto &&id) {
@@ -508,6 +514,9 @@ namespace symir {
     switch (iv.kind) {
       case InitVal::Kind::Int:
         out_ << std::get<IntLit>(iv.value).value;
+        break;
+      case InitVal::Kind::Float:
+        out_ << std::get<FloatLit>(iv.value).value;
         break;
       case InitVal::Kind::Sym:
         out_ << getMangledSymbolName(curFuncName_, std::get<SymId>(iv.value).name) << "()";
