@@ -1,0 +1,9 @@
+// SKIP: WASM
+// SKIP: COMPILER
+// EXPECT: FAIL
+fun @test() : f32 {
+  let %u: f32 = undef;
+^entry:
+  // Reading undef float
+  ret %u;
+}

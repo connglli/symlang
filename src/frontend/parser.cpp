@@ -112,7 +112,7 @@ namespace symir {
           ArrayType{size, std::move(elem), SourceSpan{b, prevEnd()}}, SourceSpan{b, prevEnd()}
       );
     }
-    errorHere("Expected a type (iN, array type, or struct type @Name)");
+    errorHere("Expected a type (iN, f32/f64, array type, or struct type @Name)");
   }
 
   SourcePos Parser::prevEnd() const {

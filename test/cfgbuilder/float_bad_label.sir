@@ -1,0 +1,5 @@
+// EXPECT: FAIL
+fun @test() : i32 {
+^entry:
+  br ^missing;
+}

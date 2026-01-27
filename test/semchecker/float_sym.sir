@@ -1,0 +1,8 @@
+// SKIP: WASM
+// EXPECT: PASS
+fun @test() : i32 {
+  sym %?x: value f32;
+  let %y: f32 = %?x;
+^entry:
+  ret 0;
+}

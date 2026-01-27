@@ -1,0 +1,12 @@
+// SKIP: WASM
+// EXPECT: PASS
+fun @test(%cond: f32) : i32 {
+^entry:
+  br %cond > 0.0, ^pos, ^neg;
+
+^pos:
+  ret 1;
+
+^neg:
+  ret 0;
+}

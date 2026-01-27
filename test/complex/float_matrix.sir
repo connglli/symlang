@@ -1,0 +1,46 @@
+// SKIP: WASM
+// EXPECT: PASS
+// SKIP: INTERPRETER
+// ARGS: --main @matmul --path ^entry
+
+// 2x2 Matrix Mul: A * B = C
+// A = [[1, 2], [3, 4]]
+// B symbolic
+// C required to be identity [[1, 0], [0, 1]]
+
+struct @Mat2 { d: [2][2] f32; }
+
+fun @matmul() : i32 {
+  sym %?b00: value f32;
+  sym %?b01: value f32;
+  sym %?b10: value f32;
+  sym %?b11: value f32;
+  let %a: [2][2] f32 = {{1.0, 2.0}, {3.0, 4.0}};
+
+  let mut %c00: f32 = 0.0;
+  let mut %c01: f32 = 0.0;
+  let mut %c10: f32 = 0.0;
+  let mut %c11: f32 = 0.0;
+
+^entry:
+  // C = A * B
+  // Load symbols into locals to use as RValue if needed?
+  // No, Coef can be SymId. RValue must be LValue.
+  // In %a[0][0] * %?b00, %a[0][0] is NOT a Coef (it's accessed LValue).
+  // So it must be Coef * RValue.
+  // Coef can be FloatLit, SymId, or LocalId (unaccessed).
+  // RValue can be accessed LValue.
+  // So %?b00 * %a[0][0] is VALID.
+
+  %c00 = %?b00 * %a[0][0] + %?b10 * %a[0][1];
+  %c01 = %?b01 * %a[0][0] + %?b11 * %a[0][1];
+  %c10 = %?b00 * %a[1][0] + %?b10 * %a[1][1];
+  %c11 = %?b01 * %a[1][0] + %?b11 * %a[1][1];
+
+  require %c00 == 1.0;
+  require %c01 == 0.0;
+  require %c10 == 0.0;
+  require %c11 == 1.0;
+
+  ret 0;
+}

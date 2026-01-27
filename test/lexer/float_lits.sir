@@ -1,0 +1,11 @@
+// SKIP: WASM
+// EXPECT: PASS
+fun @test() : i32 {
+  let %a: f32 = 1.0;
+  let %b: f32 = -0.5;
+  let %c: f64 = 3.14159;
+    let %d: f32 = 1.2e-3;
+    let %e: f64 = 5.0E+10;
+  ^entry:
+    ret 0;
+  }

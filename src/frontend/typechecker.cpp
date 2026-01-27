@@ -114,6 +114,12 @@ namespace symir {
       auto it = vars.find(std::get<LocalId>(iv.value).name);
       if (it != vars.end())
         initType = it->second.type;
+      else {
+        diags.error(
+            "Undeclared local in initializer: " + std::get<LocalId>(iv.value).name, iv.span
+        );
+        return;
+      }
     }
 
     if (initType) {

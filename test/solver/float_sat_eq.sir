@@ -1,0 +1,12 @@
+// SKIP: WASM
+// SKIP: COMPILER
+// SKIP: INTERPRETER
+// EXPECT: PASS
+// ARGS: --main @test --path ^entry
+
+fun @test() : f32 {
+  sym %?x: value f32;
+^entry:
+  require %?x + 1.0 == 2.0;
+  ret %?x;
+}

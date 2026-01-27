@@ -80,6 +80,9 @@ def run_symirc_test(symirc_path, target="c"):
     if "COMPILER" in skips:
       return TestResult.SKIP, "Skipped by COMPILER tag"
 
+    if target == "wasm" and "WASM" in skips:
+      return TestResult.SKIP, "Skipped by WASM tag"
+
     if target == "wasm" and not wasm_runtime:
       return TestResult.SKIP, "No WASM runtime found (wasmtime or wasmer)"
 

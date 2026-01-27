@@ -1,0 +1,36 @@
+// SKIP: WASM
+// EXPECT: PASS
+// SKIP: INTERPRETER
+// ARGS: --main @newton --path ^entry
+
+// Find root of x^2 - 2 = 0 starting near 1.5
+// x_new = x - (x^2 - 2) / (2x)
+fun @newton() : f32 {
+  sym %?x: value f32;
+  let %two: f32 = 2.0;
+  let mut %fx: f32 = 0.0;
+  let mut %dfx: f32 = 0.0;
+  let mut %step: f32 = 0.0;
+  let mut %x_new: f32 = 0.0;
+  let %local_x: f32 = %?x;
+  let mut %res: f32 = 0.0;
+
+^entry:
+  require %?x > 1.4;
+  require %?x < 1.5;
+
+  // f(x) = x * x - 2
+  %fx = %?x * %local_x - 2.0;
+
+  // f'(x) = 2 * x
+  %dfx = 2.0 * %local_x;
+
+  // step = fx / dfx
+  %step = %fx / %dfx;
+
+  %x_new = %local_x - %step;
+
+  %res = %x_new * %x_new;
+
+  ret %res;
+}

@@ -1,0 +1,13 @@
+// SKIP: WASM
+// EXPECT: PASS
+fun @test() : f32 {
+  let %a: f32 = 1.0;
+  let %b: f32 = 2.0;
+  let mut %c: f32 = 0.0;
+^entry:
+  // SymIR v0 requires "Coef op RValue".
+  // 3.0 is Coef. %b is RValue.
+  // %b * 3.0 is invalid because 3.0 is not RValue.
+  %c = %a + 3.0 * %b;
+  ret %c;
+}

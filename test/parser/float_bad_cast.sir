@@ -1,0 +1,7 @@
+// SKIP: WASM
+// EXPECT: FAIL
+fun @test() : i32 {
+  let %a: i32 = 1;
+  let %b: f32 = %a as;
+  ret 0;
+}

@@ -1,0 +1,16 @@
+// SKIP: WASM
+// EXPECT: PASS
+fun @test() : f32 {
+  let %a: f32 = 1.0;
+  let %b: f32 = 2.0;
+  let mut %add: f32 = 0.0;
+  let mut %sub: f32 = 0.0;
+  let mut %mul: f32 = 0.0;
+  let mut %div: f32 = 0.0;
+^entry:
+  %add = %a + %b;
+  %sub = %a - %b;
+  %mul = %a * %b;
+  %div = %a / %b;
+  ret %add;
+}

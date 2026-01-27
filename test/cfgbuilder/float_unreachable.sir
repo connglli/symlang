@@ -1,0 +1,9 @@
+// SKIP: WASM
+// EXPECT: PASS
+fun @test() : i32 {
+  let %x: f32 = 1.0;
+^entry:
+  ret 0;
+^unreach:
+  unreachable;
+}

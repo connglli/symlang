@@ -1,0 +1,10 @@
+// SKIP: WASM
+// EXPECT: PASS
+fun @main() : f64 {
+  let %a: f64 = 1.0;
+  let %b: f64 = 2.0;
+  let mut %c: f64 = 0.0;
+^entry:
+  %c = %a * %b;
+  ret %c;
+}

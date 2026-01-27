@@ -1,0 +1,7 @@
+// SKIP: WASM
+// SKIP: COMPILER
+// EXPECT: FAIL
+fun @main(%p: f32) : f32 {
+^entry:
+  ret %p;
+}

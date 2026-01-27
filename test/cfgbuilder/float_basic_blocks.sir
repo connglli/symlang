@@ -1,0 +1,8 @@
+// SKIP: WASM
+// EXPECT: PASS
+fun @test() : i32 {
+  let mut %x: f32 = 0.0;
+^entry:
+  %x = %x + 1.0;
+  br ^entry;
+}

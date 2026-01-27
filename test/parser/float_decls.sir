@@ -1,0 +1,10 @@
+// SKIP: WASM
+// EXPECT: PASS
+struct @Vec3 { x: f32; y: f32; z: f32; }
+
+fun @test(%v: @Vec3) : f32 {
+  let mut %sum: f32 = 0.0;
+^entry:
+  %sum = %v.x;
+  ret %sum;
+}

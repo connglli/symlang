@@ -1,0 +1,9 @@
+// SKIP: WASM
+// EXPECT: FAIL
+struct @Bad { x: f32; }
+
+fun @test() : i32 {
+  // Init mismatch
+  let %s: @Bad = { 1 };
+  ret 0;
+}

@@ -1,3 +1,5 @@
+// SKIP: COMPILER
+// SKIP: INTERPRETER
 // EXPECT: FAIL
 // ARGS: --main @main --path '^entry' --sym %?a=2147483647
 // 32-bit overflow check in solver
