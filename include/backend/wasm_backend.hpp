@@ -64,12 +64,12 @@ namespace symir {
     std::uint32_t getIntWidth(const TypePtr &type);
     void computeLayouts(const Program &prog);
 
-    void emitExpr(const Expr &expr, std::uint32_t targetWidth);
-    void emitAtom(const Atom &atom, std::uint32_t targetWidth);
+    void emitExpr(const Expr &expr, std::uint32_t targetWidth, bool isFloat = false);
+    void emitAtom(const Atom &atom, std::uint32_t targetWidth, bool isFloat = false);
     void emitCond(const Cond &cond);
     void emitLValue(const LValue &lv, bool isStore);
-    void emitCoef(const Coef &coef, std::uint32_t targetWidth);
-    void emitSelectVal(const SelectVal &sv, std::uint32_t targetWidth);
+    void emitCoef(const Coef &coef, std::uint32_t targetWidth, bool isFloat = false);
+    void emitSelectVal(const SelectVal &sv, std::uint32_t targetWidth, bool isFloat = false);
     void emitIndex(const Index &idx);
     void emitInitVal(const InitVal &iv, const TypePtr &type, std::uint32_t offset);
     void emitAddress(const LValue &lv);

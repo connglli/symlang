@@ -34,6 +34,10 @@ def extract_sir_info(file_path):
       ret_type = main_match.group(1).strip()
       if ret_type == "i64":
         info["main_ret"] = "i64"
+      elif ret_type == "f32":
+        info["main_ret"] = "f32"
+      elif ret_type == "f64":
+        info["main_ret"] = "f64"
     else:
       # Try without colon if any
       if re.search(r"fun\s+@main\s*\([^)]*\)\s+i64", content):

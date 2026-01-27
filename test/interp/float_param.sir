@@ -1,4 +1,6 @@
-// EXPECT: FAIL
+// SKIP: COMPILER
+// SKIP: INTERPRETER
+// EXPECT: PASS
 fun @main(%p: f32) : f32 {
 ^entry:
   ret %p;

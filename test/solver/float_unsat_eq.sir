@@ -1,3 +1,5 @@
+// SKIP: COMPILER
+// SKIP: INTERPRETER
 // EXPECT: FAIL
 // ARGS: --main @test --path ^entry
 

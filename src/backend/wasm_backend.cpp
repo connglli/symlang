@@ -69,6 +69,9 @@ namespace symir {
         return 64;
       return it->bits.value_or(32);
     }
+    if (auto ft = std::get_if<FloatType>(&type->v)) {
+      return (ft->kind == FloatType::Kind::F32) ? 32 : 64;
+    }
     return 32;
   }
 
@@ -181,38 +184,11 @@ namespace symir {
     }
   }
 
-  void WasmBackend::emitExpr(const Expr &expr, std::uint32_t targetWidth) {
-    emitAtom(expr.first, targetWidth);
-
-    // Determine if this is a float expression
-    bool isFloat = false;
-    if (std::holds_alternative<RValueAtom>(expr.first.v)) {
-      auto const &rv = std::get<RValueAtom>(expr.first.v).rval;
-      if (locals_.count(rv.base.name)) {
-        if (std::holds_alternative<FloatType>(locals_.at(rv.base.name).symirType->v))
-          isFloat = true;
-      }
-    } else if (std::holds_alternative<OpAtom>(expr.first.v)) {
-      auto const &rv = std::get<OpAtom>(expr.first.v).rval;
-      if (locals_.count(rv.base.name)) {
-        if (std::holds_alternative<FloatType>(locals_.at(rv.base.name).symirType->v))
-          isFloat = true;
-      }
-    } else if (std::holds_alternative<CoefAtom>(expr.first.v)) {
-      auto const &coef = std::get<CoefAtom>(expr.first.v).coef;
-      if (std::holds_alternative<FloatLit>(coef))
-        isFloat = true;
-      else if (std::holds_alternative<LocalOrSymId>(coef)) {
-        auto name = std::visit([](auto &&v) { return v.name; }, std::get<LocalOrSymId>(coef));
-        if (locals_.count(name) && std::holds_alternative<FloatType>(locals_.at(name).symirType->v))
-          isFloat = true;
-        else if (syms_.count(name) && std::holds_alternative<FloatType>(syms_.at(name)->v))
-          isFloat = true;
-      }
-    }
+  void WasmBackend::emitExpr(const Expr &expr, std::uint32_t targetWidth, bool isFloat) {
+    emitAtom(expr.first, targetWidth, isFloat);
 
     for (const auto &t: expr.rest) {
-      emitAtom(t.atom, targetWidth);
+      emitAtom(t.atom, targetWidth, isFloat);
       indent();
       if (isFloat) {
         out_ << (targetWidth <= 32 ? "f32." : "f64.") << (t.op == AddOp::Plus ? "add\n" : "sub\n");
@@ -226,13 +202,13 @@ namespace symir {
     }
   }
 
-  void WasmBackend::emitAtom(const Atom &atom, std::uint32_t targetWidth) {
+  void WasmBackend::emitAtom(const Atom &atom, std::uint32_t targetWidth, bool isFloat) {
     uint32_t wasmWidth = (targetWidth <= 32 ? 32 : 64);
     std::visit(
-        [this, targetWidth, wasmWidth](auto &&arg) {
+        [this, targetWidth, wasmWidth, isFloat](auto &&arg) {
           using T = std::decay_t<decltype(arg)>;
           if constexpr (std::is_same_v<T, CoefAtom>) {
-            emitCoef(arg.coef, targetWidth);
+            emitCoef(arg.coef, targetWidth, isFloat);
           } else if constexpr (std::is_same_v<T, RValueAtom>) {
             emitLValue(arg.rval, false);
             if (locals_.count(arg.rval.base.name)) {
@@ -249,14 +225,8 @@ namespace symir {
               }
             }
           } else if constexpr (std::is_same_v<T, OpAtom>) {
-            bool isFloat = false;
-            if (locals_.count(arg.rval.base.name)) {
-              if (std::holds_alternative<FloatType>(locals_.at(arg.rval.base.name).symirType->v))
-                isFloat = true;
-            }
-
             if (isFloat) {
-              emitCoef(arg.coef, targetWidth);
+              emitCoef(arg.coef, targetWidth, isFloat);
               emitLValue(arg.rval, false);
               indent();
               std::string prefix = (targetWidth <= 32 ? "f32." : "f64.");
@@ -271,13 +241,13 @@ namespace symir {
                   break;
               }
             } else if (arg.op == AtomOpKind::LShr) {
-              emitCoef(arg.coef, targetWidth);
+              emitCoef(arg.coef, targetWidth, isFloat);
               emitMask(targetWidth, wasmWidth);
               emitLValue(arg.rval, false);
               indent();
               out_ << (wasmWidth == 32 ? "i32.shr_u\n" : "i64.shr_u\n");
             } else {
-              emitCoef(arg.coef, targetWidth);
+              emitCoef(arg.coef, targetWidth, isFloat);
               emitLValue(arg.rval, false);
               if (locals_.count(arg.rval.base.name)) {
                 std::uint32_t rWidth = getIntWidth(locals_.at(arg.rval.base.name).symirType);
@@ -330,42 +300,24 @@ namespace symir {
             emitCond(*arg.cond);
             indent();
             std::string typePrefix;
-            // Determine if select returns float
-            bool resFloat = false;
-            if (std::holds_alternative<RValue>(arg.vtrue)) {
-              auto const &rv = std::get<RValue>(arg.vtrue);
-              if (locals_.count(rv.base.name) &&
-                  std::holds_alternative<FloatType>(locals_.at(rv.base.name).symirType->v))
-                resFloat = true;
-            } else {
-              auto const &coef = std::get<Coef>(arg.vtrue);
-              if (std::holds_alternative<FloatLit>(coef))
-                resFloat = true;
-            }
-            if (resFloat)
+            if (isFloat)
               typePrefix = (targetWidth <= 32 ? "f32" : "f64");
             else
               typePrefix = (targetWidth <= 32 ? "i32" : "i64");
 
             out_ << "if (result " << typePrefix << ")\n";
             indent_level_++;
-            emitSelectVal(arg.vtrue, targetWidth);
+            emitSelectVal(arg.vtrue, targetWidth, isFloat);
             indent_level_--;
             indent();
             out_ << "else\n";
             indent_level_++;
-            emitSelectVal(arg.vfalse, targetWidth);
+            emitSelectVal(arg.vfalse, targetWidth, isFloat);
             indent_level_--;
             indent();
             out_ << "end\n";
           } else if constexpr (std::is_same_v<T, UnaryAtom>) {
             emitLValue(arg.rval, false);
-            bool isFloat = false;
-            if (locals_.count(arg.rval.base.name)) {
-              if (std::holds_alternative<FloatType>(locals_.at(arg.rval.base.name).symirType->v))
-                isFloat = true;
-            }
-
             if (isFloat) {
               indent();
               out_ << (targetWidth <= 32 ? "f32.neg\n" : "f64.neg\n");
@@ -549,8 +501,8 @@ namespace symir {
     if (needs64(cond.lhs) || needs64(cond.rhs))
       width = 64;
 
-    emitExpr(cond.lhs, width);
-    emitExpr(cond.rhs, width);
+    emitExpr(cond.lhs, width, isFloat);
+    emitExpr(cond.rhs, width, isFloat);
     indent();
     std::string opStr;
     if (isFloat) {
@@ -701,14 +653,18 @@ namespace symir {
     }
   }
 
-  void WasmBackend::emitCoef(const Coef &coef, std::uint32_t targetWidth) {
+  void WasmBackend::emitCoef(const Coef &coef, std::uint32_t targetWidth, bool isFloat) {
     uint32_t wasmWidth = (targetWidth <= 32 ? 32 : 64);
     std::visit(
-        [this, targetWidth, wasmWidth](auto &&arg) {
+        [this, targetWidth, wasmWidth, isFloat](auto &&arg) {
           using T = std::decay_t<decltype(arg)>;
           if constexpr (std::is_same_v<T, IntLit>) {
             indent();
-            out_ << (wasmWidth == 32 ? "i32.const " : "i64.const ") << arg.value << "\n";
+            if (isFloat) {
+              out_ << (wasmWidth == 32 ? "f32.const " : "f64.const ") << arg.value << ".0\n";
+            } else {
+              out_ << (wasmWidth == 32 ? "i32.const " : "i64.const ") << arg.value << "\n";
+            }
           } else if constexpr (std::is_same_v<T, FloatLit>) {
             indent();
             out_ << (wasmWidth == 32 ? "f32.const " : "f64.const ") << arg.value << "\n";
@@ -721,27 +677,35 @@ namespace symir {
                     out_ << "call " << mangleName(getMangledSymbolName(curFuncName_, id.name))
                          << "\n";
                     std::uint32_t srcWidth = 32;
+                    bool srcIsFloat = false;
                     if (syms_.count(id.name)) {
                       srcWidth = getIntWidth(syms_.at(id.name));
+                      if (std::holds_alternative<FloatType>(syms_.at(id.name)->v))
+                        srcIsFloat = true;
                     }
-                    if (srcWidth <= 32 && targetWidth > 32) {
-                      indent();
-                      out_ << "i64.extend_i32_s\n";
-                    } else if (srcWidth > 32 && targetWidth <= 32) {
-                      indent();
-                      out_ << "i32.wrap_i64\n";
-                    }
-                  } else {
-                    indent();
-                    out_ << "local.get " << mangleName(id.name) << "\n";
-                    if (locals_.count(id.name)) {
-                      std::uint32_t srcWidth = getIntWidth(locals_.at(id.name).symirType);
+                    if (!srcIsFloat) {
                       if (srcWidth <= 32 && targetWidth > 32) {
                         indent();
                         out_ << "i64.extend_i32_s\n";
                       } else if (srcWidth > 32 && targetWidth <= 32) {
                         indent();
                         out_ << "i32.wrap_i64\n";
+                      }
+                    }
+                  } else {
+                    indent();
+                    out_ << "local.get " << mangleName(id.name) << "\n";
+                    if (locals_.count(id.name)) {
+                      auto const &li = locals_.at(id.name);
+                      if (!std::holds_alternative<FloatType>(li.symirType->v)) {
+                        std::uint32_t srcWidth = li.bitwidth;
+                        if (srcWidth <= 32 && targetWidth > 32) {
+                          indent();
+                          out_ << "i64.extend_i32_s\n";
+                        } else if (srcWidth > 32 && targetWidth <= 32) {
+                          indent();
+                          out_ << "i32.wrap_i64\n";
+                        }
                       }
                     }
                   }
@@ -752,25 +716,29 @@ namespace symir {
         },
         coef
     );
-    emitSignExtend(targetWidth, wasmWidth);
+    if (!isFloat)
+      emitSignExtend(targetWidth, wasmWidth);
   }
 
-  void WasmBackend::emitSelectVal(const SelectVal &sv, std::uint32_t targetWidth) {
+  void WasmBackend::emitSelectVal(const SelectVal &sv, std::uint32_t targetWidth, bool isFloat) {
     if (std::holds_alternative<RValue>(sv)) {
       const auto &lv = std::get<RValue>(sv);
       emitLValue(lv, false);
       if (locals_.count(lv.base.name)) {
-        std::uint32_t srcWidth = getIntWidth(locals_.at(lv.base.name).symirType);
-        if (srcWidth <= 32 && targetWidth > 32) {
-          indent();
-          out_ << "i64.extend_i32_s\n";
-        } else if (srcWidth > 32 && targetWidth <= 32) {
-          indent();
-          out_ << "i32.wrap_i64\n";
+        auto const &li = locals_.at(lv.base.name);
+        if (!std::holds_alternative<FloatType>(li.symirType->v)) {
+          std::uint32_t srcWidth = li.bitwidth;
+          if (srcWidth <= 32 && targetWidth > 32) {
+            indent();
+            out_ << "i64.extend_i32_s\n";
+          } else if (srcWidth > 32 && targetWidth <= 32) {
+            indent();
+            out_ << "i32.wrap_i64\n";
+          }
         }
       }
     } else {
-      emitCoef(std::get<Coef>(sv), targetWidth);
+      emitCoef(std::get<Coef>(sv), targetWidth, isFloat);
     }
   }
 
@@ -803,7 +771,8 @@ namespace symir {
   }
 
   void WasmBackend::emitInitVal(const InitVal &iv, const TypePtr &type, std::uint32_t baseOffset) {
-    if (iv.kind == InitVal::Kind::Int || iv.kind == InitVal::Kind::Sym) {
+    if (iv.kind == InitVal::Kind::Int || iv.kind == InitVal::Kind::Sym ||
+        iv.kind == InitVal::Kind::Float) {
       if (auto at = std::get_if<ArrayType>(&type->v)) {
         std::uint32_t elemSize = getTypeSize(at->elem);
         for (std::uint64_t i = 0; i < at->size; ++i) {
@@ -827,8 +796,13 @@ namespace symir {
 
         if (iv.kind == InitVal::Kind::Int) {
           indent();
-          out_ << (getIntWidth(type) <= 32 ? "i32.const " : "i64.const ")
-               << std::get<IntLit>(iv.value).value << "\n";
+          if (std::holds_alternative<FloatType>(type->v)) {
+            out_ << (getIntWidth(type) <= 32 ? "f32.const " : "f64.const ")
+                 << std::get<IntLit>(iv.value).value << ".0\n";
+          } else {
+            out_ << (getIntWidth(type) <= 32 ? "i32.const " : "i64.const ")
+                 << std::get<IntLit>(iv.value).value << "\n";
+          }
         } else if (iv.kind == InitVal::Kind::Float) {
           indent();
           out_ << (getIntWidth(type) <= 32 ? "f32.const " : "f64.const ")
@@ -839,15 +813,20 @@ namespace symir {
           indent();
           out_ << "call " << mangleName(getMangledSymbolName(curFuncName_, sid.name)) << "\n";
           std::uint32_t srcWidth = 32;
+          bool srcIsFloat = false;
           if (syms_.count(sid.name)) {
             srcWidth = getIntWidth(syms_.at(sid.name));
+            if (std::holds_alternative<FloatType>(syms_.at(sid.name)->v))
+              srcIsFloat = true;
           }
-          if (srcWidth <= 32 && getIntWidth(type) > 32) {
-            indent();
-            out_ << "i64.extend_i32_s\n";
-          } else if (srcWidth > 32 && getIntWidth(type) <= 32) {
-            indent();
-            out_ << "i32.wrap_i64\n";
+          if (!srcIsFloat) {
+            if (srcWidth <= 32 && getIntWidth(type) > 32) {
+              indent();
+              out_ << "i64.extend_i32_s\n";
+            } else if (srcWidth > 32 && getIntWidth(type) <= 32) {
+              indent();
+              out_ << "i32.wrap_i64\n";
+            }
           }
         }
 
@@ -984,9 +963,17 @@ namespace symir {
             emitInitVal(*l.init, l.type, locals_[l.name.name].offset);
           } else if (l.init->kind == InitVal::Kind::Int) {
             indent();
-            out_ << (locals_[l.name.name].bitwidth <= 32 ? "i32.const " : "i64.const ")
-                 << std::get<IntLit>(l.init->value).value << "\n";
-            emitSignExtend(getIntWidth(l.type), (locals_[l.name.name].wasmType == "i32" ? 32 : 64));
+            bool isTargetFloat = std::holds_alternative<FloatType>(l.type->v);
+            if (isTargetFloat) {
+              out_ << (locals_[l.name.name].bitwidth <= 32 ? "f32.const " : "f64.const ")
+                   << std::get<IntLit>(l.init->value).value << ".0\n";
+            } else {
+              out_ << (locals_[l.name.name].bitwidth <= 32 ? "i32.const " : "i64.const ")
+                   << std::get<IntLit>(l.init->value).value << "\n";
+              emitSignExtend(
+                  getIntWidth(l.type), (locals_[l.name.name].wasmType == "i32" ? 32 : 64)
+              );
+            }
             indent();
             out_ << "local.set " << mangleName(l.name.name) << "\n";
           } else if (l.init->kind == InitVal::Kind::Float) {
@@ -1066,7 +1053,7 @@ namespace symir {
                                                                                                : 64;
                       }
 
-                      emitExpr(arg.rhs, width);
+                      emitExpr(arg.rhs, width, valIsFloat);
                       indent();
                       if (valIsFloat) {
                         out_ << (width == 32 ? "f32.store\n" : "f64.store\n");
@@ -1081,7 +1068,8 @@ namespace symir {
                           out_ << "i64.store\n";
                       }
                     } else {
-                      emitExpr(arg.rhs, info.bitwidth);
+                      bool isFloat = std::holds_alternative<FloatType>(info.symirType->v);
+                      emitExpr(arg.rhs, info.bitwidth, isFloat);
                       indent();
                       out_ << "local.set " << mangleName(arg.lhs.base.name) << "\n";
                     }
@@ -1152,7 +1140,8 @@ namespace symir {
                 }
               } else if constexpr (std::is_same_v<T, RetTerm>) {
                 if (arg.value) {
-                  emitExpr(*arg.value, getIntWidth(f.retType));
+                  bool isFloat = std::holds_alternative<FloatType>(f.retType->v);
+                  emitExpr(*arg.value, getIntWidth(f.retType), isFloat);
                 }
                 if (stackSize_ > 0) {
                   indent();
@@ -1177,7 +1166,12 @@ namespace symir {
 
       if (f.retType && !f.blocks.empty()) {
         indent();
-        out_ << (getIntWidth(f.retType) <= 32 ? "i32.const 0\n" : "i64.const 0\n");
+        bool isFloat = std::holds_alternative<FloatType>(f.retType->v);
+        if (isFloat) {
+          out_ << (getIntWidth(f.retType) <= 32 ? "f32.const 0.0\n" : "f64.const 0.0\n");
+        } else {
+          out_ << (getIntWidth(f.retType) <= 32 ? "i32.const 0\n" : "i64.const 0\n");
+        }
       }
 
       indent_level_--;
