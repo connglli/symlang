@@ -1,7 +1,8 @@
 // SKIP: COMPILER
-// SKIP: INTERPRETER
 // EXPECT: PASS
-fun @main(%p: f32) : f32 {
+// ARGS: --sym %?p=1.5
+fun @main() : f32 {
+  sym %?p: value f32;
 ^entry:
-  ret %p;
+  ret %?p;
 }
