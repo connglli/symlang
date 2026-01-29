@@ -1,7 +1,6 @@
-// SKIP: INTERPRETER
 // EXPECT: PASS
-// INTERP_ARGS: --main @matmul
-// COMPILER_ARGS: --main @matmul
+// INTERP_ARGS: --main @matmul --sym %?b11=-0.5 --sym %?b10=1.5 --sym %?b01=1 --sym %?b00=-2
+// COMPILER_ARGS: --main @matmul --sym %?b11=-0.5 --sym %?b10=1.5 --sym %?b01=1 --sym %?b00=-2
 // SOLVER_ARGS: --main @matmul --path ^entry
 
 // 2x2 Matrix Mul: A * B = C

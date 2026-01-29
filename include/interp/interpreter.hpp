@@ -22,9 +22,10 @@ namespace symir {
      * @param symBindings Mapping of symbolic identifiers to concrete values.
      * @param dumpExec Whether to print execution trace to stderr.
      */
+    using SymBindings = std::unordered_map<std::string, std::variant<std::int64_t, double>>;
+
     void
-    run(const std::string &entryFuncName,
-        const std::unordered_map<std::string, std::int64_t> &symBindings, bool dumpExec = false);
+    run(const std::string &entryFuncName, const SymBindings &symBindings, bool dumpExec = false);
 
   private:
     const Program &prog_;
@@ -52,8 +53,7 @@ namespace symir {
     std::string rvToString(const RuntimeValue &rv) const;
 
     void execFunction(
-        const FunDecl &f, const std::vector<RuntimeValue> &args,
-        const std::unordered_map<std::string, std::int64_t> &symBindings
+        const FunDecl &f, const std::vector<RuntimeValue> &args, const SymBindings &symBindings
     );
 
     RuntimeValue evalExpr(const Expr &e, const Store &store);

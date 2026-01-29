@@ -1,5 +1,7 @@
 // EXPECT: PASS
 // SOLVER_ARGS: --main @float_test --path ^entry
+// INTERP_ARGS: --main @float_test --sym %?x=10
+// COMPILER_ARGS: --main @float_test --sym %?x=10
 
 fun @float_test() : f32 {
   sym %?x: value f32;

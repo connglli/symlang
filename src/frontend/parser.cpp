@@ -309,7 +309,7 @@ namespace symir {
 
     if (is(TokenKind::FloatLit)) {
       const Token &t = consume(TokenKind::FloatLit, "float literal");
-      FloatLit lit{std::stod(t.lexeme), t.span};
+      FloatLit lit{parseFloatLiteral(t.lexeme), t.span};
       InitVal iv;
       iv.kind = InitVal::Kind::Float;
       iv.value = lit;
@@ -497,7 +497,7 @@ namespace symir {
     }
     if (is(TokenKind::FloatLit)) {
       const Token &t = consume(TokenKind::FloatLit, "float coefficient");
-      return Coef{FloatLit{std::stod(t.lexeme), t.span}};
+      return Coef{FloatLit{parseFloatLiteral(t.lexeme), t.span}};
     }
     if (is(TokenKind::LocalId)) {
       return Coef{LocalOrSymId{parseLocalId()}};

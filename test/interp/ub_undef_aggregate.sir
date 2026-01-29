@@ -1,5 +1,4 @@
 // SKIP: COMPILER
-// SKIP: WASM
 // EXPECT: FAIL
 fun @main() : i32 {
   let %v: [2] i32 = {1, undef};

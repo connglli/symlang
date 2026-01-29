@@ -1,5 +1,7 @@
 // EXPECT: PASS
 // SOLVER_ARGS: --main @main --path '^entry'
+// INTERP_ARGS: --main @main --sym %?v=99
+// COMPILER_ARGS: --main @main --sym %?v=99
 
 struct @A { x: i32; }
 struct @B { a: @A; y: i32; }

@@ -1,7 +1,7 @@
 // EXPECT: PASS
+// INTERP_ARGS: --sym %?i=0
+// COMPILER_ARGS: --sym %?i=0
 // SOLVER_ARGS: --path ^entry
-// SKIP: COMPILER
-// SKIP: INTERPRETER
 struct @Item { v: i32; }
 fun @main(): i32 {
   sym %?i: index i32 in [0, 1];

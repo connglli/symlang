@@ -1,7 +1,7 @@
 // EXPECT: PASS
+// INTERP_ARGS: --sym %?r0=0 --sym %?c0=0 --sym %?r1=1 --sym %?c1=2
+// COMPILER_ARGS: --sym %?r0=0 --sym %?c0=0 --sym %?r1=1 --sym %?c1=2
 // SOLVER_ARGS: --path ^entry,^init,^loop_cond,^loop_body,^check,^next,^loop_cond,^loop_body,^next,^loop_cond,^exit
-// SKIP: COMPILER
-// SKIP: INTERPRETER
 
 struct @Queen {
     row: i32;

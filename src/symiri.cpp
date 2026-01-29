@@ -49,7 +49,7 @@ int main(int argc, char **argv) {
 
   std::string inputPath = result["input"].as<std::string>();
   std::string mainFunc = result["main"].as<std::string>();
-  std::unordered_map<std::string, std::int64_t> symBindings;
+  Interpreter::SymBindings symBindings;
 
   if (result.count("sym")) {
     for (const auto &bind: result["sym"].as<std::vector<std::string>>()) {
@@ -61,9 +61,9 @@ int main(int argc, char **argv) {
       std::string name = bind.substr(0, eq);
       std::string valStr = bind.substr(eq + 1);
       try {
-        symBindings[name] = parseIntegerLiteral(valStr);
+        symBindings[name] = parseNumberLiteral(valStr);
       } catch (...) {
-        std::cerr << "Error: Invalid integer value for symbol " << name << ": " << valStr << "\n";
+        std::cerr << "Error: Invalid number value for symbol " << name << ": " << valStr << "\n";
         return 1;
       }
     }

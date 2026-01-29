@@ -1,5 +1,7 @@
 // EXPECT: PASS
 // SOLVER_ARGS: --main @main --path '^entry'
+// INTERP_ARGS: --main @main --sym %?c=1 --sym %?r=1
+// COMPILER_ARGS: --main @main --sym %?c=1 --sym %?r=1
 
 // Test 2D array symbolic write.
 // mat[?r][?c] = 7.

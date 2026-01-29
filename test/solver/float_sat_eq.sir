@@ -1,5 +1,7 @@
 // EXPECT: PASS
 // SOLVER_ARGS: --main @test --path ^entry
+// INTERP_ARGS: --main @test --sym %?x=1
+// COMPILER_ARGS: --main @test --sym %?x=1
 
 fun @test() : f32 {
   sym %?x: value f32;

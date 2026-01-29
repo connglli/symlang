@@ -506,4 +506,13 @@ namespace symir {
     return static_cast<int64_t>(std::stoll(s, nullptr, 10));
   }
 
+  inline double parseFloatLiteral(const std::string &s) { return std::stod(s); }
+
+  inline std::variant<int64_t, double> parseNumberLiteral(const std::string &s) {
+    if (s.find('.') != std::string::npos || s.find('e') != std::string::npos ||
+        s.find('E') != std::string::npos) {
+      return parseFloatLiteral(s);
+    }
+    return parseIntegerLiteral(s);
+  }
 } // namespace symir

@@ -1,5 +1,7 @@
 // EXPECT: PASS
 // SOLVER_ARGS: --main @main --path '^entry'
+// INTERP_ARGS: --main @main --sym %?v=55
+// COMPILER_ARGS: --main @main --sym %?v=55
 
 // Test nested struct updates and preservation of other fields.
 // l.p2.y = ?v should not affect l.p1.y

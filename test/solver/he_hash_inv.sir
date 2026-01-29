@@ -1,5 +1,7 @@
 // EXPECT: PASS
 // SOLVER_ARGS: --main @main --path '^entry'
+// INTERP_ARGS: --main @main --sym %?byte=35
+// COMPILER_ARGS: --main @main --sym %?byte=35
 
 // Reverse CRC-ish step
 // Find byte that produces specific CRC update?

@@ -19,7 +19,7 @@ def parse_bindings(args):
   return bindings
 
 
-def extract_sir_info(file_path):
+def extract_sir_info(file_path, entry_func="main"):
   info = {"main_ret": "i32", "syms": {}}
   with open(file_path, "r") as f:
     content = f.read()
@@ -28,8 +28,12 @@ def extract_sir_info(file_path):
 
     content = re.sub(r"//.*", "", content)
 
-    # Match main return type: fun @main(...) : i64
-    main_match = re.search(r"fun\s+@main\s*\([^)]*\)\s*:\s*([a-z0-9]+)", content)
+    # Match main return type: fun @entry(...) : i64
+    # entry_func is without sigil. In file it is @entry_func
+    # We look for "fun @entry_func"
+    pattern = rf"fun\s+@{re.escape(entry_func)}\s*\([^)]*\)\s*:\s*([a-z0-9]+)"
+    main_match = re.search(pattern, content)
+
     if main_match:
       ret_type = main_match.group(1).strip()
       if ret_type == "i64":
@@ -40,8 +44,13 @@ def extract_sir_info(file_path):
         info["main_ret"] = "f64"
     else:
       # Try without colon if any
-      if re.search(r"fun\s+@main\s*\([^)]*\)\s+i64", content):
-        info["main_ret"] = "i64"
+      # "fun @entry_func(...) i64" (old syntax? or implicit?)
+      pattern_implicit = rf"fun\s+@{re.escape(entry_func)}\s*\([^)]*\)\s+([a-z0-9]+)"
+      if re.search(pattern_implicit, content):
+        # If matched, we might want to capture type. But sticking to simple logic for now.
+        # Assuming if explicit match failed, maybe we check implicit.
+        # But usually colon is required by parser?
+        pass
 
     # FOR ll_ tests, if we still didn't find it, look for the ret instruction
     if info["main_ret"] == "i32" and "test/interp/ll_" in file_path:
@@ -51,7 +60,7 @@ def extract_sir_info(file_path):
 
     # Match symbols: sym %?name : value i64;
     sym_matches = re.finditer(
-      r"sym\s+(%?[\?a-z0-9_]+)\s*:\s*value\s+([a-z0-9]+)", content
+      r"sym\s+(%?[\?a-z0-9_]+)\s*:\s*(?:value|index)\s+([a-z0-9]+)", content
     )
     for m in sym_matches:
       name = m.group(1)
@@ -63,7 +72,7 @@ def extract_sir_info(file_path):
         name = name[1:]
 
       t = m.group(2)
-      info["syms"][name] = "i64" if t == "i64" else "i32"
+      info["syms"][name] = t
 
   return info
 
@@ -104,7 +113,12 @@ def run_symirc_test(symirc_path, target="c"):
     if err == "TIMEOUT":
       return TestResult.TIMEOUT, "Compiler timeout"
 
-    is_runnable_test = "test/interp" in file_path or "test/compile" in file_path
+    is_runnable_test = (
+      "test/interp" in file_path
+      or "test/compile" in file_path
+      or "test/complex" in file_path
+      or "test/solver" in file_path
+    )
 
     if result.returncode != 0:
       if expectation == "FAIL":
@@ -119,16 +133,44 @@ def run_symirc_test(symirc_path, target="c"):
     compiler_args = args["COMPILER_ARGS"]
     bindings = parse_bindings(compiler_args)
 
+    # Determine entry function name for mangling
+    entry_func = "main"
+    if "--main" in compiler_args:
+      idx = compiler_args.index("--main")
+      if idx + 1 < len(compiler_args):
+        entry_func = strip_sigil(compiler_args[idx + 1])
+
     if target == "c":
       bindings_c = os.path.join(temp_dir, base_name + "_bindings.c")
+      sir_info = extract_sir_info(file_path, entry_func)
       # Generate bindings harness for C
       with open(bindings_c, "w") as f:
         f.write("#include <stdint.h>\n#include <stdio.h>\n\n")
         for k, v in bindings.items():
-          func_name = "main" + "__" + strip_sigil(k)
-          f.write(f"int32_t {func_name}(void) {{ return {v}; }}\n")
-        f.write("\nextern int32_t symir_main(void);\n")
-        f.write("int main(void) {\n  symir_main();\n  return 0;\n}\n")
+          sk = strip_sigil(k)
+          t = sir_info["syms"].get(sk, "i32")
+          c_type = "int32_t"
+          if t == "i64":
+            c_type = "int64_t"
+          elif t == "f32":
+            c_type = "float"
+          elif t == "f64":
+            c_type = "double"
+
+          func_name = entry_func + "__" + sk
+          f.write(f"{c_type} {func_name}(void) {{ return {v}; }}\n")
+
+        main_ret_c = "int32_t"
+        if sir_info["main_ret"] == "i64":
+          main_ret_c = "int64_t"
+        elif sir_info["main_ret"] == "f32":
+          main_ret_c = "float"
+        elif sir_info["main_ret"] == "f64":
+          main_ret_c = "double"
+
+        entry_c_name = "symir_" + entry_func
+        f.write(f"\nextern {main_ret_c} {entry_c_name}(void);\n")
+        f.write(f"int main(void) {{\n  {entry_c_name}();\n  return 0;\n}}\n")
 
       # Compile with gcc
       gcc_cmd = [
@@ -175,7 +217,7 @@ def run_symirc_test(symirc_path, target="c"):
 
         f.write(processed_content)
         f.write(
-          f'\n  (func (export "main") (result {sir_info["main_ret"]}) (call $main))\n'
+          f'\n  (func (export "main") (result {sir_info["main_ret"]}) (call ${entry_func}))\n'
         )
         f.write(")\n")
 

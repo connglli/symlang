@@ -1,4 +1,6 @@
 // EXPECT: PASS
+// INTERP_ARGS: --main @test --sym %?x=1.5
+// COMPILER_ARGS: --main @test --sym %?x=1.5
 // SOLVER_ARGS: --main @test --path ^entry
 
 fun @test() : f32 {

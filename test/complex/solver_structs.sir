@@ -1,7 +1,7 @@
 // EXPECT: PASS
+// INTERP_ARGS: --sym %?idx=1
+// COMPILER_ARGS: --sym %?idx=1
 // SOLVER_ARGS: --path ^entry
-// SKIP: INTERPRETER
-// SKIP: COMPILER
 
 struct @Data { val: i32; }
 

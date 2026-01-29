@@ -1,5 +1,7 @@
 // EXPECT: PASS
 // SOLVER_ARGS: --main @main --path '^entry'
+// INTERP_ARGS: --main @main --sym %?a11=40 --sym %?a10=30 --sym %?a01=20 --sym %?a00=10
+// COMPILER_ARGS: --main @main --sym %?a11=40 --sym %?a10=30 --sym %?a01=20 --sym %?a00=10
 
 // Matrix A (Symbolic) * B (Identity) == C (Target)
 // implies A == C.

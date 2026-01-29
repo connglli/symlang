@@ -1,7 +1,6 @@
-// SKIP: INTERPRETER
 // EXPECT: PASS
-// INTERP_ARGS: --main @newton
-// COMPILER_ARGS: --main @newton
+// INTERP_ARGS: --main @newton --sym %?x=1.45
+// COMPILER_ARGS: --main @newton --sym %?x=1.45
 // SOLVER_ARGS: --main @newton --path ^entry
 
 // Find root of x^2 - 2 = 0 starting near 1.5

@@ -1,6 +1,6 @@
-// SKIP: COMPILER
-// SKIP: INTERPRETER
 // EXPECT: FAIL
+// INTERP_ARGS: --main @test --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0
+// COMPILER_ARGS: --main @test --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0 --sym %?x=0
 // SOLVER_ARGS: --main @test --path ^entry
 
 fun @test() : f32 {

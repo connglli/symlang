@@ -1,5 +1,7 @@
 // EXPECT: PASS
 // SOLVER_ARGS: --main @main --path '^entry'
+// INTERP_ARGS: --main @main --sym %?v=42
+// COMPILER_ARGS: --main @main --sym %?v=42
 
 struct @Inner { val: i32; }
 struct @Outer { arr: [2] @Inner; }

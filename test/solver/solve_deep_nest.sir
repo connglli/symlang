@@ -1,7 +1,7 @@
 // EXPECT: PASS
+// INTERP_ARGS: --sym %?x=42
+// COMPILER_ARGS: --sym %?x=42
 // SOLVER_ARGS: --path ^entry
-// SKIP: COMPILER
-// SKIP: INTERPRETER
 struct @Inner { val: i32; }
 struct @Outer { inn: @Inner; }
 fun @main(): i32 {

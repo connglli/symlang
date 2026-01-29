@@ -1,5 +1,7 @@
 // EXPECT: PASS
 // SOLVER_ARGS: --main @main --path '^entry'
+// INTERP_ARGS: --main @main --sym %?idx=1
+// COMPILER_ARGS: --main @main --sym %?idx=1
 
 // Find index %?idx such that arr[%?idx] == 20.
 fun @main() : i32 {

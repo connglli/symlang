@@ -1,4 +1,3 @@
-// SKIP: COMPILER
 // EXPECT: PASS
 // INTERP_ARGS: --sym %?p=1.5
 // COMPILER_ARGS: --sym %?p=1.5

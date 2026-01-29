@@ -15,8 +15,7 @@ namespace symir {
   }
 
   void Interpreter::run(
-      const std::string &entryFuncName,
-      const std::unordered_map<std::string, std::int64_t> &symBindings, bool dumpExec
+      const std::string &entryFuncName, const SymBindings &symBindings, bool dumpExec
   ) {
     dumpExec_ = dumpExec;
     const FunDecl *entry = nullptr;
@@ -176,8 +175,7 @@ namespace symir {
   }
 
   void Interpreter::execFunction(
-      const FunDecl &f, const std::vector<RuntimeValue> &args,
-      const std::unordered_map<std::string, std::int64_t> &symBindings
+      const FunDecl &f, const std::vector<RuntimeValue> &args, const SymBindings &symBindings
   ) {
     Store store;
     DiagBag diags;
@@ -190,26 +188,33 @@ namespace symir {
     }
 
     for (const auto &s: f.syms) {
-      if (symBindings.count(s.name.name)) {
+      auto it = symBindings.find(s.name.name);
+      if (it != symBindings.end()) {
         RuntimeValue v;
-        if (std::holds_alternative<IntType>(s.type->v)) {
-          v.kind = RuntimeValue::Kind::Int;
-          v.intVal = symBindings.at(s.name.name);
-          v.bits = TypeUtils::getBitWidth(s.type).value_or(64);
-          v.intVal = canonicalize(v.intVal, v.bits);
-        } else if (std::holds_alternative<FloatType>(s.type->v)) {
-          v.kind = RuntimeValue::Kind::Float;
-          // symBindings stores int64_t. Need to decide how to pass floats.
-          // For now, if it's a float sym, we might need a separate binding map or bit_cast.
-          // symirsolve uses double in model. symiri currently uses int64_t for bindings.
-          // Let's assume the int64_t is the bit-representation if it's a float sym?
-          // No, existing symBindings are from CLI which are usually integers.
-          // Given the prompt "Fix symlang on all skipped tests", and those tests use
-          // symbolic floats, I should probably update `run` signature or use bit_cast.
-          // Actually, let's just cast for now if possible.
-          v.floatVal = static_cast<double>(symBindings.at(s.name.name));
-          v.bits = (std::get<FloatType>(s.type->v).kind == FloatType::Kind::F32) ? 32 : 64;
-        }
+        std::visit(
+            [&](auto &&val) {
+              using T = std::decay_t<decltype(val)>;
+              if (std::holds_alternative<IntType>(s.type->v)) {
+                v.kind = RuntimeValue::Kind::Int;
+                if constexpr (std::is_same_v<T, std::int64_t>) {
+                  v.intVal = val;
+                } else {
+                  v.intVal = static_cast<std::int64_t>(val);
+                }
+                v.bits = TypeUtils::getBitWidth(s.type).value_or(64);
+                v.intVal = canonicalize(v.intVal, v.bits);
+              } else if (std::holds_alternative<FloatType>(s.type->v)) {
+                v.kind = RuntimeValue::Kind::Float;
+                if constexpr (std::is_same_v<T, double>) {
+                  v.floatVal = val;
+                } else {
+                  v.floatVal = static_cast<double>(val);
+                }
+                v.bits = (std::get<FloatType>(s.type->v).kind == FloatType::Kind::F32) ? 32 : 64;
+              }
+            },
+            it->second
+        );
         store[s.name.name] = v;
       }
     }

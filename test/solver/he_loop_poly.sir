@@ -1,5 +1,7 @@
 // EXPECT: PASS
 // SOLVER_ARGS: --main @main --path '^entry,^loop,^loop,^loop,^loop,^exit'
+// INTERP_ARGS: --main @main --sym %?x=10
+// COMPILER_ARGS: --main @main --sym %?x=10
 
 // Polynomial loop synthesis
 // Find 'x' such that iterating `acc = acc + x + i` for 4 times results in specific value.

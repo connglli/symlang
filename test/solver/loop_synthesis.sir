@@ -1,5 +1,7 @@
 // EXPECT: PASS
 // SOLVER_ARGS: --main @main --path '^entry,^loop,^loop,^loop,^exit'
+// INTERP_ARGS: --main @main --sym %?delta=7
+// COMPILER_ARGS: --main @main --sym %?delta=7
 fun @main() : i32 {
   sym %?delta : value i32 in [1, 10];
   let mut %acc: i32 = 0;

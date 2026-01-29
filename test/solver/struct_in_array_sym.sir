@@ -1,5 +1,7 @@
 // EXPECT: PASS
 // SOLVER_ARGS: --main @main --path '^entry'
+// INTERP_ARGS: --main @main --sym %?val=50 --sym %?idx=0
+// COMPILER_ARGS: --main @main --sym %?val=50 --sym %?idx=0
 
 struct @Point { x: i32; y: i32; }
 
