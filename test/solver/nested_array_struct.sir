@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// ARGS: --main @main --path '^entry'
+// SOLVER_ARGS: --main @main --path '^entry'
 
 struct @Inner { val: i32; }
 struct @Outer { arr: [2] @Inner; }

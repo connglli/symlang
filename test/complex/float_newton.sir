@@ -1,6 +1,8 @@
 // SKIP: INTERPRETER
 // EXPECT: PASS
-// ARGS: --main @newton --path ^entry
+// INTERP_ARGS: --main @newton
+// COMPILER_ARGS: --main @newton
+// SOLVER_ARGS: --main @newton --path ^entry
 
 // Find root of x^2 - 2 = 0 starting near 1.5
 // x_new = x - (x^2 - 2) / (2x)

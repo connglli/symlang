@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// ARGS: --main @main --path '^entry'
+// SOLVER_ARGS: --main @main --path '^entry'
 
 // XOR Swap verification
 // Verify that after xor swap, values are exchanged.

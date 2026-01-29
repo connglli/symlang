@@ -9,24 +9,10 @@ def run_symirsolve_test(symirsolve_path):
     if "SOLVER" in skips:
       return TestResult.SKIP, "Skipped by SOLVER tag"
 
-    # Solver tests need --main and --path in ARGS metadata
-    # // ARGS: --main @f --path '^entry,^exit'
+    # Solver tests need --main and --path in SOLVER_ARGS metadata
+    solver_args = args["SOLVER_ARGS"]
 
-    # Also look for // SOLVER_ARGS: which is specific to this runner
-    solver_args = []
-    try:
-      with open(file_path, "r") as f:
-        for _ in range(20):  # check first 20 lines
-          line = f.readline()
-          if not line:
-            break
-          if "// SOLVER_ARGS:" in line:
-            parts = line.split("SOLVER_ARGS:")[1].strip().split()
-            solver_args.extend(parts)
-    except:
-      pass
-
-    cmd = [symirsolve_path, file_path] + args + solver_args
+    cmd = [symirsolve_path, file_path] + solver_args
     result, err = run_command(cmd, timeout=10)
 
     if err == "TIMEOUT":

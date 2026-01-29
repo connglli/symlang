@@ -1,5 +1,6 @@
 // EXPECT: PASS
-// ARGS: --sym %?n=3
+// INTERP_ARGS: --sym %?n=3
+// COMPILER_ARGS: --sym %?n=3
 fun @main() : i32 {
   sym %?n : value i32;
   let mut %stack: [100] i32 = 0;

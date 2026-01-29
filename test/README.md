@@ -25,8 +25,10 @@ Each `.sir` file should contain metadata tags in the first few lines to guide th
 |---|---|
 | `// EXPECT: PASS` | The tool is expected to succeed (exit code 0). |
 | `// EXPECT: FAIL` | The tool is expected to report an error (non-zero exit code). |
-| `// ARGS: <args>` | Additional CLI arguments passed to the tool (e.g., `--sym %?x=10`). |
-| `// SKIP: <TOOL>` | Skip this test for a specific tool (`INTERPRETER` or `COMPILER`). |
+| `// COMPILER_ARGS: <args>` | CLI arguments passed to `symirc`. |
+| `// INTERP_ARGS: <args>` | CLI arguments passed to `symiri`. |
+| `// SOLVER_ARGS: <args>` | CLI arguments passed to `symirsolve` (e.g., `--path '^entry,^exit'`). |
+| `// SKIP: <TOOL>` | Skip this test for a specific tool (`INTERPRETER`, `COMPILER`, or `SOLVER`). |
 
 ## Writing Tests
 

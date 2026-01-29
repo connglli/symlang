@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// ARGS: --sym %?input=9
+// COMPILER_ARGS: --sym %?input=9
 struct @ArrayMeta { size: i32; is_sorted: i32; }
 struct @SwapStats { count: i32; temp: i32; }
 

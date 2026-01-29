@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// ARGS: --sym %?return=10
+// COMPILER_ARGS: --sym %?return=10
 fun @main() : i32 {
   sym %?return : value i32;
   let %int: i32 = 5;

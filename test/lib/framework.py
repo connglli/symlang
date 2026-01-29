@@ -14,7 +14,11 @@ class TestResult:
 
 def get_metadata(file_path):
   expectation = "UNKNOWN"
-  args = []
+  args = {
+    "COMPILER_ARGS": [],
+    "INTERP_ARGS": [],
+    "SOLVER_ARGS": [],
+  }
   skips = []
   with open(file_path, "r") as f:
     for _ in range(10):
@@ -25,9 +29,17 @@ def get_metadata(file_path):
         expectation = "PASS"
       elif "// EXPECT: FAIL" in line:
         expectation = "FAIL"
-      if "// ARGS:" in line:
-        parts = line.split("ARGS:")[1].strip().split()
-        args.extend(parts)
+
+      if "// COMPILER_ARGS:" in line:
+        parts = line.split("COMPILER_ARGS:")[1].strip().split()
+        args["COMPILER_ARGS"].extend(parts)
+      if "// INTERP_ARGS:" in line:
+        parts = line.split("INTERP_ARGS:")[1].strip().split()
+        args["INTERP_ARGS"].extend(parts)
+      if "// SOLVER_ARGS:" in line:
+        parts = line.split("SOLVER_ARGS:")[1].strip().split()
+        args["SOLVER_ARGS"].extend(parts)
+
       if "// SKIP:" in line:
         skips.append(line.split("SKIP:")[1].strip())
   return expectation, args, skips

@@ -1,5 +1,5 @@
 // EXPECT: FAIL
-// ARGS: --main @main --path '^entry' --sym %?a=2147483647
+// SOLVER_ARGS: --main @main --path '^entry' --sym %?a=2147483647
 
 // Multiplication overflow (MAX_INT * 2) is strict UB and should fail.
 fun @main() : i32 {

@@ -1,5 +1,6 @@
 // EXPECT: PASS
-// ARGS: --sym %?s3=-1 --sym %?s7=0
+// INTERP_ARGS: --sym %?s3=-1 --sym %?s7=0
+// COMPILER_ARGS: --sym %?s3=-1 --sym %?s7=0
 fun @main() : i32 {
   sym %?s3 : value i32;
   sym %?s7 : value i32;

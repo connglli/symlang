@@ -1,5 +1,6 @@
 // EXPECT: PASS
-// ARGS: --sym %?ret_val=0
+// INTERP_ARGS: --sym %?ret_val=0
+// COMPILER_ARGS: --sym %?ret_val=0
 fun @main() : i64 {
   sym %?ret_val : value i64;
 ^entry:

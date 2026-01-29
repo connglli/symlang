@@ -1,5 +1,6 @@
 // EXPECT: PASS
-// ARGS: --sym %?a=2
+// INTERP_ARGS: --sym %?a=2
+// COMPILER_ARGS: --sym %?a=2
 fun @main() : i64 {
   sym %?a : value i64;
   let %b: i64 = 3;

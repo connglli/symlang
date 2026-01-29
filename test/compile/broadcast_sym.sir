@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// ARGS: --sym %?val=42
+// COMPILER_ARGS: --sym %?val=42
 fun @main() : i32 {
   sym %?val : value i32;
   let mut %arr: [10] i32 = %?val;

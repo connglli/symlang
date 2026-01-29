@@ -116,7 +116,8 @@ def run_symirc_test(symirc_path, target="c"):
         return TestResult.FAIL, "Expected compile error but succeeded"
       return TestResult.PASS, ""
 
-    bindings = parse_bindings(args)
+    compiler_args = args["COMPILER_ARGS"]
+    bindings = parse_bindings(compiler_args)
 
     if target == "c":
       bindings_c = os.path.join(temp_dir, base_name + "_bindings.c")

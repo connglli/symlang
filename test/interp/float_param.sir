@@ -1,6 +1,7 @@
 // SKIP: COMPILER
 // EXPECT: PASS
-// ARGS: --sym %?p=1.5
+// INTERP_ARGS: --sym %?p=1.5
+// COMPILER_ARGS: --sym %?p=1.5
 fun @main() : f32 {
   sym %?p: value f32;
 ^entry:

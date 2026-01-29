@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// ARGS: --main @main --path '^entry,^loop,^loop,^loop,^exit'
+// SOLVER_ARGS: --main @main --path '^entry,^loop,^loop,^loop,^exit'
 fun @main() : i32 {
   sym %?final_sum : value i32;
   let %arr: [3] i32 = {10, 20, 30};

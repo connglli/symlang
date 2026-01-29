@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// ARGS: --main @main --path '^entry,^then'
+// SOLVER_ARGS: --main @main --path '^entry,^then'
 
 // Solve for %?x such that the path ^entry -> ^then is taken and %?x == 15.
 fun @main() : i32 {

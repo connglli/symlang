@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// ARGS: --main @main --path '^entry'
+// SOLVER_ARGS: --main @main --path '^entry'
 
 // Solve for %?area in [50, 100] such that 10 * 8 == %?area (with truncation).
 struct @Rect { w: i32; h: i32; }

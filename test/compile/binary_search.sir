@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// ARGS: --sym %?target=7
+// COMPILER_ARGS: --sym %?target=7
 struct @SearchRange { lo: i32; hi: i32; }
 struct @SearchResult { found: i32; index: i32; }
 

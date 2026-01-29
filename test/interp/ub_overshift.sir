@@ -1,5 +1,6 @@
 // EXPECT: FAIL
-// ARGS: --sym %?n=32
+// INTERP_ARGS: --sym %?n=32
+// COMPILER_ARGS: --sym %?n=32
 fun @main() : i32 {
   sym %?n : value i32;
   let %x: i32 = 1;

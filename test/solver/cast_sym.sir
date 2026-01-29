@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// ARGS: --main @main --path '^entry' --sym %?x=255
+// SOLVER_ARGS: --main @main --path '^entry' --sym %?x=255
 
 // Verify that casting symbolic i32(255) to i8 results in -1.
 fun @main() : i32 {

@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// ARGS: --main @float_test --path ^entry
+// SOLVER_ARGS: --main @float_test --path ^entry
 
 fun @float_test() : f32 {
   sym %?x: value f32;

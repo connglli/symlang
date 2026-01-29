@@ -1,5 +1,5 @@
 // EXPECT: FAIL
-// ARGS: --main @main --path '^entry' --sym %?a=-2147483648
+// SOLVER_ARGS: --main @main --path '^entry' --sym %?a=-2147483648
 
 // Subtraction overflow (MIN_INT - 1) is strict UB and should fail.
 fun @main() : i32 {

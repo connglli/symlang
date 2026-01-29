@@ -1,5 +1,6 @@
 // EXPECT: PASS
-// ARGS: --sym %?check=1
+// INTERP_ARGS: --sym %?check=1
+// COMPILER_ARGS: --sym %?check=1
 fun @main() : i64 {
   sym %?check : value i64;
   let %exp: i64 = 9;

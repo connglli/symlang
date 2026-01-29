@@ -1,5 +1,6 @@
 // EXPECT: PASS
-// ARGS: --sym %?x=10
+// INTERP_ARGS: --sym %?x=10
+// COMPILER_ARGS: --sym %?x=10
 fun @main() : i32 {
   sym %?x : value i32;
   let %y: i32 = 20;

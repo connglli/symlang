@@ -1,5 +1,6 @@
 // EXPECT: FAIL
-// ARGS: --sym %?a=9223372036854775807 --sym %?b=1
+// INTERP_ARGS: --sym %?a=9223372036854775807 --sym %?b=1
+// COMPILER_ARGS: --sym %?a=9223372036854775807 --sym %?b=1
 
 // Signed integer overflow is strict UB and should fail.
 fun @main() : i32 {

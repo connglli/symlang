@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// ARGS: --main @main --path '^entry'
+// SOLVER_ARGS: --main @main --path '^entry'
 
 // Test symbolic index assignment in array wrapped in struct.
 // Write 99 to symbolic index. Read index 2.

@@ -1,5 +1,6 @@
 // EXPECT: FAIL
-// ARGS: --sym %?n=0
+// INTERP_ARGS: --sym %?n=0
+// COMPILER_ARGS: --sym %?n=0
 fun @main() : i32 {
   sym %?n: value i32;
 ^entry:

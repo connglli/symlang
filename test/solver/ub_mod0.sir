@@ -1,5 +1,5 @@
 // EXPECT: FAIL
-// ARGS: --main @main --path '^entry'
+// SOLVER_ARGS: --main @main --path '^entry'
 
 // Modulo by zero is strict UB and should fail.
 fun @main() : i32 {

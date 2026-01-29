@@ -1,7 +1,7 @@
 // SKIP: COMPILER
 // SKIP: INTERPRETER
 // EXPECT: FAIL
-// ARGS: --main @test --path ^entry
+// SOLVER_ARGS: --main @test --path ^entry
 
 fun @test() : f32 {
   sym %?x: value f32;

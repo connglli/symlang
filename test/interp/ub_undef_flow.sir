@@ -1,5 +1,6 @@
 // EXPECT: FAIL
-// ARGS: --sym %?c=1
+// INTERP_ARGS: --sym %?c=1
+// COMPILER_ARGS: --sym %?c=1
 fun @main() : i32 {
   sym %?c : value i32;
   let mut %x: i32 = 0;

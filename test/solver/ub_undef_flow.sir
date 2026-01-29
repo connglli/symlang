@@ -1,5 +1,5 @@
 // EXPECT: FAIL
-// ARGS: --main @main --path '^entry,^b1,^merge' --sym %?c=1
+// SOLVER_ARGS: --main @main --path '^entry,^b1,^merge' --sym %?c=1
 
 // Reading an 'undef' value that flows through a specific path is strict UB and should fail.
 fun @main() : i32 {

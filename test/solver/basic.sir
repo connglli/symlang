@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// ARGS: --main @main --path '^entry'
+// SOLVER_ARGS: --main @main --path '^entry'
 
 // Solve for %?x in [10, 20] such that %?x == 15.
 fun @main() : i32 {

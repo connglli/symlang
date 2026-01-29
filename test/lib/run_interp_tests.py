@@ -3,11 +3,11 @@ from test.lib.framework import run_test_suite, run_command, TestResult
 
 
 def run_symiri_test(binary_cmd_parts):
-  def test_func(file_path, expectation, extra_args, skips):
+  def test_func(file_path, expectation, args, skips):
     if "INTERPRETER" in skips:
       return TestResult.SKIP, "Skipped by INTERPRETER tag"
 
-    cmd = binary_cmd_parts + [file_path] + extra_args
+    cmd = binary_cmd_parts + [file_path] + args["INTERP_ARGS"]
     result, err = run_command(cmd, timeout=5)
 
     if err == "TIMEOUT":

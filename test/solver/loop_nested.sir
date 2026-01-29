@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// ARGS: --main @main --path '^entry,^outer,^inner,^inner,^outer_inc,^outer,^inner,^inner,^outer_inc,^exit'
+// SOLVER_ARGS: --main @main --path '^entry,^outer,^inner,^inner,^outer_inc,^outer,^inner,^inner,^outer_inc,^exit'
 fun @main() : i32 {
   sym %?total : value i32;
   let mut %sum: i32 = 0;
