@@ -243,7 +243,7 @@ namespace symir {
         for (const auto &ins: b.instrs) {
           indent();
           std::visit(
-              [this, &f](auto &&arg) {
+              [this](auto &&arg) {
                 using T = std::decay_t<decltype(arg)>;
                 if constexpr (std::is_same_v<T, AssignInstr>) {
                   emitLValue(arg.lhs);
@@ -267,7 +267,7 @@ namespace symir {
         }
         indent();
         std::visit(
-            [this, &f](auto &&arg) {
+            [this](auto &&arg) {
               using T = std::decay_t<decltype(arg)>;
               if constexpr (std::is_same_v<T, BrTerm>) {
                 if (arg.isConditional) {

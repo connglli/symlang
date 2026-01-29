@@ -258,7 +258,7 @@ namespace symir {
 
   void ASTDumper::dumpCoef(const Coef &c) {
     std::visit(
-        [this, &c](auto &&arg) {
+        [this](auto &&arg) {
           using T = std::decay_t<decltype(arg)>;
           if constexpr (std::is_same_v<T, IntLit>) {
             out_ << arg.value;
@@ -290,7 +290,7 @@ namespace symir {
 
   void ASTDumper::dumpIndex(const Index &idx) {
     std::visit(
-        [this, &idx](auto &&arg) {
+        [this](auto &&arg) {
           using T = std::decay_t<decltype(arg)>;
           if constexpr (std::is_same_v<T, IntLit>) {
             out_ << arg.value;

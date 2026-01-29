@@ -4,6 +4,7 @@ symiri
 symirsolve
 
 # Object files
+build/
 *.o
 *.obj
 

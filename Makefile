@@ -1,6 +1,20 @@
-CXX = g++
+CXX ?= $(shell command -v g++ || shell command -v clang++)
+AR ?= ar
+PY := $(shell command -v python3 || shell command -v python)
+
+ifeq ($(CXX),)
+  $(error "C++ compiler '$(CXX)' not found. Please install g++ or clang.")
+endif
+ifeq ($(AR),)
+  $(error "Archiver '$(AR)' not found. Please install build-essential or binutils.")
+endif
+ifeq ($(PY),)
+  $(error "Python not found. Please install Python or create a virtualenv first (e.g., 'python3 -m venv venv && source venv/bin/activate').")
+endif
+
 CXXFLAGS = -std=c++20 -Iinclude -Ibitwuzla/include -Wall -Wextra -O2
 LDFLAGS = -Lbitwuzla/lib/x86_64-linux-gnu -lbitwuzla -lbitwuzlals -lbitwuzlabv -lbitwuzlabb -lgmp
+ARFLAGS = rcs
 
 # Coverage support
 ifeq ($(COVERAGE), 1)
@@ -31,9 +45,19 @@ TARGET_INTERP = symiri
 TARGET_COMPILER = symirc
 TARGET_SOLVER = symirsolve
 
-PY := $(shell command -v python3 >/dev/null 2>&1 && echo python3 || echo python)
+BUILD_DIR = build
+BIN_DIR = $(BUILD_DIR)/bin
+LIB_DIR = $(BUILD_DIR)/lib
+INC_DIR = $(BUILD_DIR)/include
 
-.PHONY: all clean test
+LIB_NAME = libsymir.a
+LIBRARY_OBJS = $(COMMON_OBJS) \
+               src/interp/interpreter.o \
+               src/backend/c_backend.o \
+               src/backend/wasm_backend.o \
+               src/solver/solver.o
+
+.PHONY: all clean test build
 
 all: $(TARGET_INTERP) $(TARGET_COMPILER) $(TARGET_SOLVER)
 
@@ -49,8 +73,18 @@ $(TARGET_SOLVER): $(COMMON_OBJS) $(SOLVER_OBJS)
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
+build: all $(LIB_DIR)/$(LIB_NAME)
+	mkdir -p $(BIN_DIR) $(INC_DIR)
+	cp $(TARGET_INTERP) $(TARGET_COMPILER) $(TARGET_SOLVER) $(BIN_DIR)/
+	cp -r include/* $(INC_DIR)/
+
+$(LIB_DIR)/$(LIB_NAME): $(LIBRARY_OBJS)
+	mkdir -p $(LIB_DIR)
+	$(AR) $(ARFLAGS) $@ $^
+
 clean:
 	rm -f $(COMMON_OBJS) $(TEST_OBJS) $(INTERP_OBJS) $(COMPILER_OBJS) $(SOLVER_OBJS) $(TARGET_INTERP) $(TARGET_COMPILER) $(TARGET_SOLVER)
+	rm -rf $(BUILD_DIR)
 	find . -name "*.gcno" -delete
 	find . -name "*.gcda" -delete
 	find . -name "*.gcov" -delete

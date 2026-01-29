@@ -684,7 +684,7 @@ namespace symir {
             out_ << (wasmWidth == 32 ? "f32.const " : "f64.const ") << arg.value << "\n";
           } else {
             std::visit(
-                [this, targetWidth, wasmWidth](auto &&id) {
+                [this, targetWidth](auto &&id) {
                   using ID = std::decay_t<decltype(id)>;
                   if constexpr (std::is_same_v<ID, SymId>) {
                     indent();
