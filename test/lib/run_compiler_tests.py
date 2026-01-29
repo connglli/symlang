@@ -193,7 +193,7 @@ def run_symirc_test(symirc_path, target="c"):
       run_cmd = [exe_out]
     else:
       # WASM execution
-      sir_info = extract_sir_info(file_path)
+      sir_info = extract_sir_info(file_path, entry_func)
       combined_wat = os.path.join(temp_dir, base_name + "_combined.wat")
 
       with open(gen_out, "r") as f:
@@ -208,11 +208,16 @@ def run_symirc_test(symirc_path, target="c"):
           for k, v in bindings.items():
             sk = strip_sigil(k)
             t = sir_info["syms"].get(sk, "i32")
+
+            val_str = v
+            if (t == "f32" or t == "f64") and "." not in v and "e" not in v.lower():
+              val_str = v + ".0"
+
             # wasm_backend mangles symbol as $main__<name> or similar
             # module name can be anything (stripped function name)
             # Match: (import "..." "sk" (func $mangled_name (result ...)))
             pattern = rf'\(import\s+"[^"]+"\s+"{sk}"\s+\(func\s+(\$[^\s\)]+)\s+\(result\s+[^\s\)]+\)\)\)'
-            replacement = f"(func \\1 (result {t}) ({t}.const {v}))"
+            replacement = f"(func \\1 (result {t}) ({t}.const {val_str}))"
             processed_content = re.sub(pattern, replacement, processed_content)
 
         f.write(processed_content)

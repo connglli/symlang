@@ -213,8 +213,13 @@ namespace symir {
             emitLValue(arg.rval, false);
             if (locals_.count(arg.rval.base.name)) {
               auto const &li = locals_.at(arg.rval.base.name);
-              if (!std::holds_alternative<FloatType>(li.symirType->v)) {
-                std::uint32_t srcWidth = li.bitwidth;
+              std::uint32_t srcWidth = li.bitwidth;
+              if (std::holds_alternative<FloatType>(li.symirType->v)) {
+                if (srcWidth == 32 && targetWidth == 64) {
+                  indent();
+                  out_ << "f64.promote_f32\n";
+                }
+              } else {
                 if (srcWidth <= 32 && targetWidth > 32) {
                   indent();
                   out_ << "i64.extend_i32_s\n";
@@ -228,6 +233,15 @@ namespace symir {
             if (isFloat) {
               emitCoef(arg.coef, targetWidth, isFloat);
               emitLValue(arg.rval, false);
+              if (locals_.count(arg.rval.base.name)) {
+                auto const &li = locals_.at(arg.rval.base.name);
+                if (std::holds_alternative<FloatType>(li.symirType->v)) {
+                  if (li.bitwidth == 32 && targetWidth == 64) {
+                    indent();
+                    out_ << "f64.promote_f32\n";
+                  }
+                }
+              }
               indent();
               std::string prefix = (targetWidth <= 32 ? "f32." : "f64.");
               switch (arg.op) {
@@ -683,7 +697,12 @@ namespace symir {
                       if (std::holds_alternative<FloatType>(syms_.at(id.name)->v))
                         srcIsFloat = true;
                     }
-                    if (!srcIsFloat) {
+                    if (srcIsFloat) {
+                      if (srcWidth == 32 && targetWidth == 64) {
+                        indent();
+                        out_ << "f64.promote_f32\n";
+                      }
+                    } else {
                       if (srcWidth <= 32 && targetWidth > 32) {
                         indent();
                         out_ << "i64.extend_i32_s\n";
@@ -697,8 +716,13 @@ namespace symir {
                     out_ << "local.get " << mangleName(id.name) << "\n";
                     if (locals_.count(id.name)) {
                       auto const &li = locals_.at(id.name);
-                      if (!std::holds_alternative<FloatType>(li.symirType->v)) {
-                        std::uint32_t srcWidth = li.bitwidth;
+                      std::uint32_t srcWidth = li.bitwidth;
+                      if (std::holds_alternative<FloatType>(li.symirType->v)) {
+                        if (srcWidth == 32 && targetWidth == 64) {
+                          indent();
+                          out_ << "f64.promote_f32\n";
+                        }
+                      } else {
                         if (srcWidth <= 32 && targetWidth > 32) {
                           indent();
                           out_ << "i64.extend_i32_s\n";
@@ -752,13 +776,29 @@ namespace symir {
           } else {
             std::visit(
                 [this](auto &&id) {
-                  indent();
-                  out_ << "local.get " << mangleName(id.name) << "\n";
-                  if (locals_.count(id.name)) {
-                    std::uint32_t srcWidth = getIntWidth(locals_.at(id.name).symirType);
+                  using ID = std::decay_t<decltype(id)>;
+                  if constexpr (std::is_same_v<ID, SymId>) {
+                    indent();
+                    out_ << "call " << mangleName(getMangledSymbolName(curFuncName_, id.name))
+                         << "\n";
+                    // Indices must be i32. If sym is i64, wrap it.
+                    std::uint32_t srcWidth = 32;
+                    if (syms_.count(id.name)) {
+                      srcWidth = getIntWidth(syms_.at(id.name));
+                    }
                     if (srcWidth > 32) {
                       indent();
                       out_ << "i32.wrap_i64\n";
+                    }
+                  } else {
+                    indent();
+                    out_ << "local.get " << mangleName(id.name) << "\n";
+                    if (locals_.count(id.name)) {
+                      std::uint32_t srcWidth = getIntWidth(locals_.at(id.name).symirType);
+                      if (srcWidth > 32) {
+                        indent();
+                        out_ << "i32.wrap_i64\n";
+                      }
                     }
                   }
                 },
@@ -984,6 +1024,35 @@ namespace symir {
             out_ << "local.set " << mangleName(l.name.name) << "\n";
           } else if (l.init->kind == InitVal::Kind::Local) {
             emitLValue({std::get<LocalId>(l.init->value), {}, l.init->span}, false);
+            indent();
+            out_ << "local.set " << mangleName(l.name.name) << "\n";
+          } else if (l.init->kind == InitVal::Kind::Sym) {
+            const auto &sid = std::get<SymId>(l.init->value);
+            indent();
+            out_ << "call " << mangleName(getMangledSymbolName(curFuncName_, sid.name)) << "\n";
+            // Handle int extension if needed
+            std::uint32_t srcWidth = 32;
+            bool srcIsFloat = false;
+            if (syms_.count(sid.name)) {
+              srcWidth = getIntWidth(syms_.at(sid.name));
+              if (std::holds_alternative<FloatType>(syms_.at(sid.name)->v))
+                srcIsFloat = true;
+            }
+            if (!srcIsFloat) {
+              if (srcWidth <= 32 && getIntWidth(l.type) > 32) {
+                indent();
+                out_ << "i64.extend_i32_s\n";
+              } else if (srcWidth > 32 && getIntWidth(l.type) <= 32) {
+                indent();
+                out_ << "i32.wrap_i64\n";
+              }
+            } else {
+              // Handle float promotion if needed
+              if (srcWidth == 32 && getIntWidth(l.type) == 64) {
+                indent();
+                out_ << "f64.promote_f32\n";
+              }
+            }
             indent();
             out_ << "local.set " << mangleName(l.name.name) << "\n";
           }
