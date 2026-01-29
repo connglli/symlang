@@ -1,0 +1,62 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --path ^entry,^init,^loop_cond,^loop_body,^update,^next,^exit
+
+struct @Item {
+    weight: i32;
+    value: i32;
+    meta: [2] i32;
+}
+
+struct @DpLevel {
+    table: [4] i32;
+    items: [2] @Item;
+    config: @Item;
+}
+
+struct @ProblemAnswer {
+    levels: [2] @DpLevel;
+    final: @DpLevel;
+    summary: [4] i32;
+}
+
+fun @main(): i32 {
+    let mut %ans: @ProblemAnswer = {
+        {
+            { {0, 0, 0, 0}, {{2, 10, {0,0}}, {3, 20, {0,0}}}, {0, 0, {0,0}} },
+            { {0, 0, 0, 0}, {{1, 5, {0,0}}, {2, 15, {0,0}}}, {0, 0, {0,0}} }
+        },
+        { {0, 0, 0, 0}, {{0, 0, {0,0}}, {0, 0, {0,0}}}, {0, 0, {0,0}} },
+        {0, 0, 0, 0}
+    };
+    let mut %i: i32 = 0;
+    let mut %w: i32 = 0;
+    let %limit: i32 = 4;
+    let %one: i32 = 1;
+
+^entry:
+    br ^init;
+
+^init:
+    %i = 0;
+    br ^loop_cond;
+
+^loop_cond:
+    br %i < %limit, ^loop_body, ^exit;
+
+^loop_body:
+    // Simple DP-like logic
+    %w = %ans.levels[0].items[0].weight;
+    br %i >= %w, ^update, ^next;
+
+^update:
+    %ans.final.table[%i] = %ans.levels[0].items[0].value;
+    br ^next;
+
+^next:
+    %i = %i + %one;
+    br ^loop_cond;
+
+^exit:
+    require %ans.final.table[2] == 10, "check result";
+    ret 0;
+}

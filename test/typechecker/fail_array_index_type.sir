@@ -1,0 +1,6 @@
+// EXPECT: FAIL
+fun @main(): i32 {
+  let %arr: [5] i32 = {0,0,0,0,0};
+^entry:
+  ret %arr[1.5]; // Float index
+}

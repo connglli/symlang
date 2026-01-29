@@ -1,0 +1,12 @@
+// EXPECT: FAIL
+// SOLVER_ARGS: --path ^entry
+// SKIP: COMPILER
+// SKIP: INTERPRETER
+struct @S { x: i32; }
+fun @main(): i32 {
+  sym %?v: value i32 in [0, 10];
+  let %s: @S = { %?v };
+^entry:
+  require %s.x == 20, "unsat";
+  ret 0;
+}

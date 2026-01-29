@@ -1,0 +1,12 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --path ^entry
+// SKIP: COMPILER
+// SKIP: INTERPRETER
+struct @Item { v: i32; }
+fun @main(): i32 {
+  sym %?i: index i32 in [0, 1];
+  let %arr: [2] @Item = { {10}, {20} };
+^entry:
+  require %arr[%?i].v == 10, "solve element";
+  ret 0;
+}

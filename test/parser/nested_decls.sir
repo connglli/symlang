@@ -1,0 +1,8 @@
+// EXPECT: PASS
+struct @Inner { val: i32; }
+struct @Mid { inner: @Inner; }
+struct @Out { m: @Mid; }
+fun @main(): i32 {
+^entry:
+  ret 0;
+}

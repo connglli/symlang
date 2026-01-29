@@ -1,0 +1,13 @@
+// EXPECT: PASS
+// Struct of Struct of Arrays
+struct @ColorTable { values: [3] i32; }
+struct @Palette { table: @ColorTable; }
+fun @main(): i32 {
+  let mut %p: @Palette = { { {10, 20, 30} } };
+^entry:
+  require %p.table.values[0] == 10, "v0";
+  require %p.table.values[2] == 30, "v2";
+  %p.table.values[1] = 99;
+  require %p.table.values[1] == 99, "mod";
+  ret 0;
+}

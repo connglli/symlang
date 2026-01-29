@@ -1,0 +1,10 @@
+// EXPECT: PASS
+struct @A { val: i32; }
+struct @B { a: @A; }
+struct @C { b: @B; }
+struct @D { c: @C; }
+fun @main(): i32 {
+  let %d: @D = { { { { 42 } } } };
+^entry:
+  ret %d.c.b.a.val;
+}

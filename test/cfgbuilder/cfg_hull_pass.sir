@@ -1,0 +1,65 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --path ^entry,^init,^loop_cond,^loop_body,^push,^pop,^exit
+
+struct @Point {
+    x: i32;
+    y: i32;
+    meta: [2] i32;
+}
+
+struct @HullState {
+    points: [4] @Point;
+    config: @Point;
+    stack_ptr: i32;
+    padding: [1] i32;
+}
+
+struct @ProblemAnswer {
+    states: [2] @HullState;
+    current: @HullState;
+    buffer: [4] i32;
+}
+
+fun @main(): i32 {
+    let mut %ans: @ProblemAnswer = {
+        {
+            { {{0,0,{0,0}}, {1,1,{0,0}}, {2,2,{0,0}}, {3,3,{0,0}}}, {0,0,{0,0}}, 0, {0} },
+            { {{0,0,{0,0}}, {1,1,{0,0}}, {2,2,{0,0}}, {3,3,{0,0}}}, {0,0,{0,0}}, 0, {0} }
+        },
+        { {{0,0,{0,0}}, {1,1,{0,0}}, {2,2,{0,0}}, {3,3,{0,0}}}, {0,0,{0,0}}, 0, {0} },
+        {0, 0, 0, 0}
+    };
+    let mut %i: i32 = 0;
+    let mut %x: i32 = 0;
+    let %limit: i32 = 4;
+    let %one: i32 = 1;
+
+^entry:
+    br ^init;
+
+^init:
+    %i = 0;
+    br ^loop_cond;
+
+^loop_cond:
+    br %i < %limit, ^loop_body, ^exit;
+
+^loop_body:
+    %x = %ans.current.points[%i].x;
+    br %x > 0, ^push, ^pop;
+
+^push:
+    %ans.current.stack_ptr = %ans.current.stack_ptr + %one;
+    br ^next;
+
+^pop:
+    %ans.current.stack_ptr = %ans.current.stack_ptr - %one;
+    br ^next;
+
+^next:
+    %i = %i + %one;
+    br ^loop_cond;
+
+^exit:
+    ret 0;
+}

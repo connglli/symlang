@@ -1,0 +1,20 @@
+// EXPECT: PASS
+struct @State { mode: i32; val: i32; }
+fun @main(): i32 {
+  let mut %s: @State = {0, 10};
+^entry:
+  br %s.mode == 0, ^case0, ^check1;
+^check1:
+  br %s.mode == 1, ^case1, ^default;
+^case0:
+  %s.val = 100;
+  br ^exit;
+^case1:
+  %s.val = 200;
+  br ^exit;
+^default:
+  %s.val = 300;
+  br ^exit;
+^exit:
+  ret %s.val;
+}

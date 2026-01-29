@@ -1,0 +1,7 @@
+// EXPECT: FAIL
+struct @S { a: [2] i32; }
+fun @main(): i32 {
+  let %s: @S = { {1, 2} };
+^entry:
+  ret %s.a[2]; // OOB
+}

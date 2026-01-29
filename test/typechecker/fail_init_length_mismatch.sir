@@ -1,0 +1,7 @@
+// EXPECT: FAIL
+struct @S { a: [2] i32; }
+fun @main(): i32 {
+  let %x: @S = { {1, 2, 3} }; // Too many elements
+^entry:
+  ret 0;
+}

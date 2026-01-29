@@ -172,9 +172,34 @@ namespace symir {
                 }
                 auto lt = typeOfLValue(arg.lhs, vars, syms, diags);
                 if (lt) {
-                  auto lb = TypeUtils::getBitWidth(lt);
-                  if (lb)
-                    typeOfExpr(arg.rhs, vars, syms, ann, diags, *lb);
+                  std::optional<uint32_t> expected;
+                  bool isFloat = false;
+                  if (auto lb = TypeUtils::getBitWidth(lt)) {
+                    expected = *lb;
+                  } else if (std::holds_alternative<FloatType>(lt->v)) {
+                    auto &ft = std::get<FloatType>(lt->v);
+                    expected = (ft.kind == FloatType::Kind::F32) ? 32 : 64;
+                    isFloat = true;
+                  } else {
+                    diags.error(
+                        "LHS of assignment must be a scalar (integer or float)", arg.lhs.span
+                    );
+                  }
+
+                  if (expected) {
+                    Ty rhsTy = typeOfExpr(arg.rhs, vars, syms, ann, diags, expected);
+                    if (isFloat) {
+                      if (!rhsTy.isFloat())
+                        diags.error("Expected float expression on RHS", arg.rhs.span);
+                      else if (rhsTy.floatBits() != *expected)
+                        diags.error("Float width mismatch in assignment", arg.rhs.span);
+                    } else {
+                      if (!rhsTy.isBV())
+                        diags.error("Expected integer expression on RHS", arg.rhs.span);
+                      else if (rhsTy.bvBits() != *expected)
+                        diags.error("Bitwidth mismatch in assignment", arg.rhs.span);
+                    }
+                  }
                 }
               } else if constexpr (std::is_same_v<T, AssumeInstr>) {
                 checkCond(arg.cond, vars, syms, ann, diags);
@@ -193,15 +218,25 @@ namespace symir {
                 checkCond(*arg.cond, vars, syms, ann, diags);
             } else if constexpr (std::is_same_v<T, RetTerm>) {
               if (arg.value) {
-                if (retBits)
-                  typeOfExpr(*arg.value, vars, syms, ann, diags, *retBits);
-                else if (isRetFloat) {
+                Ty rhsTy;
+                if (retBits) {
+                  rhsTy = typeOfExpr(*arg.value, vars, syms, ann, diags, *retBits);
+                  if (!rhsTy.isBV())
+                    diags.error("Expected integer return value", arg.value->span);
+                  else if (rhsTy.bvBits() != *retBits)
+                    diags.error("Return bitwidth mismatch", arg.value->span);
+                } else if (isRetFloat) {
                   auto const &ft = std::get<FloatType>(f.retType->v);
                   uint32_t bits = (ft.kind == FloatType::Kind::F32) ? 32 : 64;
-                  typeOfExpr(*arg.value, vars, syms, ann, diags, bits);
+                  rhsTy = typeOfExpr(*arg.value, vars, syms, ann, diags, bits);
+                  if (!rhsTy.isFloat())
+                    diags.error("Expected float return value", arg.value->span);
+                  else if (rhsTy.floatBits() != bits)
+                    diags.error("Return float width mismatch", arg.value->span);
                 }
-              } else if (!arg.value)
+              } else if (!arg.value) {
                 diags.error("Missing return value", arg.span);
+              }
             }
           },
           b.term

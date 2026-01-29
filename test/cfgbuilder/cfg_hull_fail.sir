@@ -1,0 +1,40 @@
+// EXPECT: FAIL
+// SOLVER_ARGS: --path ^entry,^init,^loop_cond,^loop_body,^exit
+
+struct @Point {
+    x: i32;
+    y: i32;
+    meta: [2] i32;
+}
+
+struct @HullState {
+    points: [4] @Point;
+    config: @Point;
+    stack_ptr: i32;
+    padding: [1] i32;
+}
+
+struct @ProblemAnswer {
+    states: [2] @HullState;
+    current: @HullState;
+    buffer: [4] i32;
+}
+
+fun @main(): i32 {
+    let mut %ans: @ProblemAnswer = undef;
+^entry:
+    br ^init;
+
+^init:
+    br ^loop_cond;
+
+^loop_cond:
+    br 1 < 2, ^loop_body, ^exit;
+
+^loop_body:
+    // CFG ERROR: Branch to non-existent label ^missing
+    br ^missing;
+
+^exit:
+    ret 0;
+}

@@ -1,0 +1,56 @@
+// EXPECT: FAIL
+// SOLVER_ARGS: --path ^entry,^init,^loop_cond,^loop_body,^check,^exit
+// SKIP: COMPILER
+// SKIP: INTERPRETER
+
+struct @Queen {
+    row: i32;
+    col: i32;
+    id: [2] i32;
+}
+
+struct @BoardConfig {
+    queens: [2] @Queen;
+    root: @Queen;
+    meta: [2] i32;
+}
+
+struct @ProblemAnswer {
+    configs: [2] @BoardConfig;
+    best: @BoardConfig;
+    status: [4] i32;
+}
+
+fun @main(): i32 {
+    sym %?r0: value i32 in [0, 3];
+    sym %?c0: value i32 in [0, 3];
+
+    let mut %ans: @ProblemAnswer = {
+        {
+            { {{0,0,{0,0}}, {0,0,{0,0}}}, {0,0,{0,0}}, {0,0} },
+            { {{0,0,{0,0}}, {0,0,{0,0}}}, {0,0,{0,0}}, {0,0} }
+        },
+        { {{0,0,{0,0}}, {0,0,{0,0}}}, {0,0,{0,0}}, {0,0} },
+        {0, 0, 0, 0}
+    };
+
+^entry:
+    %ans.configs[0].queens[0].row = %?r0;
+    %ans.configs[0].queens[0].col = %?c0;
+    br ^init;
+
+^init:
+    br ^loop_cond;
+
+^loop_cond:
+    br 1 < 2, ^loop_body, ^exit;
+
+^loop_body:
+    // UNSAT: Same queen must be in row 0 AND row 1
+    require %ans.configs[0].queens[0].row == 0, "must be 0";
+    require %ans.configs[0].queens[0].row == 1, "must be 1";
+    br ^exit;
+
+^exit:
+    ret 0;
+}

@@ -1,0 +1,2 @@
+// EXPECT: FAIL
+struct @BadField { x: 1 + 2; }

@@ -1,0 +1,9 @@
+// EXPECT: PASS
+// Struct of Array of Structs
+struct @Pixel { r: i32; g: i32; b: i32; }
+struct @Image { pixels: [4] @Pixel; }
+fun @main(): i32 {
+  let %img: @Image = { { {255,0,0}, {0,255,0}, {0,0,255}, {255,255,255} } };
+^entry:
+  ret %img.pixels[2].b;
+}

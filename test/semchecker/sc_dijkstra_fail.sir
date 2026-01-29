@@ -1,0 +1,45 @@
+// EXPECT: FAIL
+// SOLVER_ARGS: --path ^entry,^init,^loop_cond,^loop_body,^exit
+
+struct @Edge {
+    to: i32;
+    weight: i32;
+    flags: [2] i32;
+}
+
+struct @NodeInfo {
+    edges: [2] @Edge;
+    best_dist: i32;
+    meta: @Edge;
+}
+
+struct @ProblemAnswer {
+    nodes: [2] @NodeInfo;
+    heap: [4] i32;
+    config: @NodeInfo;
+}
+
+fun @main(): i32 {
+    let mut %ans: @ProblemAnswer = undef;
+    let mut %i: i32 = 0;
+    let mut %d: i32 = 0;
+    let %limit: i32 = 2;
+
+^entry:
+    br ^init;
+
+^init:
+    %i = 0;
+    br ^loop_cond;
+
+^loop_cond:
+    br %i < %limit, ^loop_body, ^exit;
+
+^loop_body:
+    // SEMANTIC ERROR: Reading undef field best_dist
+    %d = %ans.nodes[0].best_dist;
+    br ^exit;
+
+^exit:
+    ret 0;
+}

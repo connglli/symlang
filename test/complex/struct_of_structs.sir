@@ -1,0 +1,28 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --path ^entry
+
+struct @Color {
+    r: i32;
+    g: i32;
+    b: i32;
+}
+
+struct @Pixel {
+    pos_x: i32;
+    pos_y: i32;
+    color: @Color;
+}
+
+fun @main(): i32 {
+    let mut %p: @Pixel = { 10, 20, { 255, 0, 0 } };
+
+^entry:
+    require %p.pos_x == 10, "x";
+    require %p.color.r == 255, "r";
+    require %p.color.g == 0, "g";
+
+    %p.color.b = 128;
+    require %p.color.b == 128, "b mod";
+
+    ret 0;
+}

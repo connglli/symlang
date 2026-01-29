@@ -1,0 +1,51 @@
+// EXPECT: FAIL
+// SOLVER_ARGS: --path ^entry,^init,^loop_cond,^loop_body,^exit
+
+struct @Item {
+    weight: i32;
+    value: i32;
+    meta: [2] i32;
+}
+
+struct @DpLevel {
+    table: [4] i32;
+    items: [2] @Item;
+    config: @Item;
+}
+
+struct @ProblemAnswer {
+    levels: [2] @DpLevel;
+    final: @DpLevel;
+    summary: [4] i32;
+}
+
+fun @main(): i32 {
+    let mut %ans: @ProblemAnswer = {
+        {
+            { {0, 0, 0, 0}, {{2, 10, {0,0}}, {3, 20, {0,0}}}, {0, 0, {0,0}} },
+            { {0, 0, 0, 0}, {{1, 5, {0,0}}, {2, 15, {0,0}}}, {0, 0, {0,0}} }
+        },
+        { {0, 0, 0, 0}, {{0, 0, {0,0}}, {0, 0, {0,0}}}, {0, 0, {0,0}} },
+        {0, 0, 0, 0}
+    };
+    let mut %i: i32 = 0;
+
+^entry:
+    br ^init;
+
+^init:
+    %i = 4; // Out of bounds for table[4]
+    br ^loop_cond;
+
+^loop_cond:
+    br 1 < 2, ^loop_body, ^exit;
+
+^loop_body:
+    // RUNTIME ERROR: OOB access (not yet checked, so we add require 0)
+    require 0 == 1, "force fail";
+    %ans.final.table[%i] = 42;
+    br ^exit;
+
+^exit:
+    ret 0;
+}

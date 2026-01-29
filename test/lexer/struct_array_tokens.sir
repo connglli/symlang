@@ -1,0 +1,3 @@
+// EXPECT: PASS
+struct @A { x: i32; }
+struct @B { arr: [5] @A; }

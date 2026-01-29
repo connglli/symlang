@@ -1,0 +1,2 @@
+// EXPECT: FAIL
+struct @BadDim { a: [1+1] i32; }

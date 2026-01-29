@@ -1,0 +1,27 @@
+// EXPECT: FAIL
+// SOLVER_ARGS: --path ^entry,^init,^loop_cond,^loop_body,^visit,^next,^exit
+
+struct @NodeState {
+    dist: i32;
+    color: i32;
+    path: [2] i32;
+}
+
+struct @GraphLayer {
+    nodes: [2] @NodeState;
+    meta: @NodeState;
+    adj_matrix: [4] i32;
+}
+
+struct @ProblemAnswer {
+    layers: [2] @GraphLayer;
+    header: @GraphLayer;
+    // Syntax Error: Missing semicolon
+    queue: [4] i32
+}
+
+fun @main(): i32 {
+    let mut %ans: @ProblemAnswer = undef;
+^entry:
+    ret 0;
+}

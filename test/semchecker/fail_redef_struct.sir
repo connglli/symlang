@@ -1,0 +1,7 @@
+// EXPECT: FAIL
+struct @S { x: i32; }
+struct @S { y: i32; } // Redefinition
+fun @main(): i32 {
+^entry:
+  ret 0;
+}

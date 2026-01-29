@@ -1,0 +1,48 @@
+// EXPECT: FAIL
+// SOLVER_ARGS: --path ^entry,^init,^loop_cond,^loop_body,^exit
+
+struct @Element {
+    val: i32;
+    orig_pos: i32;
+    tags: [2] i32;
+}
+
+struct @Buffer {
+    data: [4] @Element;
+    temp: @Element;
+    meta: [2] i32;
+}
+
+struct @ProblemAnswer {
+    bufs: [2] @Buffer;
+    main_buf: @Buffer;
+    stats: [4] i32;
+}
+
+fun @main(): i32 {
+    let mut %ans: @ProblemAnswer = {
+        {
+            { {{4,0,{0,0}}, {3,1,{0,0}}, {2,2,{0,0}}, {1,3,{0,0}}}, {0,0,{0,0}}, {0,0} },
+            { {{0,0,{0,0}}, {0,0,{0,0}}, {0,0,{0,0}}, {0,0,{0,0}}}, {0,0,{0,0}}, {0,0} }
+        },
+        { {{4,0,{0,0}}, {3,1,{0,0}}, {2,2,{0,0}}, {1,3,{0,0}}}, {0,0,{0,0}}, {0,0} },
+        {0, 0, 0, 0}
+    };
+
+^entry:
+    br ^init;
+
+^init:
+    br ^loop_cond;
+
+^loop_cond:
+    br 1 < 2, ^loop_body, ^exit;
+
+^loop_body:
+    // COMPILE RUNTIME ERROR: return non-zero to indicate failure
+    require 0 == 1, "force fail";
+    ret 1;
+
+^exit:
+    ret 0;
+}

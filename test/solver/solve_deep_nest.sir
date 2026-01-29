@@ -1,0 +1,13 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --path ^entry
+// SKIP: COMPILER
+// SKIP: INTERPRETER
+struct @Inner { val: i32; }
+struct @Outer { inn: @Inner; }
+fun @main(): i32 {
+  sym %?x: value i32 in [0, 100];
+  let %o: @Outer = { {%?x} };
+^entry:
+  require %o.inn.val == 42, "deep solve";
+  ret 0;
+}

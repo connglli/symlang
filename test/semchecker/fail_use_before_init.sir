@@ -1,0 +1,7 @@
+// EXPECT: FAIL
+struct @S { x: i32; }
+fun @main(): i32 {
+  let mut %s: @S = undef;
+^entry:
+  ret %s.x; // Reading undef
+}

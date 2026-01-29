@@ -1,0 +1,9 @@
+// EXPECT: PASS
+// Struct of Struct of Arrays
+struct @ColorTable { values: [4] i32; }
+struct @Palette { table: @ColorTable; }
+fun @main(): i32 {
+  let %p: @Palette = { { {10, 20, 30, 40} } };
+^entry:
+  ret %p.table.values[3];
+}

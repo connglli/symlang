@@ -1,0 +1,13 @@
+// EXPECT: PASS
+// Struct of Array of Structs
+struct @Pixel { r: i32; g: i32; b: i32; }
+struct @Image { pixels: [2] @Pixel; }
+fun @main(): i32 {
+  let mut %img: @Image = { { {1,0,0}, {0,1,0} } };
+^entry:
+  require %img.pixels[0].r == 1, "p0.r";
+  require %img.pixels[1].g == 1, "p1.g";
+  %img.pixels[1].b = 255;
+  require %img.pixels[1].b == 255, "mod";
+  ret 0;
+}

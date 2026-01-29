@@ -1,0 +1,8 @@
+// EXPECT: FAIL
+struct @S { a: i32; }
+fun @main(): i32 {
+  let %x: @S = { 1 };
+^entry:
+  let %y: i32 = %x.a[0]; // Not an array
+  ret 0;
+}

@@ -1,0 +1,15 @@
+// EXPECT: PASS
+struct @S { x: i32; }
+fun @main(): i32 {
+  let mut %s: @S = {0};
+^entry:
+  br %s.x == 0, ^b1, ^b2;
+^b1:
+  %s.x = 1;
+  br ^exit;
+^b2:
+  %s.x = 2;
+  br ^exit;
+^exit:
+  ret %s.x;
+}

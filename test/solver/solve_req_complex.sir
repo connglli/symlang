@@ -1,0 +1,12 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --path ^entry
+// SKIP: COMPILER
+// SKIP: INTERPRETER
+struct @Config { mode: i32; }
+fun @main(): i32 {
+  sym %?m: value i32 in [0, 1];
+  let %c: @Config = { %?m };
+^entry:
+  require %c.mode == 1, "req complex";
+  ret 0;
+}

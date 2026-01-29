@@ -1,0 +1,8 @@
+// EXPECT: FAIL
+struct @S { x: i32; }
+fun @main(): i32 {
+  let %s: @S = {1};
+^entry:
+  %s.x = 2; // Immutable
+  ret 0;
+}

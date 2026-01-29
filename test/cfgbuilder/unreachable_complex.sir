@@ -1,0 +1,11 @@
+// EXPECT: PASS
+struct @Data { v: [10] i32; }
+fun @main(): i32 {
+  let mut %d: @Data = undef;
+^entry:
+  ret 0;
+^dead:
+  // Complex operations in unreachable block
+  %d.v[0] = 100;
+  ret %d.v[0];
+}

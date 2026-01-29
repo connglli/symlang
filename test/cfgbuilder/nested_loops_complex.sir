@@ -1,0 +1,25 @@
+// EXPECT: PASS
+struct @Mat { row: [2][2] i32; }
+fun @main(): i32 {
+  let mut %m: @Mat = { {{0,0}, {0,0}} };
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let %two: i32 = 2;
+  let %one: i32 = 1;
+^outer:
+  br %i < %two, ^inner_init, ^exit;
+^inner_init:
+  %j = 0;
+  br ^inner;
+^inner:
+  br %j < %two, ^body, ^outer_inc;
+^body:
+  %m.row[%i][%j] = %i + %j;
+  %j = %j + %one;
+  br ^inner;
+^outer_inc:
+  %i = %i + %one;
+  br ^outer;
+^exit:
+  ret 0;
+}

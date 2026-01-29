@@ -1,0 +1,69 @@
+// EXPECT: FAIL
+// SOLVER_ARGS: --path ^entry,^init,^loop_cond,^loop_body,^exit
+
+struct @Dimensions {
+    rows: i32;
+    cols: i32;
+    depth: i32;
+}
+
+struct @SparseRow {
+    values: [2] f32;
+    indices: [2] i32;
+    metadata: @Dimensions;
+}
+
+struct @MatrixLayer {
+    rows: [2] @SparseRow;
+    config: @Dimensions;
+    active: i32;
+}
+
+struct @ProblemAnswer {
+    layers: [2] @MatrixLayer;
+    global_config: @Dimensions;
+    result_buffer: [4] f32;
+}
+
+fun @main(): i32 {
+    let mut %ans: @ProblemAnswer = {
+        {
+            {
+                { {{1.0, 2.0}, {0, 1}, {1, 2, 1}}, {{3.0, 4.0}, {0, 1}, {1, 2, 1}} },
+                {1, 2, 1},
+                1
+            },
+            {
+                { {{5.0, 6.0}, {0, 1}, {1, 2, 1}}, {{7.0, 8.0}, {0, 1}, {1, 2, 1}} },
+                {1, 2, 1},
+                0
+            }
+        },
+        {2, 2, 2},
+        // Malformed float literal buried deep
+        {0.0, 1.2.3, 0.0, 0.0}
+    };
+    let mut %i: i32 = 0;
+    let mut %t: f32 = 0.0;
+    let %limit: i32 = 2;
+    let %one: i32 = 1;
+
+^entry:
+    br ^init;
+
+^init:
+    %i = 0;
+    br ^loop_cond;
+
+^loop_cond:
+    br %i < %limit, ^loop_body, ^exit;
+
+^loop_body:
+    %t = %ans.layers[0].rows[%i].values[0];
+    %ans.result_buffer[%i] = %t;
+    %i = %i + %one;
+    br ^loop_cond;
+
+^exit:
+    ret 0;
+}

@@ -1,0 +1,28 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --path ^entry
+
+struct @Point {
+    x: i32;
+    y: i32;
+}
+
+fun @main(): i32 {
+    let mut %points: [2] @Point = { {1, 2}, {3, 4} };
+    let %idx: i32 = 1;
+
+^entry:
+    // Check initial values
+    require %points[0].x == 1, "p0.x init";
+    require %points[0].y == 2, "p0.y init";
+    require %points[1].x == 3, "p1.x init";
+    require %points[1].y == 4, "p1.y init";
+
+    // Modify
+    %points[0].x = 10;
+    %points[%idx].y = 40;
+
+    require %points[0].x == 10, "p0.x mod";
+    require %points[1].y == 40, "p1.y mod";
+
+    ret 0;
+}

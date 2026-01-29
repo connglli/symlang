@@ -1,0 +1,7 @@
+// EXPECT: PASS
+struct @S { a: [10] i32; }
+fun @f(): i32 {
+  let %x: @S = { {0,0,0,0,0,0,0,0,0,0} };
+^entry:
+  ret %x.a[0];
+}

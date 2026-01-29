@@ -1,0 +1,7 @@
+// EXPECT: FAIL
+struct @S { x: i32; }
+fun @main(): i32 {
+  let %x: @S = { 1.5 }; // Float init for int field
+^entry:
+  ret 0;
+}

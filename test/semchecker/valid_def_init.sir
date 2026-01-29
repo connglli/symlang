@@ -1,0 +1,8 @@
+// EXPECT: PASS
+struct @Point { x: i32; y: i32; }
+fun @main(): i32 {
+  let mut %p: @Point = {1, 2};
+^entry:
+  %p.x = 10;
+  ret %p.x;
+}

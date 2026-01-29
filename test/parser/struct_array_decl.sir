@@ -1,0 +1,7 @@
+// EXPECT: PASS
+struct @Point { x: i32; y: i32; }
+struct @Poly { points: [10] @Point; }
+fun @main(): i32 {
+^entry:
+  ret 0;
+}

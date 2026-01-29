@@ -1,0 +1,8 @@
+// EXPECT: PASS
+struct @Vec { x: i32; y: i32; z: i32; }
+struct @Data { pts: [10] @Vec; }
+fun @main(): i32 {
+  let mut %d: @Data = { { {1,2,3}, {4,5,6}, {7,8,9}, {0,0,0}, {0,0,0}, {0,0,0}, {0,0,0}, {0,0,0}, {0,0,0}, {0,0,0} } };
+^entry:
+  ret %d.pts[1].y;
+}

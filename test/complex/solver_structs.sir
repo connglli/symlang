@@ -1,0 +1,17 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --path ^entry
+// SKIP: INTERPRETER
+// SKIP: COMPILER
+
+struct @Data { val: i32; }
+
+fun @main(): i32 {
+    sym %?idx: index i32 in [0, 1];
+    let %arr: [2] @Data = { {10}, {20} };
+
+^entry:
+    // This requires the solver to determine that %?idx must be 1
+    // for the constraint to hold.
+    require %arr[%?idx].val == 20, "find index 1";
+    ret 0;
+}

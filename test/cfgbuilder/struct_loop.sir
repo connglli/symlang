@@ -1,0 +1,18 @@
+// EXPECT: PASS
+struct @Item { val: i32; }
+fun @main(): i32 {
+  let mut %items: [5] @Item = { {0}, {1}, {2}, {3}, {4} };
+  let mut %i: i32 = 0;
+  let %five: i32 = 5;
+  let %one: i32 = 1;
+^entry:
+  br ^loop;
+^loop:
+  br %i < %five, ^body, ^exit;
+^body:
+  %items[%i].val = %items[%i].val + %one;
+  %i = %i + %one;
+  br ^loop;
+^exit:
+  ret 0;
+}

@@ -1,0 +1,60 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --path ^entry,^init,^loop_cond,^loop_body,^relax,^next,^exit
+
+struct @Edge {
+    to: i32;
+    weight: i32;
+    flags: [2] i32;
+}
+
+struct @NodeInfo {
+    edges: [2] @Edge;
+    best_dist: i32;
+    meta: @Edge;
+}
+
+struct @ProblemAnswer {
+    nodes: [2] @NodeInfo;
+    heap: [4] i32;
+    config: @NodeInfo;
+}
+
+fun @main(): i32 {
+    let mut %ans: @ProblemAnswer = {
+        {
+            { {{1, 10, {0,0}}, {2, 20, {0,0}}}, 0, {0, 0, {0,0}} },
+            { {{0, 0, {0,0}}, {0, 0, {0,0}}}, 2147483647, {0, 0, {0,0}} }
+        },
+        {0, 0, 0, 0},
+        { {{0, 0, {0,0}}, {0, 0, {0,0}}}, 0, {0, 0, {0,0}} }
+    };
+    let mut %i: i32 = 0;
+    let mut %d: i32 = 0;
+    let %one: i32 = 1;
+    let %limit: i32 = 2;
+
+^entry:
+    br ^init;
+
+^init:
+    %i = 0;
+    br ^loop_cond;
+
+^loop_cond:
+    br %i < %limit, ^loop_body, ^exit;
+
+^loop_body:
+    %d = %ans.nodes[%i].best_dist;
+    br %d < 100, ^relax, ^next;
+
+^relax:
+    %ans.nodes[%i].best_dist = 50;
+    br ^next;
+
+^next:
+    %i = %i + %one;
+    br ^loop_cond;
+
+^exit:
+    ret 0;
+}
