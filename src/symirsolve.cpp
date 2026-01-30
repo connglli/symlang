@@ -12,6 +12,7 @@
 #include "frontend/parser.hpp"
 #include "frontend/semchecker.hpp"
 #include "frontend/typechecker.hpp"
+#include "solver/bitwuzla_impl.hpp"
 #include "solver/solver.hpp"
 
 using namespace symir;
@@ -108,7 +109,12 @@ int main(int argc, char **argv) {
     config.timeout_ms = result["timeout-ms"].as<uint32_t>();
     config.seed = result["seed"].as<uint32_t>();
 
-    SymbolicExecutor executor(prog, config);
+    auto solverFactory = [](const SymbolicExecutor::Config &cfg
+                         ) -> std::unique_ptr<symir::smt::ISolver> {
+      return std::make_unique<symir::solver::BitwuzlaSolver>(cfg.timeout_ms, cfg.seed);
+    };
+
+    SymbolicExecutor executor(prog, config, solverFactory);
     auto res = executor.solve(funcName, path, fixedSyms);
 
     if (res.sat) {

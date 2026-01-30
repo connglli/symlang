@@ -7,14 +7,17 @@
 
 namespace symir {
 
-  SymbolicExecutor::SymbolicExecutor(const Program &prog, const Config &config) :
-      prog_(prog), config_(config) {
+  SymbolicExecutor::SymbolicExecutor(
+      const Program &prog, const Config &config, SolverFactory solverFactory
+  ) :
+      prog_(prog),
+      config_(config), solverFactory_(solverFactory) {
     for (const auto &s: prog_.structs) {
       structs_[s.name.name] = &s;
     }
   }
 
-  bitwuzla::Sort SymbolicExecutor::getSort(const TypePtr &t, bitwuzla::TermManager &tm) {
+  smt::Sort SymbolicExecutor::getSort(const TypePtr &t, smt::ISolver &solver) {
     if (auto it = std::get_if<IntType>(&t->v)) {
       uint32_t bits = 32;
       switch (it->kind) {
@@ -28,26 +31,26 @@ namespace symir {
           bits = it->bits.value_or(32);
           break;
       }
-      return tm.mk_bv_sort(bits);
+      return solver.make_bv_sort(bits);
     }
     if (auto ft = std::get_if<FloatType>(&t->v)) {
       if (ft->kind == FloatType::Kind::F32)
-        return tm.mk_fp_sort(8, 24);
+        return solver.make_fp_sort(8, 24);
       else
-        return tm.mk_fp_sort(11, 53);
+        return solver.make_fp_sort(11, 53);
     }
     throw std::runtime_error("Aggregate types do not have a single SMT sort in this encoding");
   }
 
   SymbolicExecutor::SymbolicValue SymbolicExecutor::createSymbolicValue(
-      const TypePtr &t, const std::string &name, bitwuzla::TermManager &tm, bool
+      const TypePtr &t, const std::string &name, smt::ISolver &solver, bool
   ) {
     SymbolicValue res;
     if (auto at = std::get_if<ArrayType>(&t->v)) {
       res.kind = SymbolicValue::Kind::Array;
       for (size_t i = 0; i < at->size; ++i) {
         res.arrayVal.push_back(
-            createSymbolicValue(at->elem, name + "[" + std::to_string(i) + "]", tm)
+            createSymbolicValue(at->elem, name + "[" + std::to_string(i) + "]", solver)
         );
       }
     } else if (auto st = std::get_if<StructType>(&t->v)) {
@@ -55,47 +58,47 @@ namespace symir {
       auto it = structs_.find(st->name.name);
       if (it != structs_.end()) {
         for (const auto &f: it->second->fields) {
-          res.structVal[f.name] = createSymbolicValue(f.type, name + "." + f.name, tm);
+          res.structVal[f.name] = createSymbolicValue(f.type, name + "." + f.name, solver);
         }
       }
     } else {
       res.kind = SymbolicValue::Kind::Int;
-      res.term = tm.mk_const(getSort(t, tm), name);
-      res.is_defined = tm.mk_true();
+      res.term = solver.make_const(getSort(t, solver), name);
+      res.is_defined = solver.make_true();
     }
     return res;
   }
 
   SymbolicExecutor::SymbolicValue
-  SymbolicExecutor::makeUndef(const TypePtr &t, bitwuzla::TermManager &tm) {
+  SymbolicExecutor::makeUndef(const TypePtr &t, smt::ISolver &solver) {
     SymbolicValue res;
     if (auto at = std::get_if<ArrayType>(&t->v)) {
       res.kind = SymbolicValue::Kind::Array;
       for (size_t i = 0; i < at->size; ++i)
-        res.arrayVal.push_back(makeUndef(at->elem, tm));
+        res.arrayVal.push_back(makeUndef(at->elem, solver));
     } else if (auto st = std::get_if<StructType>(&t->v)) {
       res.kind = SymbolicValue::Kind::Struct;
       auto it = structs_.find(st->name.name);
       if (it != structs_.end()) {
         for (const auto &f: it->second->fields)
-          res.structVal[f.name] = makeUndef(f.type, tm);
+          res.structVal[f.name] = makeUndef(f.type, solver);
       }
     } else {
       res.kind = SymbolicValue::Kind::Int;
-      res.term = tm.mk_const(getSort(t, tm), "undef");
-      res.is_defined = tm.mk_false();
+      res.term = solver.make_const(getSort(t, solver), "undef");
+      res.is_defined = solver.make_false();
     }
     return res;
   }
 
   SymbolicExecutor::SymbolicValue
-  SymbolicExecutor::broadcast(const TypePtr &t, bitwuzla::Term val, bitwuzla::TermManager &tm) {
+  SymbolicExecutor::broadcast(const TypePtr &t, smt::Term val, smt::ISolver &solver) {
     if (std::holds_alternative<ArrayType>(t->v)) {
       SymbolicValue res;
       res.kind = SymbolicValue::Kind::Array;
       const auto &at = std::get<ArrayType>(t->v);
       for (size_t i = 0; i < at.size; ++i)
-        res.arrayVal.push_back(broadcast(at.elem, val, tm));
+        res.arrayVal.push_back(broadcast(at.elem, val, solver));
       return res;
     } else if (std::holds_alternative<StructType>(t->v)) {
       SymbolicValue res;
@@ -103,23 +106,23 @@ namespace symir {
       auto it = structs_.find(std::get<StructType>(t->v).name.name);
       if (it != structs_.end()) {
         for (const auto &f: it->second->fields)
-          res.structVal[f.name] = broadcast(f.type, val, tm);
+          res.structVal[f.name] = broadcast(f.type, val, solver);
       }
       return res;
     } else {
       SymbolicValue res;
       res.kind = SymbolicValue::Kind::Int;
       res.term = val;
-      res.is_defined = tm.mk_true();
+      res.is_defined = solver.make_true();
       return res;
     }
   }
 
   SymbolicExecutor::SymbolicValue SymbolicExecutor::evalInit(
-      const InitVal &iv, const TypePtr &t, bitwuzla::TermManager &tm, SymbolicStore &store
+      const InitVal &iv, const TypePtr &t, smt::ISolver &solver, SymbolicStore &store
   ) {
     if (iv.kind == InitVal::Kind::Undef)
-      return makeUndef(t, tm);
+      return makeUndef(t, solver);
 
     if (iv.kind == InitVal::Kind::Aggregate) {
       const auto &elements = std::get<std::vector<InitValPtr>>(iv.value);
@@ -127,7 +130,7 @@ namespace symir {
         SymbolicValue res;
         res.kind = SymbolicValue::Kind::Array;
         for (size_t i = 0; i < elements.size(); ++i)
-          res.arrayVal.push_back(evalInit(*elements[i], at->elem, tm, store));
+          res.arrayVal.push_back(evalInit(*elements[i], at->elem, solver, store));
         return res;
       } else if (auto st = std::get_if<StructType>(&t->v)) {
         SymbolicValue res;
@@ -136,28 +139,29 @@ namespace symir {
         if (it != structs_.end()) {
           for (size_t i = 0; i < elements.size(); ++i)
             res.structVal[it->second->fields[i].name] =
-                evalInit(*elements[i], it->second->fields[i].type, tm, store);
+                evalInit(*elements[i], it->second->fields[i].type, solver, store);
         }
         return res;
       }
     }
 
     // Scalar
-    bitwuzla::Term val;
+    smt::Term val;
     if (iv.kind == InitVal::Kind::Int) {
       auto lit = std::get<IntLit>(iv.value);
-      val = tm.mk_bv_value(getSort(t, tm), std::to_string(lit.value), 10);
+      val = solver.make_bv_value(getSort(t, solver), std::to_string(lit.value), 10);
     } else if (iv.kind == InitVal::Kind::Float) {
       auto lit = std::get<FloatLit>(iv.value);
-      val = tm.mk_fp_value(
-          getSort(t, tm), tm.mk_rm_value(bitwuzla::RoundingMode::RNE), std::to_string(lit.value)
+      // Using standard RNE
+      val = solver.make_fp_value(
+          getSort(t, solver), std::to_string(lit.value), smt::RoundingMode::RNE
       );
     } else if (iv.kind == InitVal::Kind::Sym) {
       val = store.at(std::get<SymId>(iv.value).name).term;
     } else if (iv.kind == InitVal::Kind::Local) {
       val = store.at(std::get<LocalId>(iv.value).name).term;
     }
-    return broadcast(t, val, tm);
+    return broadcast(t, val, solver);
   }
 
   SymbolicExecutor::Result SymbolicExecutor::solve(
@@ -175,22 +179,16 @@ namespace symir {
     if (!entry)
       throw std::runtime_error("Function not found: " + funcName);
 
-    bitwuzla::TermManager tm;
-    bitwuzla::Options options;
-    options.set(bitwuzla::Option::PRODUCE_MODELS, true);
-    if (config_.timeout_ms > 0)
-      options.set(bitwuzla::Option::TIME_LIMIT_PER, (uint64_t) config_.timeout_ms);
-    if (config_.seed > 0)
-      options.set(bitwuzla::Option::SEED, (uint64_t) config_.seed);
-    bitwuzla::Bitwuzla solver(tm, options);
+    auto solverPtr = solverFactory_(config_);
+    smt::ISolver &solver = *solverPtr;
 
     SymbolicStore store;
-    std::vector<bitwuzla::Term> pathConstraints;
-    std::vector<bitwuzla::Term> requirements;
+    std::vector<smt::Term> pathConstraints;
+    std::vector<smt::Term> requirements;
 
     // 1. Declare symbols and fix values if requested
     for (const auto &s: entry->syms) {
-      auto sv = createSymbolicValue(s.type, s.name.name, tm, true);
+      auto sv = createSymbolicValue(s.type, s.name.name, solver, true);
       store[s.name.name] = sv;
 
       // Add domain constraints
@@ -199,20 +197,20 @@ namespace symir {
             [&](auto &&d) {
               using T = std::decay_t<decltype(d)>;
               if constexpr (std::is_same_v<T, DomainInterval>) {
-                auto lo = tm.mk_bv_value(getSort(s.type, tm), std::to_string(d.lo), 10);
-                auto hi = tm.mk_bv_value(getSort(s.type, tm), std::to_string(d.hi), 10);
-                pathConstraints.push_back(tm.mk_term(bitwuzla::Kind::BV_SLE, {lo, sv.term}));
-                pathConstraints.push_back(tm.mk_term(bitwuzla::Kind::BV_SLE, {sv.term, hi}));
+                auto lo = solver.make_bv_value(getSort(s.type, solver), std::to_string(d.lo), 10);
+                auto hi = solver.make_bv_value(getSort(s.type, solver), std::to_string(d.hi), 10);
+                pathConstraints.push_back(solver.make_term(smt::Kind::BV_SLE, {lo, sv.term}));
+                pathConstraints.push_back(solver.make_term(smt::Kind::BV_SLE, {sv.term, hi}));
               } else if constexpr (std::is_same_v<T, DomainSet>) {
-                std::vector<bitwuzla::Term> or_terms;
+                std::vector<smt::Term> or_terms;
                 for (auto v: d.values) {
-                  auto vt = tm.mk_bv_value(getSort(s.type, tm), std::to_string(v), 10);
-                  or_terms.push_back(tm.mk_term(bitwuzla::Kind::EQUAL, {sv.term, vt}));
+                  auto vt = solver.make_bv_value(getSort(s.type, solver), std::to_string(v), 10);
+                  or_terms.push_back(solver.make_term(smt::Kind::EQUAL, {sv.term, vt}));
                 }
                 if (!or_terms.empty()) {
-                  bitwuzla::Term or_all = or_terms[0];
+                  smt::Term or_all = or_terms[0];
                   for (size_t i = 1; i < or_terms.size(); ++i)
-                    or_all = tm.mk_term(bitwuzla::Kind::OR, {or_all, or_terms[i]});
+                    or_all = solver.make_term(smt::Kind::OR, {or_all, or_terms[i]});
                   pathConstraints.push_back(or_all);
                 }
               }
@@ -222,21 +220,22 @@ namespace symir {
       }
 
       if (fixedSyms.count(s.name.name)) {
-        auto val =
-            tm.mk_bv_value(getSort(s.type, tm), std::to_string(fixedSyms.at(s.name.name)), 10);
-        pathConstraints.push_back(tm.mk_term(bitwuzla::Kind::EQUAL, {sv.term, val}));
+        auto val = solver.make_bv_value(
+            getSort(s.type, solver), std::to_string(fixedSyms.at(s.name.name)), 10
+        );
+        pathConstraints.push_back(solver.make_term(smt::Kind::EQUAL, {sv.term, val}));
       }
     }
 
     // 2. Declare locals (parameters are also in store)
     for (const auto &p: entry->params) {
-      store[p.name.name] = createSymbolicValue(p.type, p.name.name, tm);
+      store[p.name.name] = createSymbolicValue(p.type, p.name.name, solver);
     }
     for (const auto &l: entry->lets) {
       if (l.init) {
-        store[l.name.name] = evalInit(*l.init, l.type, tm, store);
+        store[l.name.name] = evalInit(*l.init, l.type, solver, store);
       } else {
-        store[l.name.name] = makeUndef(l.type, tm);
+        store[l.name.name] = makeUndef(l.type, solver);
       }
     }
 
@@ -259,18 +258,19 @@ namespace symir {
             [&](auto &&arg) {
               using T = std::decay_t<decltype(arg)>;
               if constexpr (std::is_same_v<T, AssignInstr>) {
-                auto lhsVal = evalLValue(arg.lhs, tm, solver, store, pathConstraints);
+                auto lhsVal = evalLValue(arg.lhs, solver, store, pathConstraints);
                 auto rhs = evalExpr(
-                    arg.rhs, tm, solver, store, pathConstraints,
-                    lhsVal.kind == SymbolicValue::Kind::Int ? std::optional(lhsVal.term.sort())
-                                                            : std::nullopt
+                    arg.rhs, solver, store, pathConstraints,
+                    lhsVal.kind == SymbolicValue::Kind::Int
+                        ? std::optional(solver.get_sort(lhsVal.term))
+                        : std::nullopt
                 );
-                SymbolicValue val(SymbolicValue::Kind::Int, rhs, tm.mk_true());
-                setLValue(arg.lhs, val, tm, solver, store, pathConstraints);
+                SymbolicValue val(SymbolicValue::Kind::Int, rhs, solver.make_true());
+                setLValue(arg.lhs, val, solver, store, pathConstraints);
               } else if constexpr (std::is_same_v<T, AssumeInstr>) {
-                pathConstraints.push_back(evalCond(arg.cond, tm, solver, store, pathConstraints));
+                pathConstraints.push_back(evalCond(arg.cond, solver, store, pathConstraints));
               } else if constexpr (std::is_same_v<T, RequireInstr>) {
-                requirements.push_back(evalCond(arg.cond, tm, solver, store, pathConstraints));
+                requirements.push_back(evalCond(arg.cond, solver, store, pathConstraints));
               }
             },
             ins
@@ -285,11 +285,11 @@ namespace symir {
               using T = std::decay_t<decltype(term)>;
               if constexpr (std::is_same_v<T, BrTerm>) {
                 if (term.isConditional) {
-                  auto cond = evalCond(*term.cond, tm, solver, store, pathConstraints);
+                  auto cond = evalCond(*term.cond, solver, store, pathConstraints);
                   if (term.thenLabel.name == nextLabel) {
                     pathConstraints.push_back(cond);
                   } else if (term.elseLabel.name == nextLabel) {
-                    pathConstraints.push_back(tm.mk_term(bitwuzla::Kind::NOT, {cond}));
+                    pathConstraints.push_back(solver.make_term(smt::Kind::NOT, {cond}));
                   } else {
                     throw std::runtime_error("Path edge not in CFG: " + label + " -> " + nextLabel);
                   }
@@ -314,16 +314,16 @@ namespace symir {
     for (auto r: requirements)
       solver.assert_formula(r);
 
-    bitwuzla::Result res = solver.check_sat();
+    smt::Result res = solver.check_sat();
     Result finalRes;
-    if (res == bitwuzla::Result::SAT) {
+    if (res == smt::Result::SAT) {
       finalRes.sat = true;
       for (const auto &s: entry->syms) {
         auto term = store.at(s.name.name).term;
         auto val_term = solver.get_value(term);
 
-        if (term.sort().is_fp()) {
-          std::string bin = val_term.value<std::string>(2);
+        if (solver.is_fp_sort(solver.get_sort(term))) {
+          std::string bin = solver.get_fp_value_string(val_term);
           uint64_t bits = 0;
           for (char c: bin) {
             bits = (bits << 1) | (c - '0');
@@ -339,11 +339,11 @@ namespace symir {
           }
           finalRes.model[s.name.name] = d;
         } else {
-          auto val_str = val_term.value<std::string>(10);
+          auto val_str = solver.get_bv_value_string(val_term, 10);
           finalRes.model[s.name.name] = parseIntegerLiteral(val_str);
         }
       }
-    } else if (res == bitwuzla::Result::UNSAT) {
+    } else if (res == smt::Result::UNSAT) {
       finalRes.unsat = true;
     } else {
       finalRes.unknown = true;
@@ -352,19 +352,19 @@ namespace symir {
   }
 
   SymbolicExecutor::SymbolicValue SymbolicExecutor::mergeAggregate(
-      const std::vector<SymbolicValue> &elements, bitwuzla::Term idx, bitwuzla::TermManager &tm
+      const std::vector<SymbolicValue> &elements, smt::Term idx, smt::ISolver &solver
   ) {
     if (elements.empty())
       return {SymbolicValue::Kind::Undef};
 
     if (elements[0].kind == SymbolicValue::Kind::Int) {
-      bitwuzla::Term res = elements[0].term;
-      bitwuzla::Term defined = elements[0].is_defined;
+      smt::Term res = elements[0].term;
+      smt::Term defined = elements[0].is_defined;
       for (size_t i = 1; i < elements.size(); ++i) {
-        auto i_term = tm.mk_bv_value(idx.sort(), std::to_string(i), 10);
-        auto cond = tm.mk_term(bitwuzla::Kind::EQUAL, {idx, i_term});
-        res = tm.mk_term(bitwuzla::Kind::ITE, {cond, elements[i].term, res});
-        defined = tm.mk_term(bitwuzla::Kind::ITE, {cond, elements[i].is_defined, defined});
+        auto i_term = solver.make_bv_value(solver.get_sort(idx), std::to_string(i), 10);
+        auto cond = solver.make_term(smt::Kind::EQUAL, {idx, i_term});
+        res = solver.make_term(smt::Kind::ITE, {cond, elements[i].term, res});
+        defined = solver.make_term(smt::Kind::ITE, {cond, elements[i].is_defined, defined});
       }
       return SymbolicValue(SymbolicValue::Kind::Int, res, defined);
     } else if (elements[0].kind == SymbolicValue::Kind::Array) {
@@ -375,7 +375,7 @@ namespace symir {
         std::vector<SymbolicValue> inner_elements;
         for (size_t i = 0; i < elements.size(); ++i)
           inner_elements.push_back(elements[i].arrayVal[j]);
-        res.arrayVal.push_back(mergeAggregate(inner_elements, idx, tm));
+        res.arrayVal.push_back(mergeAggregate(inner_elements, idx, solver));
       }
       return res;
     } else if (elements[0].kind == SymbolicValue::Kind::Struct) {
@@ -385,7 +385,7 @@ namespace symir {
         std::vector<SymbolicValue> inner_elements;
         for (size_t i = 0; i < elements.size(); ++i)
           inner_elements.push_back(elements[i].structVal.at(fld));
-        res.structVal[fld] = mergeAggregate(inner_elements, idx, tm);
+        res.structVal[fld] = mergeAggregate(inner_elements, idx, solver);
       }
       return res;
     }
@@ -393,8 +393,7 @@ namespace symir {
   }
 
   SymbolicExecutor::SymbolicValue SymbolicExecutor::evalLValue(
-      const LValue &lv, bitwuzla::TermManager &tm, bitwuzla::Bitwuzla &, SymbolicStore &store,
-      std::vector<bitwuzla::Term> &pc
+      const LValue &lv, smt::ISolver &solver, SymbolicStore &store, std::vector<smt::Term> &pc
   ) {
     SymbolicValue res = store.at(lv.base.name);
     for (const auto &acc: lv.accesses) {
@@ -402,21 +401,21 @@ namespace symir {
         if (res.kind != SymbolicValue::Kind::Array)
           throw std::runtime_error("Indexing non-array");
         size_t array_size = res.arrayVal.size();
-        bitwuzla::Term idx;
+        smt::Term idx;
         if (auto lit = std::get_if<IntLit>(&ai->index)) {
-          idx = tm.mk_bv_value(tm.mk_bv_sort(32), std::to_string(lit->value), 10);
+          idx = solver.make_bv_value(solver.make_bv_sort(32), std::to_string(lit->value), 10);
           SymbolicValue next = res.arrayVal.at(lit->value);
           res = std::move(next);
         } else {
           auto id = std::get<LocalOrSymId>(ai->index);
           idx = std::visit([&](auto &&v) { return store.at(v.name).term; }, id);
-          res = mergeAggregate(res.arrayVal, idx, tm);
+          res = mergeAggregate(res.arrayVal, idx, solver);
         }
         // Strict UB: bounds check
-        auto size_term = tm.mk_bv_value(idx.sort(), std::to_string(array_size), 10);
-        auto zero = tm.mk_bv_zero(idx.sort());
-        pc.push_back(tm.mk_term(bitwuzla::Kind::BV_SLE, {zero, idx}));
-        pc.push_back(tm.mk_term(bitwuzla::Kind::BV_SLT, {idx, size_term}));
+        auto size_term = solver.make_bv_value(solver.get_sort(idx), std::to_string(array_size), 10);
+        auto zero = solver.make_bv_zero(solver.get_sort(idx));
+        pc.push_back(solver.make_term(smt::Kind::BV_SLE, {zero, idx}));
+        pc.push_back(solver.make_term(smt::Kind::BV_SLT, {idx, size_term}));
       } else if (auto af = std::get_if<AccessField>(&acc)) {
         if (res.kind != SymbolicValue::Kind::Struct)
           throw std::runtime_error("Field access on non-struct");
@@ -428,7 +427,7 @@ namespace symir {
   }
 
   SymbolicExecutor::SymbolicValue SymbolicExecutor::muxSymbolicValue(
-      bitwuzla::Term cond, const SymbolicValue &t, const SymbolicValue &f, bitwuzla::TermManager &tm
+      smt::Term cond, const SymbolicValue &t, const SymbolicValue &f, smt::ISolver &solver
   ) {
     if (t.kind != f.kind) {
       throw std::runtime_error("Muxing different kinds of SymbolicValues");
@@ -438,19 +437,19 @@ namespace symir {
     res.kind = t.kind;
 
     if (t.kind == SymbolicValue::Kind::Int) {
-      res.term = tm.mk_term(bitwuzla::Kind::ITE, {cond, t.term, f.term});
-      res.is_defined = tm.mk_term(bitwuzla::Kind::ITE, {cond, t.is_defined, f.is_defined});
+      res.term = solver.make_term(smt::Kind::ITE, {cond, t.term, f.term});
+      res.is_defined = solver.make_term(smt::Kind::ITE, {cond, t.is_defined, f.is_defined});
     } else if (t.kind == SymbolicValue::Kind::Array) {
       if (t.arrayVal.size() != f.arrayVal.size())
         throw std::runtime_error("Muxing arrays of different sizes");
       for (size_t i = 0; i < t.arrayVal.size(); ++i) {
-        res.arrayVal.push_back(muxSymbolicValue(cond, t.arrayVal[i], f.arrayVal[i], tm));
+        res.arrayVal.push_back(muxSymbolicValue(cond, t.arrayVal[i], f.arrayVal[i], solver));
       }
     } else if (t.kind == SymbolicValue::Kind::Struct) {
       for (const auto &[key, val]: t.structVal) {
         if (f.structVal.find(key) == f.structVal.end())
           throw std::runtime_error("Muxing structs with mismatching keys: " + key);
-        res.structVal[key] = muxSymbolicValue(cond, val, f.structVal.at(key), tm);
+        res.structVal[key] = muxSymbolicValue(cond, val, f.structVal.at(key), solver);
       }
     }
     return res;
@@ -458,14 +457,14 @@ namespace symir {
 
   SymbolicExecutor::SymbolicValue SymbolicExecutor::updateLValueRec(
       const SymbolicValue &cur, std::span<const Access> accesses, const SymbolicValue &val,
-      bitwuzla::Term pathCond, bitwuzla::TermManager &tm, SymbolicStore &store,
-      std::vector<bitwuzla::Term> &pc, int depth
+      smt::Term pathCond, smt::ISolver &solver, SymbolicStore &store, std::vector<smt::Term> &pc,
+      int depth
   ) {
     if (depth > 100)
       throw std::runtime_error("Recursion depth exceeded in updateLValueRec");
 
     if (accesses.empty()) {
-      return muxSymbolicValue(pathCond, val, cur, tm);
+      return muxSymbolicValue(pathCond, val, cur, solver);
     }
 
     const Access &acc = accesses[0];
@@ -476,9 +475,9 @@ namespace symir {
       if (cur.kind != SymbolicValue::Kind::Array)
         throw std::runtime_error("Indexing non-array in setLValue");
 
-      bitwuzla::Term idx;
+      smt::Term idx;
       if (auto lit = std::get_if<IntLit>(&ai->index)) {
-        idx = tm.mk_bv_value(tm.mk_bv_sort(32), std::to_string(lit->value), 10);
+        idx = solver.make_bv_value(solver.make_bv_sort(32), std::to_string(lit->value), 10);
       } else {
         auto id = std::get<LocalOrSymId>(ai->index);
         idx = std::visit([&](auto &&v) { return store.at(v.name).term; }, id);
@@ -489,14 +488,14 @@ namespace symir {
       if (size == 0)
         throw std::runtime_error("Indexing empty array");
 
-      auto size_term = tm.mk_bv_value(idx.sort(), std::to_string(size), 10);
-      auto zero = tm.mk_bv_zero(idx.sort());
+      auto size_term = solver.make_bv_value(solver.get_sort(idx), std::to_string(size), 10);
+      auto zero = solver.make_bv_zero(solver.get_sort(idx));
 
-      pc.push_back(tm.mk_term(
-          bitwuzla::Kind::IMPLIES, {pathCond, tm.mk_term(bitwuzla::Kind::BV_SLE, {zero, idx})}
+      pc.push_back(solver.make_term(
+          smt::Kind::IMPLIES, {pathCond, solver.make_term(smt::Kind::BV_SLE, {zero, idx})}
       ));
-      pc.push_back(tm.mk_term(
-          bitwuzla::Kind::IMPLIES, {pathCond, tm.mk_term(bitwuzla::Kind::BV_SLT, {idx, size_term})}
+      pc.push_back(solver.make_term(
+          smt::Kind::IMPLIES, {pathCond, solver.make_term(smt::Kind::BV_SLT, {idx, size_term})}
       ));
 
       if (auto lit = std::get_if<IntLit>(&ai->index)) {
@@ -504,17 +503,18 @@ namespace symir {
         uint64_t k = lit->value;
         if (k < newCur.arrayVal.size()) {
           newCur.arrayVal[k] = updateLValueRec(
-              cur.arrayVal[k], nextAccesses, val, pathCond, tm, store, pc, depth + 1
+              cur.arrayVal[k], nextAccesses, val, pathCond, solver, store, pc, depth + 1
           );
         }
       } else {
         // Symbolic index
         for (size_t k = 0; k < newCur.arrayVal.size(); ++k) {
-          auto k_term = tm.mk_bv_value(idx.sort(), std::to_string(k), 10);
-          auto match = tm.mk_term(bitwuzla::Kind::EQUAL, {idx, k_term});
-          auto cond = tm.mk_term(bitwuzla::Kind::AND, {pathCond, match});
-          newCur.arrayVal[k] =
-              updateLValueRec(cur.arrayVal[k], nextAccesses, val, cond, tm, store, pc, depth + 1);
+          auto k_term = solver.make_bv_value(solver.get_sort(idx), std::to_string(k), 10);
+          auto match = solver.make_term(smt::Kind::EQUAL, {idx, k_term});
+          auto cond = solver.make_term(smt::Kind::AND, {pathCond, match});
+          newCur.arrayVal[k] = updateLValueRec(
+              cur.arrayVal[k], nextAccesses, val, cond, solver, store, pc, depth + 1
+          );
         }
       }
     } else {
@@ -525,190 +525,208 @@ namespace symir {
         throw std::runtime_error("Field not found: " + af.field);
 
       newCur.structVal[af.field] = updateLValueRec(
-          cur.structVal.at(af.field), nextAccesses, val, pathCond, tm, store, pc, depth + 1
+          cur.structVal.at(af.field), nextAccesses, val, pathCond, solver, store, pc, depth + 1
       );
     }
     return newCur;
   }
 
   void SymbolicExecutor::setLValue(
-      const LValue &lv, const SymbolicValue &val, bitwuzla::TermManager &tm, bitwuzla::Bitwuzla &,
-      SymbolicStore &store, std::vector<bitwuzla::Term> &pc
+      const LValue &lv, const SymbolicValue &val, smt::ISolver &solver, SymbolicStore &store,
+      std::vector<smt::Term> &pc
   ) {
     SymbolicValue &root = store.at(lv.base.name);
     // Use true condition because the instruction itself is unconditional *at this point in the
     // trace* The path constraints handle the reachability of the instruction.
-    root = updateLValueRec(root, lv.accesses, val, tm.mk_true(), tm, store, pc, 0);
+    root = updateLValueRec(root, lv.accesses, val, solver.make_true(), solver, store, pc, 0);
   }
 
-  bitwuzla::Term SymbolicExecutor::evalExpr(
-      const Expr &e, bitwuzla::TermManager &tm, bitwuzla::Bitwuzla &solver, SymbolicStore &store,
-      std::vector<bitwuzla::Term> &pc, std::optional<bitwuzla::Sort> expectedSort
+  smt::Term SymbolicExecutor::evalExpr(
+      const Expr &e, smt::ISolver &solver, SymbolicStore &store, std::vector<smt::Term> &pc,
+      std::optional<smt::Sort> expectedSort
   ) {
-    bitwuzla::Term res = evalAtom(e.first, tm, solver, store, pc, expectedSort);
+    smt::Term res = evalAtom(e.first, solver, store, pc, expectedSort);
     for (const auto &tail: e.rest) {
-      bitwuzla::Term right = evalAtom(tail.atom, tm, solver, store, pc, expectedSort);
+      smt::Term right = evalAtom(tail.atom, solver, store, pc, expectedSort);
       if (tail.op == AddOp::Plus) {
-        if (res.sort().is_fp()) {
-          auto rm = tm.mk_rm_value(bitwuzla::RoundingMode::RNE);
-          res = tm.mk_term(bitwuzla::Kind::FP_ADD, {rm, res, right});
+        if (solver.is_fp_sort(solver.get_sort(res))) {
+          res = solver.make_term(smt::Kind::FP_ADD, {res, right});
         } else {
-          auto overflow = tm.mk_term(bitwuzla::Kind::BV_SADD_OVERFLOW, {res, right});
-          pc.push_back(tm.mk_term(bitwuzla::Kind::NOT, {overflow}));
-          res = tm.mk_term(bitwuzla::Kind::BV_ADD, {res, right});
+          auto overflow = solver.make_term(smt::Kind::BV_SADD_OVERFLOW, {res, right});
+          pc.push_back(solver.make_term(smt::Kind::NOT, {overflow}));
+          res = solver.make_term(smt::Kind::BV_ADD, {res, right});
         }
       } else {
-        if (res.sort().is_fp()) {
-          auto rm = tm.mk_rm_value(bitwuzla::RoundingMode::RNE);
-          res = tm.mk_term(bitwuzla::Kind::FP_SUB, {rm, res, right});
+        if (solver.is_fp_sort(solver.get_sort(res))) {
+          res = solver.make_term(smt::Kind::FP_SUB, {res, right});
         } else {
-          auto overflow = tm.mk_term(bitwuzla::Kind::BV_SSUB_OVERFLOW, {res, right});
-          pc.push_back(tm.mk_term(bitwuzla::Kind::NOT, {overflow}));
-          res = tm.mk_term(bitwuzla::Kind::BV_SUB, {res, right});
+          auto overflow = solver.make_term(smt::Kind::BV_SSUB_OVERFLOW, {res, right});
+          pc.push_back(solver.make_term(smt::Kind::NOT, {overflow}));
+          res = solver.make_term(smt::Kind::BV_SUB, {res, right});
         }
       }
     }
     return res;
   }
 
-  bitwuzla::Term SymbolicExecutor::evalAtom(
-      const Atom &a, bitwuzla::TermManager &tm, bitwuzla::Bitwuzla &solver, SymbolicStore &store,
-      std::vector<bitwuzla::Term> &pc, std::optional<bitwuzla::Sort> expectedSort
+  smt::Term SymbolicExecutor::evalAtom(
+      const Atom &a, smt::ISolver &solver, SymbolicStore &store, std::vector<smt::Term> &pc,
+      std::optional<smt::Sort> expectedSort
   ) {
     return std::visit(
-        [&](auto &&arg) -> bitwuzla::Term {
+        [&](auto &&arg) -> smt::Term {
           using T = std::decay_t<decltype(arg)>;
           if constexpr (std::is_same_v<T, OpAtom>) {
-            bitwuzla::Term c = evalCoef(arg.coef, tm, solver, store, expectedSort);
-            bitwuzla::Term r = evalLValue(arg.rval, tm, solver, store, pc).term;
+            smt::Term c = evalCoef(arg.coef, solver, store, expectedSort);
+            smt::Term r = evalLValue(arg.rval, solver, store, pc).term;
 
-            if (c.sort().is_fp()) {
-              auto rm = tm.mk_rm_value(bitwuzla::RoundingMode::RNE);
+            if (solver.is_fp_sort(solver.get_sort(c))) {
               if (arg.op == AtomOpKind::Mul)
-                return tm.mk_term(bitwuzla::Kind::FP_MUL, {rm, c, r});
+                return solver.make_term(smt::Kind::FP_MUL, {c, r});
               if (arg.op == AtomOpKind::Div)
-                return tm.mk_term(bitwuzla::Kind::FP_DIV, {rm, c, r});
+                return solver.make_term(smt::Kind::FP_DIV, {c, r});
               if (arg.op == AtomOpKind::Mod)
-                return tm.mk_term(bitwuzla::Kind::FP_REM, {c, r});
+                return solver.make_term(smt::Kind::FP_REM, {c, r});
               return {};
             }
 
             if (arg.op == AtomOpKind::Div || arg.op == AtomOpKind::Mod) {
-              auto zero = tm.mk_bv_zero(r.sort());
-              pc.push_back(tm.mk_term(bitwuzla::Kind::DISTINCT, {r, zero}));
+              auto zero = solver.make_bv_zero(solver.get_sort(r));
+              pc.push_back(solver.make_term(smt::Kind::DISTINCT, {r, zero}));
             }
             if (arg.op == AtomOpKind::Mul) {
-              auto overflow = tm.mk_term(bitwuzla::Kind::BV_SMUL_OVERFLOW, {c, r});
-              pc.push_back(tm.mk_term(bitwuzla::Kind::NOT, {overflow}));
-              return tm.mk_term(bitwuzla::Kind::BV_MUL, {c, r});
+              auto overflow = solver.make_term(smt::Kind::BV_SMUL_OVERFLOW, {c, r});
+              pc.push_back(solver.make_term(smt::Kind::NOT, {overflow}));
+              return solver.make_term(smt::Kind::BV_MUL, {c, r});
             }
             if (arg.op == AtomOpKind::Div) {
               // Check overflow: c == INT_MIN && r == -1
-              auto min_signed = tm.mk_bv_min_signed(c.sort());
-              auto minus_one = tm.mk_bv_value_int64(r.sort(), -1);
-              auto is_min = tm.mk_term(bitwuzla::Kind::EQUAL, {c, min_signed});
-              auto is_minus_one = tm.mk_term(bitwuzla::Kind::EQUAL, {r, minus_one});
-              auto div_overflow = tm.mk_term(bitwuzla::Kind::AND, {is_min, is_minus_one});
-              pc.push_back(tm.mk_term(bitwuzla::Kind::NOT, {div_overflow}));
-              return tm.mk_term(bitwuzla::Kind::BV_SDIV, {c, r});
+              auto min_signed = solver.make_bv_min_signed(solver.get_sort(c));
+              auto minus_one = solver.make_bv_value_int64(solver.get_sort(r), -1);
+              auto is_min = solver.make_term(smt::Kind::EQUAL, {c, min_signed});
+              auto is_minus_one = solver.make_term(smt::Kind::EQUAL, {r, minus_one});
+              auto div_overflow = solver.make_term(smt::Kind::AND, {is_min, is_minus_one});
+              pc.push_back(solver.make_term(smt::Kind::NOT, {div_overflow}));
+              return solver.make_term(smt::Kind::BV_SDIV, {c, r});
             }
             if (arg.op == AtomOpKind::Mod) {
               // Check overflow for mod
-              auto min_signed = tm.mk_bv_min_signed(c.sort());
-              auto minus_one = tm.mk_bv_value_int64(r.sort(), -1);
-              auto is_min = tm.mk_term(bitwuzla::Kind::EQUAL, {c, min_signed});
-              auto is_minus_one = tm.mk_term(bitwuzla::Kind::EQUAL, {r, minus_one});
-              auto mod_overflow = tm.mk_term(bitwuzla::Kind::AND, {is_min, is_minus_one});
-              pc.push_back(tm.mk_term(bitwuzla::Kind::NOT, {mod_overflow}));
-              return tm.mk_term(bitwuzla::Kind::BV_SREM, {c, r});
+              auto min_signed = solver.make_bv_min_signed(solver.get_sort(c));
+              auto minus_one = solver.make_bv_value_int64(solver.get_sort(r), -1);
+              auto is_min = solver.make_term(smt::Kind::EQUAL, {c, min_signed});
+              auto is_minus_one = solver.make_term(smt::Kind::EQUAL, {r, minus_one});
+              auto mod_overflow = solver.make_term(smt::Kind::AND, {is_min, is_minus_one});
+              pc.push_back(solver.make_term(smt::Kind::NOT, {mod_overflow}));
+              return solver.make_term(smt::Kind::BV_SREM, {c, r});
             }
             if (arg.op == AtomOpKind::And) {
-              return tm.mk_term(bitwuzla::Kind::BV_AND, {c, r});
+              return solver.make_term(smt::Kind::BV_AND, {c, r});
             }
             if (arg.op == AtomOpKind::Or) {
-              return tm.mk_term(bitwuzla::Kind::BV_OR, {c, r});
+              return solver.make_term(smt::Kind::BV_OR, {c, r});
             }
             if (arg.op == AtomOpKind::Xor) {
-              return tm.mk_term(bitwuzla::Kind::BV_XOR, {c, r});
+              return solver.make_term(smt::Kind::BV_XOR, {c, r});
             }
             if (arg.op == AtomOpKind::Shl || arg.op == AtomOpKind::Shr ||
                 arg.op == AtomOpKind::LShr) {
               // Overshift UB: amount < width
-              uint32_t width = c.sort().bv_size();
-              auto width_term = tm.mk_bv_value(r.sort(), std::to_string(width), 10);
-              pc.push_back(tm.mk_term(bitwuzla::Kind::BV_ULT, {r, width_term}));
+              uint32_t width = solver.get_bv_width(solver.get_sort(c));
+              auto width_term = solver.make_bv_value(solver.get_sort(r), std::to_string(width), 10);
+              pc.push_back(solver.make_term(smt::Kind::BV_ULT, {r, width_term}));
 
               if (arg.op == AtomOpKind::Shl)
-                return tm.mk_term(bitwuzla::Kind::BV_SHL, {c, r});
+                return solver.make_term(smt::Kind::BV_SHL, {c, r});
               if (arg.op == AtomOpKind::Shr)
-                return tm.mk_term(bitwuzla::Kind::BV_ASHR, {c, r});
+                return solver.make_term(smt::Kind::BV_ASHR, {c, r});
               if (arg.op == AtomOpKind::LShr)
-                return tm.mk_term(bitwuzla::Kind::BV_SHR, {c, r});
+                return solver.make_term(smt::Kind::BV_SHR, {c, r});
             }
             return {};
           } else if constexpr (std::is_same_v<T, UnaryAtom>) {
-            auto r = evalLValue(arg.rval, tm, solver, store, pc).term;
+            auto r = evalLValue(arg.rval, solver, store, pc).term;
             if (arg.op == UnaryOpKind::Not) {
-              return tm.mk_term(bitwuzla::Kind::BV_NOT, {r});
+              return solver.make_term(smt::Kind::BV_NOT, {r});
             }
             return {};
           } else if constexpr (std::is_same_v<T, SelectAtom>) {
-            bitwuzla::Term cond = evalCond(*arg.cond, tm, solver, store, pc);
-            bitwuzla::Term vt = evalSelectVal(arg.vtrue, tm, solver, store, pc, expectedSort);
-            bitwuzla::Term vf = evalSelectVal(arg.vfalse, tm, solver, store, pc, expectedSort);
-            return tm.mk_term(bitwuzla::Kind::ITE, {cond, vt, vf});
+            smt::Term cond = evalCond(*arg.cond, solver, store, pc);
+            smt::Term vt = evalSelectVal(arg.vtrue, solver, store, pc, expectedSort);
+            smt::Term vf = evalSelectVal(arg.vfalse, solver, store, pc, expectedSort);
+            return solver.make_term(smt::Kind::ITE, {cond, vt, vf});
           } else if constexpr (std::is_same_v<T, CoefAtom>) {
-            return evalCoef(arg.coef, tm, solver, store, expectedSort);
+            return evalCoef(arg.coef, solver, store, expectedSort);
           } else if constexpr (std::is_same_v<T, RValueAtom>) {
-            return evalLValue(arg.rval, tm, solver, store, pc).term;
+            return evalLValue(arg.rval, solver, store, pc).term;
           } else if constexpr (std::is_same_v<T, CastAtom>) {
-            bitwuzla::Term src = std::visit(
-                [&](auto &&s) -> bitwuzla::Term {
+            smt::Term src = std::visit(
+                [&](auto &&s) -> smt::Term {
                   using S = std::decay_t<decltype(s)>;
                   if constexpr (std::is_same_v<S, IntLit>) {
-                    return tm.mk_bv_value(tm.mk_bv_sort(32), std::to_string(s.value), 10);
+                    return solver.make_bv_value(
+                        solver.make_bv_sort(32), std::to_string(s.value), 10
+                    );
                   } else if constexpr (std::is_same_v<S, FloatLit>) {
                     // Default to f32 if implied
-                    return tm.mk_fp_value(
-                        tm.mk_fp_sort(8, 24), tm.mk_rm_value(bitwuzla::RoundingMode::RNE),
-                        std::to_string(s.value)
+                    return solver.make_fp_value(
+                        solver.make_fp_sort(8, 24), std::to_string(s.value), smt::RoundingMode::RNE
                     );
                   } else if constexpr (std::is_same_v<S, SymId>) {
                     return store.at(s.name).term;
                   } else {
-                    return evalLValue(s, tm, solver, store, pc).term;
+                    return evalLValue(s, solver, store, pc).term;
                   }
                 },
                 arg.src
             );
-            auto dstSort = getSort(arg.dstType, tm);
+            auto dstSort = getSort(arg.dstType, solver);
 
-            if (src.sort().is_fp() && dstSort.is_fp()) {
-              auto rm = tm.mk_rm_value(bitwuzla::RoundingMode::RNE);
-              return tm.mk_term(
-                  bitwuzla::Kind::FP_TO_FP_FROM_FP, {rm, src},
-                  {dstSort.fp_exp_size(), dstSort.fp_sig_size()}
-              );
-            } else if (src.sort().is_fp() && dstSort.is_bv()) {
-              auto rm = tm.mk_rm_value(bitwuzla::RoundingMode::RNE);
-              return tm.mk_term(bitwuzla::Kind::FP_TO_SBV, {rm, src}, {dstSort.bv_size()});
-            } else if (src.sort().is_bv() && dstSort.is_fp()) {
-              auto rm = tm.mk_rm_value(bitwuzla::RoundingMode::RNE);
-              return tm.mk_term(
-                  bitwuzla::Kind::FP_TO_FP_FROM_SBV, {rm, src},
-                  {dstSort.fp_exp_size(), dstSort.fp_sig_size()}
-              );
+            bool srcIsFp = solver.is_fp_sort(solver.get_sort(src));
+            bool dstIsFp = solver.is_fp_sort(dstSort);
+
+            if (srcIsFp && dstIsFp) {
+              return solver.make_term(smt::Kind::FP_TO_FP_FROM_FP, {src});
+            } else if (srcIsFp && !dstIsFp) {
+              return solver.make_term(
+                  smt::Kind::FP_TO_SBV, {src}
+              ); // Width implicit in logic? No bitwuzla takes width arg?
+              // solver.make_term handles mapping, but FP_TO_SBV might need extra args (width) if
+              // mapped directly? The Bitwuzla C++ API for fp_to_sbv takes width. My abstract
+              // interface make_term takes args. I need to check how I implemented FP_TO_SBV in
+              // bitwuzla_impl.cpp It maps to bitwuzla::Kind::FP_TO_SBV. But
+              // bitwuzla::mk_term(FP_TO_SBV, {term}, {width}) is required. My make_term signature
+              // allows indices. I need to pass indices here. Wait, I need to know the width.
+              // dstSort has the width.
+              // I should update this call site.
+            } else if (!srcIsFp && dstIsFp) {
+              return solver.make_term(smt::Kind::FP_TO_FP_FROM_SBV, {src});
+              // similarly needs dest indices?
+              // bitwuzla::FP_TO_FP_FROM_SBV takes indices (exp_size, sig_size).
+            }
+
+            // Correct handling for FP casts requiring indices
+            if (srcIsFp && !dstIsFp) { // FP -> BV
+              uint32_t width = solver.get_bv_width(dstSort);
+              return solver.make_term(smt::Kind::FP_TO_SBV, {src}, {width});
+            }
+            if (!srcIsFp && dstIsFp) { // BV -> FP
+              auto [exp, sig] = solver.get_fp_dims(dstSort);
+              return solver.make_term(smt::Kind::FP_TO_FP_FROM_SBV, {src}, {exp, sig});
+            }
+            if (srcIsFp && dstIsFp) { // FP -> FP
+              auto [exp, sig] = solver.get_fp_dims(dstSort);
+              return solver.make_term(smt::Kind::FP_TO_FP_FROM_FP, {src}, {exp, sig});
             }
 
             // BV -> BV resizing
-            uint32_t srcWidth = src.sort().bv_size();
-            uint32_t dstWidth = dstSort.bv_size();
+            uint32_t srcWidth = solver.get_bv_width(solver.get_sort(src));
+            uint32_t dstWidth = solver.get_bv_width(dstSort);
             if (srcWidth == dstWidth)
               return src;
             if (srcWidth < dstWidth) {
-              return tm.mk_term(bitwuzla::Kind::BV_SIGN_EXTEND, {src}, {dstWidth - srcWidth});
+              return solver.make_term(smt::Kind::BV_SIGN_EXTEND, {src}, {dstWidth - srcWidth});
             } else {
-              return tm.mk_term(bitwuzla::Kind::BV_EXTRACT, {src}, {dstWidth - 1, 0});
+              return solver.make_term(smt::Kind::BV_EXTRACT, {src}, {dstWidth - 1, 0});
             }
           }
         },
@@ -716,73 +734,69 @@ namespace symir {
     );
   }
 
-  bitwuzla::Term SymbolicExecutor::evalCoef(
-      const Coef &c, bitwuzla::TermManager &tm, bitwuzla::Bitwuzla &, SymbolicStore &store,
-      std::optional<bitwuzla::Sort> expectedSort
+  smt::Term SymbolicExecutor::evalCoef(
+      const Coef &c, smt::ISolver &solver, SymbolicStore &store,
+      std::optional<smt::Sort> expectedSort
   ) {
     if (auto lit = std::get_if<IntLit>(&c)) {
-      bitwuzla::Sort s = expectedSort.value_or(tm.mk_bv_sort(32));
-      return tm.mk_bv_value(s, std::to_string(lit->value), 10);
+      smt::Sort s = expectedSort.value_or(solver.make_bv_sort(32));
+      return solver.make_bv_value(s, std::to_string(lit->value), 10);
     }
     if (auto flit = std::get_if<FloatLit>(&c)) {
-      bitwuzla::Sort s = expectedSort.value_or(tm.mk_fp_sort(8, 24));
-      return tm.mk_fp_value(
-          s, tm.mk_rm_value(bitwuzla::RoundingMode::RNE), std::to_string(flit->value)
-      );
+      smt::Sort s = expectedSort.value_or(solver.make_fp_sort(8, 24));
+      return solver.make_fp_value(s, std::to_string(flit->value), smt::RoundingMode::RNE);
     }
     auto id = std::get<LocalOrSymId>(c);
     return std::visit([&](auto &&v) { return store.at(v.name).term; }, id);
   }
 
-  bitwuzla::Term SymbolicExecutor::evalSelectVal(
-      const SelectVal &sv, bitwuzla::TermManager &tm, bitwuzla::Bitwuzla &solver,
-      SymbolicStore &store, std::vector<bitwuzla::Term> &pc,
-      std::optional<bitwuzla::Sort> expectedSort
+  smt::Term SymbolicExecutor::evalSelectVal(
+      const SelectVal &sv, smt::ISolver &solver, SymbolicStore &store, std::vector<smt::Term> &pc,
+      std::optional<smt::Sort> expectedSort
   ) {
     if (auto rv = std::get_if<RValue>(&sv))
-      return evalLValue(*rv, tm, solver, store, pc).term;
-    return evalCoef(std::get<Coef>(sv), tm, solver, store, expectedSort);
+      return evalLValue(*rv, solver, store, pc).term;
+    return evalCoef(std::get<Coef>(sv), solver, store, expectedSort);
   }
 
-  bitwuzla::Term SymbolicExecutor::evalCond(
-      const Cond &c, bitwuzla::TermManager &tm, bitwuzla::Bitwuzla &solver, SymbolicStore &store,
-      std::vector<bitwuzla::Term> &pc
+  smt::Term SymbolicExecutor::evalCond(
+      const Cond &c, smt::ISolver &solver, SymbolicStore &store, std::vector<smt::Term> &pc
   ) {
-    bitwuzla::Term lhs = evalExpr(c.lhs, tm, solver, store, pc);
-    bitwuzla::Term rhs = evalExpr(c.rhs, tm, solver, store, pc, lhs.sort());
+    smt::Term lhs = evalExpr(c.lhs, solver, store, pc);
+    smt::Term rhs = evalExpr(c.rhs, solver, store, pc, solver.get_sort(lhs));
 
-    if (lhs.sort().is_fp()) {
+    if (solver.is_fp_sort(solver.get_sort(lhs))) {
       switch (c.op) {
         case RelOp::EQ:
-          return tm.mk_term(bitwuzla::Kind::FP_EQUAL, {lhs, rhs});
+          return solver.make_term(smt::Kind::FP_EQUAL, {lhs, rhs});
         case RelOp::NE:
-          return tm.mk_term(
-              bitwuzla::Kind::NOT, {tm.mk_term(bitwuzla::Kind::FP_EQUAL, {lhs, rhs})}
+          return solver.make_term(
+              smt::Kind::NOT, {solver.make_term(smt::Kind::FP_EQUAL, {lhs, rhs})}
           );
         case RelOp::LT:
-          return tm.mk_term(bitwuzla::Kind::FP_LT, {lhs, rhs});
+          return solver.make_term(smt::Kind::FP_LT, {lhs, rhs});
         case RelOp::LE:
-          return tm.mk_term(bitwuzla::Kind::FP_LEQ, {lhs, rhs});
+          return solver.make_term(smt::Kind::FP_LEQ, {lhs, rhs});
         case RelOp::GT:
-          return tm.mk_term(bitwuzla::Kind::FP_GT, {lhs, rhs});
+          return solver.make_term(smt::Kind::FP_GT, {lhs, rhs});
         case RelOp::GE:
-          return tm.mk_term(bitwuzla::Kind::FP_GEQ, {lhs, rhs});
+          return solver.make_term(smt::Kind::FP_GEQ, {lhs, rhs});
       }
     }
 
     switch (c.op) {
       case RelOp::EQ:
-        return tm.mk_term(bitwuzla::Kind::EQUAL, {lhs, rhs});
+        return solver.make_term(smt::Kind::EQUAL, {lhs, rhs});
       case RelOp::NE:
-        return tm.mk_term(bitwuzla::Kind::DISTINCT, {lhs, rhs});
+        return solver.make_term(smt::Kind::DISTINCT, {lhs, rhs});
       case RelOp::LT:
-        return tm.mk_term(bitwuzla::Kind::BV_SLT, {lhs, rhs});
+        return solver.make_term(smt::Kind::BV_SLT, {lhs, rhs});
       case RelOp::LE:
-        return tm.mk_term(bitwuzla::Kind::BV_SLE, {lhs, rhs});
+        return solver.make_term(smt::Kind::BV_SLE, {lhs, rhs});
       case RelOp::GT:
-        return tm.mk_term(bitwuzla::Kind::BV_SGT, {lhs, rhs});
+        return solver.make_term(smt::Kind::BV_SGT, {lhs, rhs});
       case RelOp::GE:
-        return tm.mk_term(bitwuzla::Kind::BV_SGE, {lhs, rhs});
+        return solver.make_term(smt::Kind::BV_SGE, {lhs, rhs});
     }
     return {};
   }

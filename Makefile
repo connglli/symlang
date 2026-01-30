@@ -33,7 +33,7 @@ COMMON_SRCS = src/frontend/lexer.cpp src/frontend/parser.cpp src/frontend/ast_du
 TEST_SRCS =
 INTERP_SRCS = src/symiri.cpp src/interp/interpreter.cpp
 COMPILER_SRCS = src/symirc.cpp src/backend/c_backend.cpp src/backend/wasm_backend.cpp
-SOLVER_SRCS = src/symirsolve.cpp src/solver/solver.cpp
+SOLVER_SRCS = src/symirsolve.cpp src/solver/solver.cpp src/solver/bitwuzla_impl.cpp
 
 COMMON_OBJS = $(COMMON_SRCS:.cpp=.o)
 TEST_OBJS = $(TEST_SRCS:.cpp=.o)
@@ -55,7 +55,8 @@ LIBRARY_OBJS = $(COMMON_OBJS) \
                src/interp/interpreter.o \
                src/backend/c_backend.o \
                src/backend/wasm_backend.o \
-               src/solver/solver.o
+               src/solver/solver.o \
+               src/solver/bitwuzla_impl.o
 
 .PHONY: all clean test build
 
