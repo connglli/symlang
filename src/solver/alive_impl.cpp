@@ -68,6 +68,11 @@ namespace symir::solver {
 
   bool AliveSolver::is_bool_sort(smt::Sort s) { return unwrap(s).isBool(); }
 
+  bool AliveSolver::is_rm_sort(smt::Sort s) {
+    (void) s;
+    return false;
+  }
+
   uint32_t AliveSolver::get_bv_width(smt::Sort s) { return unwrap(s).bits(); }
 
   std::pair<uint32_t, uint32_t> AliveSolver::get_fp_dims(smt::Sort s) {

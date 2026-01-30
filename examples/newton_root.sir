@@ -1,0 +1,77 @@
+fun @main() : f64 {
+  // =========================================================================================
+  // SymIR Newton-Raphson Root Finder (Floating Point Version)
+  //
+  // This program implements Newton's method to find the root of f(x) = x^2 - 2.
+  //   Formula: x_{n+1} = x_n - f(x_n) / f'(x_n)
+  //   For f(x) = x^2 - 2, f'(x) = 2x.
+  //
+  // It demonstrates:
+  // 1. Floating-point Support: Using f64 types and literals.
+  // 2. Numerical Synthesis: Finding an initial guess that converges quickly.
+  //
+  // Interpret (with guess 2.0):
+  //   ./symiri --sym %?start_x=2.0 ./examples/newton_root.sir
+  //
+  // Compile:
+  //   ./symirc -o newton_root.c ./examples/newton_root.sir
+  //
+  // Solve (Synthesize a valid initial guess):
+  //   ./symirsolve --path $(cat ./examples/newton_root_path.txt) -o newton_root.sir ./examples/newton_root.sir
+  // =========================================================================================
+
+  // --- 0. Symbolic Initial Guess ---
+  sym %?start_x : value f64;
+
+  // --- 1. State Variables ---
+  let mut %x: f64 = 0.0;
+  let mut %fx: f64 = 0.0;
+  let mut %dfx: f64 = 0.0;
+  let mut %step: f64 = 0.0;
+  let mut %diff: f64 = 0.0;
+
+  // Constants
+  let %TWO: f64 = 2.0;
+  let %TARGET: f64 = 1.41421356237;
+
+^entry:
+  %x = %?start_x;
+
+  // Constraint: start_x must be reasonable (e.g., >= 1.0)
+  assume %x >= 1.0;
+  br ^iter1;
+
+  // --- Iteration 1 ---
+^iter1:
+  %fx = %x * %x - %TWO;
+  %dfx = %TWO * %x;
+  %step = %fx / %dfx;
+  %x = %x - %step;
+  br ^iter2;
+
+  // --- Iteration 2 ---
+^iter2:
+  %fx = %x * %x - %TWO;
+  %dfx = %TWO * %x;
+  %step = %fx / %dfx;
+  %x = %x - %step;
+  br ^iter3;
+
+  // --- Iteration 3 ---
+^iter3:
+  %fx = %x * %x - %TWO;
+  %dfx = %TWO * %x;
+  %step = %fx / %dfx;
+  %x = %x - %step;
+  br ^exit;
+
+^exit:
+  // --- Check Convergence ---
+  %diff = %x - %TARGET;
+
+  // Absolute difference (relaxed to 1e-5 for 3 iterations)
+  require %diff < 0.00001, "Must converge to sqrt(2)";
+  require %diff > -0.00001, "Must converge to sqrt(2)";
+
+  ret %x;
+}

@@ -1,0 +1,103 @@
+
+fun @main() : i32 {
+  // =========================================================================================
+  // SymIR Matrix Transformation (Multidimensional Array Version)
+  //
+  // This program performs a 2x2 matrix-vector multiplication: y = M * x
+  //   [ y0 ]   [ m00 m01 ] [ x0 ]
+  //   [ y1 ] = [ m10 m11 ] [ x1 ]
+  //
+  // It demonstrates:
+  // 1. Multidimensional Arrays: [2][2] i8 matrix and [2] i8 vectors.
+  // 2. Linear Algebra Synthesis: Finding a matrix that performs a specific transformation.
+  //
+  // IMPORTANT: SymIR v0 expression syntax: <Coef> <Op> <RValue>.
+  // - Casts: <LocalVar> as <Type> (no indexing allowed in source).
+  //
+  // Interpret (with Rotation Matrix):
+  //   ./symiri --sym %?m00=0 --sym %?m01=-1 --sym %?m10=1 --sym %?m11=0 ./examples/matrix_transform.sir
+  //
+  // Compile:
+  //   ./symirc -o matrix_transform.c ./examples/matrix_transform.sir
+  //
+  // Solve (Synthesize the rotation matrix):
+  //   ./symirsolve --path $(cat ./examples/matrix_transform_path.txt) -o matrix_transform.sir ./examples/matrix_transform.sir
+  // =========================================================================================
+
+  // --- 0. Symbolic Matrix Coefficients ---
+  sym %?m00 : value i8 in [-2, 2];
+  sym %?m01 : value i8 in [-2, 2];
+  sym %?m10 : value i8 in [-2, 2];
+  sym %?m11 : value i8 in [-2, 2];
+
+  // --- 1. State Variables ---
+  let mut %M: [2][2] i8 = 0;
+  let mut %x: [2] i8 = 0;
+  let mut %y: [2] i8 = 0;
+
+  // Locals for row entries (used as coefficients)
+  let mut %m00_v: i8 = 0;
+  let mut %m01_v: i8 = 0;
+  let mut %m10_v: i8 = 0;
+  let mut %m11_v: i8 = 0;
+
+  // Temporaries for row-column products
+  let mut %r0c0: i8 = 0;
+  let mut %r0c1: i8 = 0;
+  let mut %r1c0: i8 = 0;
+  let mut %r1c1: i8 = 0;
+
+  let mut %y0_v: i8 = 0;
+  let mut %y1_v: i8 = 0;
+  let mut %y0_32: i32 = 0;
+  let mut %y1_32: i32 = 0;
+  let mut %ret: i32 = 0;
+
+^entry:
+  // --- 2. Load Matrix and Vector ---
+  %M[0][0] = %?m00;
+  %M[0][1] = %?m01;
+  %M[1][0] = %?m10;
+  %M[1][1] = %?m11;
+
+  %x[0] = 1;
+  %x[1] = 0;
+
+  br ^multiply;
+
+^multiply:
+  // Load row elements into simple locals to use as coefficients
+  %m00_v = %M[0][0];
+  %m01_v = %M[0][1];
+  %m10_v = %M[1][0];
+  %m11_v = %M[1][1];
+
+  // Row 0: y0 = m00*x0 + m01*x1
+  %r0c0 = %m00_v * %x[0];
+  %r0c1 = %m01_v * %x[1];
+  %y[0] = %r0c0 + %r0c1;
+
+  // Row 1: y1 = m10*x0 + m11*x1
+  %r1c0 = %m10_v * %x[0];
+  %r1c1 = %m11_v * %x[1];
+  %y[1] = %r1c0 + %r1c1;
+
+  br ^exit;
+
+^exit:
+  // =========================================================================================
+  // [REQUIREMENT]
+  // We want the output vector to be [0, 1] (90-deg CCW rotation of [1, 0]).
+  // =========================================================================================
+  require %y[0] == 0, "Target x-component must be 0";
+  require %y[1] == 1, "Target y-component must be 1";
+
+  // Return: 10 * y0 + y1 (converted to i32)
+  // Workaround: Load to local before cast
+  %y0_v = %y[0];
+  %y1_v = %y[1];
+  %y0_32 = %y0_v as i32;
+  %y1_32 = %y1_v as i32;
+  %ret = 10 * %y0_32 + %y1_32;
+  ret %ret;
+}

@@ -13,7 +13,6 @@
 #include "frontend/semchecker.hpp"
 #include "frontend/typechecker.hpp"
 #include "solver/solver.hpp"
-
 #ifdef USE_ALIVESMT
 #include "solver/alive_impl.hpp"
 #else

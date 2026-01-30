@@ -1,0 +1,149 @@
+
+fun @main() : i32 {
+  // =========================================================================================
+  // SymIR Stack-based Virtual Machine (Symbolic Synthesis Version)
+  //
+  // This program implements a small virtual machine that operates on an integer stack.
+  // It demonstrates:
+  // 1. Concrete Execution: Running a sequence of opcodes to transform data.
+  // 2. Program Synthesis: Finding a missing opcode to reach a target stack state.
+  //
+  // VM Opcodes:
+  //   0: HALT
+  //   1: PUSH <val>  (Pushes next byte onto stack)
+  //   2: ADD         (Pop A, Pop B, Push A + B)
+  //   3: SUB         (Pop A, Pop B, Push B - A)
+  //   4: DUP         (Pop A, Push A, Push A)
+  //
+  // Configuration:
+  // - Stack Size: 10
+  // - Program Size: 10
+  //
+  // Interpret:
+  //   ./symiri --sym %?missing_op=2 ./examples/stack_vm.sir
+  //
+  // Compile:
+  //   ./symirc -o stack_vm.c ./examples/stack_vm.sir
+  //
+  // Solve (Synthesize the missing ADD instruction):
+  //   ./symirsolve --path $(cat ./examples/stack_vm_path.txt) -o stack_vm.sir ./examples/stack_vm.sir
+  // =========================================================================================
+
+  // --- 0. Symbolic Instruction ---
+  // We have a "hole" in our bytecode. What operation turns [10, 20] into 30?
+  sym %?missing_op : value i32 in {2, 3}; // 2=ADD, 3=SUB. Expected: 2 (ADD)
+
+  // --- 1. VM Memory & Registers ---
+  let mut %stack: [10] i32 = 0;
+  let mut %prog:  [10] i32 = 0;
+
+  let mut %sp: i32 = 0; // Stack Pointer
+  let mut %pc: i32 = 0; // Program Counter
+
+  // Temporaries
+  let mut %opcode: i32 = 0;
+  let mut %a: i32 = 0;
+  let mut %b: i32 = 0;
+  let mut %res: i32 = 0;
+
+  // Constants
+  let %OP_HALT: i32 = 0;
+  let %OP_PUSH: i32 = 1;
+  let %OP_ADD:  i32 = 2;
+  let %OP_SUB:  i32 = 3;
+  let %OP_DUP:  i32 = 4;
+
+^entry:
+  // --- 2. Load Program ---
+  // prog = [ PUSH 10, PUSH 20, <MISSING>, HALT ]
+
+  // PUSH 10
+  %prog[0] = 1;
+  %prog[1] = 10;
+
+  // PUSH 20
+  %prog[2] = 1;
+  %prog[3] = 20;
+
+  // Symbolic Opcode (Index 4)
+  %prog[4] = %?missing_op;
+
+  // HALT
+  %prog[5] = 0;
+
+  br ^dispatch;
+
+  // --- 3. Execution Loop ---
+^dispatch:
+  br %pc >= 10, ^exit, ^fetch;
+
+^fetch:
+  %opcode = %prog[%pc];
+  %pc = %pc + 1;
+
+  br %opcode == %OP_HALT, ^exit, ^decode_push;
+
+^decode_push:
+  br %opcode == %OP_PUSH, ^do_push, ^decode_add;
+
+^decode_add:
+  br %opcode == %OP_ADD, ^do_add, ^decode_sub;
+
+^decode_sub:
+  br %opcode == %OP_SUB, ^do_sub, ^decode_dup;
+
+^decode_dup:
+  br %opcode == %OP_DUP, ^do_dup, ^dispatch; // Skip unknown
+
+// --- 4. Opcode Implementations ---
+
+^do_push:
+  %res = %prog[%pc];
+  %pc = %pc + 1;
+  %stack[%sp] = %res;
+  %sp = %sp + 1;
+  br ^dispatch;
+
+^do_add:
+  %sp = %sp - 1;
+  %a = %stack[%sp];
+  %sp = %sp - 1;
+  %b = %stack[%sp];
+  %res = %a + %b;
+  %stack[%sp] = %res;
+  %sp = %sp + 1;
+  br ^dispatch;
+
+^do_sub:
+  %sp = %sp - 1;
+  %a = %stack[%sp];
+  %sp = %sp - 1;
+  %b = %stack[%sp];
+  %res = %b - %a;
+  %stack[%sp] = %res;
+  %sp = %sp + 1;
+  br ^dispatch;
+
+^do_dup:
+  %sp = %sp - 1;
+  %a = %stack[%sp];
+  %stack[%sp] = %a;
+  %sp = %sp + 1;
+  %stack[%sp] = %a;
+  %sp = %sp + 1;
+  br ^dispatch;
+
+^exit:
+  // Return the top of the stack
+  %sp = %sp - 1;
+  %res = %stack[%sp];
+
+  // =========================================================================================
+  // [REQUIREMENT]
+  // We want the final result on the stack to be 30.
+  // Given PUSH 10, PUSH 20, the missing op must be ADD (2).
+  // =========================================================================================
+  require %res == 30, "Stack top must be 30";
+
+  ret %res;
+}

@@ -1,0 +1,1 @@
+^entry,^dispatch,^fetch,^decode_push,^do_push,^dispatch,^fetch,^decode_push,^do_push,^dispatch,^fetch,^decode_push,^decode_add,^do_add,^dispatch,^fetch,^exit

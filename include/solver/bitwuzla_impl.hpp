@@ -17,6 +17,7 @@ namespace symir::solver {
     bool is_bv_sort(smt::Sort s) override;
     bool is_fp_sort(smt::Sort s) override;
     bool is_bool_sort(smt::Sort s) override;
+    bool is_rm_sort(smt::Sort s);
     uint32_t get_bv_width(smt::Sort s) override;
     std::pair<uint32_t, uint32_t> get_fp_dims(smt::Sort s) override;
 

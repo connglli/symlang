@@ -184,6 +184,8 @@ namespace symir::solver {
 
   bool BitwuzlaSolver::is_bool_sort(smt::Sort s) { return unwrap(s).is_bool(); }
 
+  bool BitwuzlaSolver::is_rm_sort(smt::Sort s) { return unwrap(s).is_rm(); }
+
   uint32_t BitwuzlaSolver::get_bv_width(smt::Sort s) { return unwrap(s).bv_size(); }
 
   std::pair<uint32_t, uint32_t> BitwuzlaSolver::get_fp_dims(smt::Sort s) {
@@ -249,13 +251,17 @@ namespace symir::solver {
         k == smt::Kind::FP_TO_SBV || k == smt::Kind::FP_TO_UBV ||
         k == smt::Kind::FP_TO_FP_FROM_FP || k == smt::Kind::FP_TO_FP_FROM_SBV ||
         k == smt::Kind::FP_TO_FP_FROM_UBV) {
-      // For simplicity, we assume RNE if not provided, OR we might need to change the interface to
-      // accept RM. But SymLang uses RNE. The current implementation in solver.cpp injects RNE. We
-      // should inject RNE here if the backend expects it.
-
       // bitwuzla expects RM as first child for FP ops.
-      auto rm = tm.mk_rm_value(bitwuzla::RoundingMode::RNE);
-      bargs.insert(bargs.begin(), rm);
+      // If the first argument is already an RM sort, we don't need to add another one.
+      bool hasRM = false;
+      if (!bargs.empty() && bargs[0].sort().is_rm()) {
+        hasRM = true;
+      }
+
+      if (!hasRM) {
+        auto rm = tm.mk_rm_value(bitwuzla::RoundingMode::RNE);
+        bargs.insert(bargs.begin(), rm);
+      }
     }
 
     if (indices.empty())
