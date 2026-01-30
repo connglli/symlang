@@ -24,7 +24,7 @@
 
 using namespace alivesmt;
 using namespace std;
-using namespace util;
+using namespace alivesmt::util;
 
 // helpers to check if all input arguments are non-null
 #define C(...)                                                                                     \

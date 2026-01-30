@@ -9,7 +9,7 @@
 #include "alivesmt/solver.h"
 #include "util/version.h"
 
-using namespace util;
+using namespace alivesmt::util;
 using namespace std;
 
 namespace alivesmt {

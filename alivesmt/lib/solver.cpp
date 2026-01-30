@@ -18,7 +18,7 @@
 #include "util/file.h"
 
 using namespace alivesmt;
-using namespace util;
+using namespace alivesmt::util;
 using namespace std;
 using util::config::dbg;
 

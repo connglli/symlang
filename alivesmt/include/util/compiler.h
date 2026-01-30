@@ -7,7 +7,7 @@
   if (!(x))                                                                                        \
   abort()
 
-namespace util {
+namespace alivesmt::util {
   inline bool is_power2(uint64_t n) { return n && !(n & (n - 1)); }
 
   inline bool is_power2(uint64_t n, unsigned *log) {
@@ -37,4 +37,4 @@ namespace util {
       return log;
     return log + 1; // Simplistic approximation or implementation
   }
-} // namespace util
+} // namespace alivesmt::util
