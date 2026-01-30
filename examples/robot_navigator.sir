@@ -1,0 +1,168 @@
+struct @World {
+  map: [4][4] i8;    // 4x4 grid: 0 = empty, 1 = obstacle
+}
+
+struct @Robot {
+  x: i32;            // Current X position (0-3)
+  y: i32;            // Current Y position (0-3)
+  dir: i32;          // Direction: 0=North, 1=East, 2=South, 3=West
+}
+
+struct @NavContext {
+  world: @World;     // The navigation grid
+  robot: @Robot;     // The robot's state
+  step: i32;         // Current step in the command sequence
+}
+
+fun @main() : i32 {
+  // =========================================================================================
+  // SymIR Robot Path Navigator (Spatial Reasoning & Sequence Synthesis)
+  //
+  // This program simulates a robot moving on a 2D grid with obstacles.
+  // It demonstrates:
+  // 1. Nested Data: Structs containing multidimensional arrays (@World).
+  // 2. State Logic: Orientation-based movement and collision detection.
+  // 3. Complex Synthesis: Finding a sequence of commands to reach a target.
+  //
+  // Commands:
+  //   0: MOVE_FORWARD (Move 1 cell in current direction)
+  //   1: TURN_LEFT    (Rotate 90 deg CCW)
+  //   2: TURN_RIGHT   (Rotate 90 deg CW)
+  //
+  // Orientation: 0=North (-Y), 1=East (+X), 2=South (+Y), 3=West (-X)
+  //
+  // Configuration:
+  // - Grid: 4x4, Obstacles at (1,1) and (2,2)
+  // - Start: (0,0), Facing East
+  // - Goal: (3,3)
+  //
+  // Interpret:
+  //   ./symiri --sym %?c0=2 --sym %?c1=0 --sym %?c2=0 --sym %?c3=0 --sym %?c4=1 --sym %?c5=0 --sym %?c6=0 --sym %?c7=0 ./examples/robot_navigator.sir
+  //
+  // Compile:
+  //   ./symirc -o robot_navigator.c ./examples/robot_navigator.sir
+  //
+  // Solve:
+  //   ./symirsolve --path $(cat ./examples/robot_navigator_path.txt) -o robot_navigator.sir ./examples/robot_navigator.sir
+  // =========================================================================================
+
+  // --- 0. Symbolic Command Sequence ---
+  sym %?c0 : value i8 in {0, 1, 2};
+  sym %?c1 : value i8 in {0, 1, 2};
+  sym %?c2 : value i8 in {0, 1, 2};
+  sym %?c3 : value i8 in {0, 1, 2};
+  sym %?c4 : value i8 in {0, 1, 2};
+  sym %?c5 : value i8 in {0, 1, 2};
+  sym %?c6 : value i8 in {0, 1, 2};
+  sym %?c7 : value i8 in {0, 1, 2};
+
+  // --- 1. State Variables ---
+  let mut %ctx: @NavContext = 0;
+  let mut %cmds: [8] i8 = 0;
+
+  // Locals for logic
+  let mut %curr_cmd: i8 = 0;
+  let mut %d: i32 = 0;
+  let mut %nx: i32 = 0;
+  let mut %ny: i32 = 0;
+  let mut %is_obs: i8 = 0;
+  let mut %tmp: i32 = 0;
+
+  // Select helper locals (v0: no nested expressions in select)
+  let mut %v_plus: i32 = 0;
+  let mut %v_minus: i32 = 0;
+
+  // Constants
+  let %LIMIT: i32 = 8;
+  let %CMD_MOVE: i8 = 0;
+  let %CMD_LEFT: i8 = 1;
+  let %CMD_RIGHT: i8 = 2;
+
+^entry:
+  // --- 2. Initialize World & Robot ---
+  %ctx.world.map[1][1] = 1;
+  %ctx.world.map[2][2] = 1;
+  %ctx.robot.x = 0;
+  %ctx.robot.y = 0;
+  %ctx.robot.dir = 1; // Facing East
+
+  %cmds[0] = %?c0;
+  %cmds[1] = %?c1;
+  %cmds[2] = %?c2;
+  %cmds[3] = %?c3;
+  %cmds[4] = %?c4;
+  %cmds[5] = %?c5;
+  %cmds[6] = %?c6;
+  %cmds[7] = %?c7;
+
+  %ctx.step = 0;
+  br ^loop_cond;
+
+^loop_cond:
+  %tmp = %ctx.step;
+  br %tmp < %LIMIT, ^loop_body, ^exit;
+
+^loop_body:
+  %tmp = %ctx.step;
+  %curr_cmd = %cmds[%tmp];
+  br %curr_cmd == %CMD_MOVE, ^do_move, ^check_left;
+
+^check_left:
+  br %curr_cmd == %CMD_LEFT, ^do_left, ^do_right;
+
+^do_left:
+  %d = %ctx.robot.dir;
+  %v_minus = %d - 1;
+  %d = select %v_minus < 0, 3, %v_minus;
+  %ctx.robot.dir = %d;
+  br ^step_done;
+
+^do_right:
+  %d = %ctx.robot.dir;
+  %v_plus = %d + 1;
+  %d = select %v_plus > 3, 0, %v_plus;
+  %ctx.robot.dir = %d;
+  br ^step_done;
+
+^do_move:
+  %nx = %ctx.robot.x;
+  %ny = %ctx.robot.y;
+  %d = %ctx.robot.dir;
+
+  // North (0): ny = ny - 1
+  %v_minus = %ny - 1;
+  %ny = select %d == 0, %v_minus, %ny;
+  // East (1): nx = nx + 1
+  %v_plus = %nx + 1;
+  %nx = select %d == 1, %v_plus, %nx;
+  // South (2): ny = ny + 1
+  %v_plus = %ny + 1;
+  %ny = select %d == 2, %v_plus, %ny;
+  // West (3): nx = nx - 1
+  %v_minus = %nx - 1;
+  %nx = select %d == 3, %v_minus, %nx;
+
+  assume %nx >= 0;
+  assume %nx <= 3;
+  assume %ny >= 0;
+  assume %ny <= 3;
+
+  %is_obs = %ctx.world.map[%nx][%ny];
+  assume %is_obs == 0;
+
+  %ctx.robot.x = %nx;
+  %ctx.robot.y = %ny;
+  br ^step_done;
+
+^step_done:
+  %tmp = %ctx.step;
+  %ctx.step = %tmp + 1;
+  br ^loop_cond;
+
+^exit:
+  %nx = %ctx.robot.x;
+  %ny = %ctx.robot.y;
+  require %nx == 3, "Reached target X";
+  require %ny == 3, "Reached target Y";
+  ret %nx;
+}

@@ -608,17 +608,28 @@ namespace symir {
     smt::Term res = evalAtom(e.first, solver, store, pc, expectedSort);
     for (const auto &tail: e.rest) {
       smt::Term right = evalAtom(tail.atom, solver, store, pc, expectedSort);
-      if (tail.op == AddOp::Plus) {
-        if (solver.is_fp_sort(solver.get_sort(res))) {
+      auto lSort = solver.get_sort(res);
+      auto rSort = solver.get_sort(right);
+
+      if (solver.is_fp_sort(lSort)) {
+        if (tail.op == AddOp::Plus) {
           res = solver.make_term(smt::Kind::FP_ADD, {res, right});
         } else {
+          res = solver.make_term(smt::Kind::FP_SUB, {res, right});
+        }
+      } else if (solver.is_bv_sort(lSort) && solver.is_bv_sort(rSort)) {
+        auto lWidth = solver.get_bv_width(lSort);
+        auto rWidth = solver.get_bv_width(rSort);
+        if (lWidth < rWidth) {
+          res = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {res}, {rWidth - lWidth});
+        } else if (rWidth < lWidth) {
+          right = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {right}, {lWidth - rWidth});
+        }
+
+        if (tail.op == AddOp::Plus) {
           auto overflow = solver.make_term(smt::Kind::BV_SADD_OVERFLOW, {res, right});
           pc.push_back(solver.make_term(smt::Kind::NOT, {overflow}));
           res = solver.make_term(smt::Kind::BV_ADD, {res, right});
-        }
-      } else {
-        if (solver.is_fp_sort(solver.get_sort(res))) {
-          res = solver.make_term(smt::Kind::FP_SUB, {res, right});
         } else {
           auto overflow = solver.make_term(smt::Kind::BV_SSUB_OVERFLOW, {res, right});
           pc.push_back(solver.make_term(smt::Kind::NOT, {overflow}));
@@ -640,7 +651,10 @@ namespace symir {
             smt::Term c = evalCoef(arg.coef, solver, store, expectedSort);
             smt::Term r = evalLValue(arg.rval, solver, store, pc).term;
 
-            if (solver.is_fp_sort(solver.get_sort(c))) {
+            auto cSort = solver.get_sort(c);
+            auto rSort = solver.get_sort(r);
+
+            if (solver.is_fp_sort(cSort)) {
               if (arg.op == AtomOpKind::Mul)
                 return solver.make_term(smt::Kind::FP_MUL, {c, r});
               if (arg.op == AtomOpKind::Div)
@@ -648,6 +662,18 @@ namespace symir {
               if (arg.op == AtomOpKind::Mod)
                 return solver.make_term(smt::Kind::FP_REM, {c, r});
               return {};
+            }
+
+            if (solver.is_bv_sort(cSort) && solver.is_bv_sort(rSort)) {
+              auto cWidth = solver.get_bv_width(cSort);
+              auto rWidth = solver.get_bv_width(rSort);
+              if (cWidth < rWidth) {
+                c = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {c}, {rWidth - cWidth});
+                cSort = solver.get_sort(c);
+              } else if (rWidth < cWidth) {
+                r = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {r}, {cWidth - rWidth});
+                rSort = solver.get_sort(r);
+              }
             }
 
             if (arg.op == AtomOpKind::Div || arg.op == AtomOpKind::Mod) {
@@ -816,7 +842,10 @@ namespace symir {
     smt::Term lhs = evalExpr(c.lhs, solver, store, pc);
     smt::Term rhs = evalExpr(c.rhs, solver, store, pc, solver.get_sort(lhs));
 
-    if (solver.is_fp_sort(solver.get_sort(lhs))) {
+    auto lSort = solver.get_sort(lhs);
+    auto rSort = solver.get_sort(rhs);
+
+    if (solver.is_fp_sort(lSort)) {
       switch (c.op) {
         case RelOp::EQ:
           return solver.make_term(smt::Kind::FP_EQUAL, {lhs, rhs});
@@ -832,6 +861,16 @@ namespace symir {
           return solver.make_term(smt::Kind::FP_GT, {lhs, rhs});
         case RelOp::GE:
           return solver.make_term(smt::Kind::FP_GEQ, {lhs, rhs});
+      }
+    }
+
+    if (solver.is_bv_sort(lSort) && solver.is_bv_sort(rSort)) {
+      auto lWidth = solver.get_bv_width(lSort);
+      auto rWidth = solver.get_bv_width(rSort);
+      if (lWidth < rWidth) {
+        lhs = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {lhs}, {rWidth - lWidth});
+      } else if (rWidth < lWidth) {
+        rhs = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {rhs}, {lWidth - rWidth});
       }
     }
 
