@@ -1,12 +1,19 @@
 #include "solver/alive_impl.hpp"
 #include <iostream>
 #include <stdexcept>
+#include <z3.h>
 
 namespace symir::solver {
 
-  // Helper to manage global initialization state for Alive2 SMT
-  // Assuming alivesmt::solver_init() and alivesmt::solver_destroy() are available or handled by
-  // smt_initializer alivesmt::smt_initializer is in smt.h
+  // Helper to detect RM sort from Alive2 expr
+  static bool is_expr_rm(const ::alivesmt::expr &e) {
+    // We need to access the underlying Z3 sort.
+    // Alive2's expr class doesn't expose it directly in a public stable way without headers,
+    // but we can hack it via Z3 API if we have the AST.
+    // However, alivesmt::expr::ast() is private.
+    // Let's use a different approach: compare sort with a known RM.
+    return e.isSameTypeOf(::alivesmt::expr::rne());
+  }
 
   AliveSolver::AliveSolver(uint32_t timeout_ms, uint32_t seed) {
     // initializer member handles smt::smt_initializer::init() which calls ctx.init() and
@@ -68,10 +75,7 @@ namespace symir::solver {
 
   bool AliveSolver::is_bool_sort(smt::Sort s) { return unwrap(s).isBool(); }
 
-  bool AliveSolver::is_rm_sort(smt::Sort s) {
-    (void) s;
-    return false;
-  }
+  bool AliveSolver::is_rm_sort(smt::Sort s) { return is_expr_rm(unwrap(s)); }
 
   uint32_t AliveSolver::get_bv_width(smt::Sort s) { return unwrap(s).bits(); }
 
@@ -170,6 +174,13 @@ namespace symir::solver {
     for (auto &a: args)
       eargs.push_back(unwrap(a));
 
+    // Helper to inject RM if missing
+    auto injectRM = [&](std::vector<::alivesmt::expr> &eargs) {
+      if (eargs.empty() || !is_expr_rm(eargs[0])) {
+        eargs.insert(eargs.begin(), ::alivesmt::expr::rne());
+      }
+    };
+
     // Map kinds to Alive2 expr operations
     switch (k) {
       case smt::Kind::BV_ADD:
@@ -237,18 +248,24 @@ namespace symir::solver {
         return wrap(eargs[0].implies(eargs[1]));
 
       case smt::Kind::FP_ADD:
+        injectRM(eargs);
         return wrap(eargs[1].fadd(eargs[2], eargs[0])); // args: RM, a, b -> a.fadd(b, rm)
       case smt::Kind::FP_SUB:
+        injectRM(eargs);
         return wrap(eargs[1].fsub(eargs[2], eargs[0]));
       case smt::Kind::FP_MUL:
+        injectRM(eargs);
         return wrap(eargs[1].fmul(eargs[2], eargs[0]));
       case smt::Kind::FP_DIV:
+        injectRM(eargs);
         return wrap(eargs[1].fdiv(eargs[2], eargs[0]));
       case smt::Kind::FP_REM:
         return wrap(eargs[0].frem(eargs[1])); // no RM for frem
       case smt::Kind::FP_SQRT:
+        injectRM(eargs);
         return wrap(eargs[1].sqrt(eargs[0]));
       case smt::Kind::FP_RTI:
+        injectRM(eargs);
         return wrap(eargs[1].round(eargs[0])); // Round to integral
       case smt::Kind::FP_MIN:
         return wrap(eargs[0].fmin(eargs[1]));
@@ -268,29 +285,25 @@ namespace symir::solver {
 
       case smt::Kind::FP_TO_SBV:
         // args: RM, val. indices: {width}.
-        // expr::fp2sint(unsigned bits, const expr &rm) const;
+        injectRM(eargs);
         return wrap(eargs[1].fp2sint(indices[0], eargs[0]));
 
       case smt::Kind::FP_TO_UBV:
+        injectRM(eargs);
         return wrap(eargs[1].fp2uint(indices[0], eargs[0]));
 
       case smt::Kind::FP_TO_FP_FROM_FP:
         // args: RM, val. indices: {exp, sig} -> we need target type.
-        // expr::float2Float(const expr &type, const expr &rm) const;
-        // We need to construct a type from indices.
-        return wrap(eargs[1].float2Float(
-            make_fp_sort(indices[0], indices[1]).internal
-                ? unwrap(make_fp_sort(indices[0], indices[1]))
-                : ::alivesmt::expr(),
-            eargs[0]
-        ));
+        injectRM(eargs);
+        return wrap(eargs[1].float2Float(unwrap(make_fp_sort(indices[0], indices[1])), eargs[0]));
 
       case smt::Kind::FP_TO_FP_FROM_SBV:
         // args: RM, val. indices: {exp, sig}.
-        // expr::sint2fp(const expr &type, const expr &rm) const;
+        injectRM(eargs);
         return wrap(eargs[1].sint2fp(unwrap(make_fp_sort(indices[0], indices[1])), eargs[0]));
 
       case smt::Kind::FP_TO_FP_FROM_UBV:
+        injectRM(eargs);
         return wrap(eargs[1].uint2fp(unwrap(make_fp_sort(indices[0], indices[1])), eargs[0]));
 
       case smt::Kind::BV_SIGN_EXTEND:

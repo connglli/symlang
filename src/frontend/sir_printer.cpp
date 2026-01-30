@@ -147,6 +147,15 @@ namespace symir {
                 out_ << "i" << (arg.bits ? std::to_string(*arg.bits) : "?");
                 break;
             }
+          } else if constexpr (std::is_same_v<T, FloatType>) {
+            switch (arg.kind) {
+              case FloatType::Kind::F32:
+                out_ << "f32";
+                break;
+              case FloatType::Kind::F64:
+                out_ << "f64";
+                break;
+            }
           } else if constexpr (std::is_same_v<T, StructType>) {
             out_ << arg.name.name;
           } else if constexpr (std::is_same_v<T, ArrayType>) {
@@ -244,10 +253,15 @@ namespace symir {
           } else {
             std::visit(
                 [this](auto &&id) {
-                  if (model_.count(id.name))
-                    out_ << model_.at(id.name);
-                  else
+                  if (model_.count(id.name)) {
+                    auto val = model_.at(id.name);
+                    if (std::holds_alternative<int64_t>(val))
+                      out_ << std::get<int64_t>(val);
+                    else
+                      out_ << std::get<double>(val);
+                  } else {
                     out_ << id.name;
+                  }
                 },
                 arg
             );
@@ -274,10 +288,15 @@ namespace symir {
           } else {
             std::visit(
                 [this](auto &&id) {
-                  if (model_.count(id.name))
-                    out_ << model_.at(id.name);
-                  else
+                  if (model_.count(id.name)) {
+                    auto val = model_.at(id.name);
+                    if (std::holds_alternative<int64_t>(val))
+                      out_ << std::get<int64_t>(val);
+                    else
+                      out_ << std::get<double>(val);
+                  } else {
                     out_ << id.name;
+                  }
                 },
                 arg
             );
@@ -297,10 +316,15 @@ namespace symir {
         break;
       case InitVal::Kind::Sym: {
         auto name = std::get<SymId>(iv.value).name;
-        if (model_.count(name))
-          out_ << model_.at(name);
-        else
+        if (model_.count(name)) {
+          auto val = model_.at(name);
+          if (std::holds_alternative<int64_t>(val))
+            out_ << std::get<int64_t>(val);
+          else
+            out_ << std::get<double>(val);
+        } else {
           out_ << name;
+        }
         break;
       }
       case InitVal::Kind::Local:

@@ -4,6 +4,7 @@
 #include <string>
 #include <unordered_map>
 #include "ast/ast.hpp"
+#include "solver/solver.hpp"
 
 namespace symir {
 
@@ -11,14 +12,18 @@ namespace symir {
   public:
     explicit SIRPrinter(std::ostream &out) : out_(out) {}
 
-    explicit SIRPrinter(std::ostream &out, const std::unordered_map<std::string, int64_t> &model) :
-        out_(out), model_(model) {}
+    explicit SIRPrinter(
+        std::ostream &out,
+        const std::unordered_map<std::string, SymbolicExecutor::Result::ModelVal> &model
+    ) :
+        out_(out),
+        model_(model) {}
 
     void print(const Program &p);
 
   private:
     std::ostream &out_;
-    std::unordered_map<std::string, int64_t> model_;
+    std::unordered_map<std::string, SymbolicExecutor::Result::ModelVal> model_;
     int indent_level_ = 0;
 
     void indent();

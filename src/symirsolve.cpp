@@ -15,7 +15,7 @@
 #include "solver/solver.hpp"
 #ifdef USE_ALIVESMT
 #include "solver/alive_impl.hpp"
-#else
+#elif defined(USE_BITWUZLA)
 #include "solver/bitwuzla_impl.hpp"
 #endif
 
@@ -117,8 +117,10 @@ int main(int argc, char **argv) {
                          ) -> std::unique_ptr<symir::smt::ISolver> {
 #ifdef USE_ALIVESMT
       return std::make_unique<symir::solver::AliveSolver>(cfg.timeout_ms, cfg.seed);
-#else
+#elif defined(USE_BITWUZLA)
       return std::make_unique<symir::solver::BitwuzlaSolver>(cfg.timeout_ms, cfg.seed);
+#else
+      throw std::runtime_error("No solver backend available");
 #endif
     };
 
@@ -147,13 +149,12 @@ int main(int argc, char **argv) {
         mfs << "}\n";
       }
 
-      std::unordered_map<std::string, int64_t> intModel;
-      for (const auto &[name, val]: res.model) {
-        if (std::holds_alternative<int64_t>(val))
-          intModel[name] = std::get<int64_t>(val);
-      }
-
       if (result["dump-ast"].as<bool>()) {
+        std::unordered_map<std::string, int64_t> intModel;
+        for (const auto &[name, val]: res.model) {
+          if (std::holds_alternative<int64_t>(val))
+            intModel[name] = std::get<int64_t>(val);
+        }
         ASTDumper dumper(std::cout, intModel);
         dumper.dump(prog);
       }
@@ -165,7 +166,7 @@ int main(int argc, char **argv) {
                     << std::endl;
           return 1;
         }
-        SIRPrinter printer(ofs, intModel);
+        SIRPrinter printer(ofs, res.model);
         printer.print(prog);
       }
 
