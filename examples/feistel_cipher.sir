@@ -1,106 +1,90 @@
-struct @FeistelState {
+struct @FeistelContext {
   l: i8;      // Left half of the block
   r: i8;      // Right half of the block
-  k: i8;      // The round key
-  temp: i8;   // Temporary storage for round swaps
-  f_out: i8;  // Output of the round function F
+  k: i8;      // The master key
+  round: i32; // Round counter
 }
 
 fun @main() : i32 {
   // =========================================================================================
-  // SymIR Tiny Feistel Cipher (Bitwise Logic & Synthesis)
+  // SymIR Iterative Feistel Cipher (Loop-based Bitwise Logic)
   //
-  // This program implements a 2-round Feistel network.
-  //
+  // This program implements a 4-round Feistel network using a loop.
   // It demonstrates:
-  // 1. Bitwise Operations: XOR (^), SHL (<<), SHR (>>), OR (|).
-  // 2. Cryptanalysis Synthesis: Finding the key that maps a plaintext to a ciphertext.
+  // 1. Loops: Using a round counter and a back-edge to repeat encryption rounds.
+  // 2. Bitwise Logic: XOR (^), bitwise AND (&) for masking.
+  // 3. Symbolic Cryptanalysis: Finding a key that satisfies a plaintext-ciphertext pair.
   //
   // Configuration:
-  // - Plaintext: L=0xA, R=0xB
-  // - Target Ciphertext: L=3, R=10
+  // - Rounds: 4
+  // - Plaintext: L=10 (0xA), R=11 (0xB)
+  // - Target: L=11, R=4
   //
-  // Interpret (with key 2):
-  //   ./symiri --sym %?key=2 ./examples/feistel_cipher.sir
+  // Interpret:
+  //   ./symiri --sym %?key=5 ./examples/feistel_cipher.sir
   //
   // Compile:
   //   ./symirc -o feistel_cipher.c ./examples/feistel_cipher.sir
   //
-  // Solve (Synthesize the secret key):
+  // Solve:
   //   ./symirsolve --path $(cat ./examples/feistel_cipher_path.txt) -o feistel_cipher.sir ./examples/feistel_cipher.sir
   // =========================================================================================
 
-  // --- 0. Symbolic Round Key ---
+  // --- 0. Symbolic Key ---
   sym %?key : value i8 in [0, 15];
 
   // --- 1. State Variables ---
-  let mut %state: @FeistelState = 0;
+  let mut %ctx: @FeistelContext = 0;
 
-  // Locals for coefficients (required for binary ops in v0)
-  let mut %l_v: i8 = 0;
-  let mut %r_v: i8 = 0;
-  let mut %k_v: i8 = 0;
-  let mut %f_v: i8 = 0;
-
-  let mut %ret: i32 = 0;
+  // Locals for logic
+  let mut %l_old: i8 = 0;
+  let mut %r_old: i8 = 0;
+  let mut %f_out: i8 = 0;
+  let mut %curr_round: i32 = 0;
+  let mut %res: i32 = 0;
 
   // Constants
-  let %ONE: i8 = 1;
-  let %FIFTEEN: i8 = 15;
+  let %ONE: i32 = 1;
+  let %ROUNDS: i32 = 4;
+  let %MASK: i8 = 15; // 0xF
 
 ^entry:
-  // --- 2. Initialize State ---
-  %state.l = 10; // 0xA
-  %state.r = 11; // 0xB
-  %state.k = %?key;
-  br ^round1;
+  // Initialize Context
+  %ctx.l = 10;
+  %ctx.r = 11;
+  %ctx.k = %?key;
+  %ctx.round = 0;
+  br ^round_cond;
 
-^round1:
-  // F(R, K) = (R ^ K) truncated to 4 bits
-  %r_v = %state.r;
-  %k_v = %state.k;
-  %f_v = %r_v ^ %k_v;
-  // Mask to 4 bits
-  %f_v = %FIFTEEN & %f_v;
+^round_cond:
+  %curr_round = %ctx.round;
+  br %curr_round < %ROUNDS, ^round_body, ^exit;
 
-  %state.f_out = %f_v;
+^round_body:
+  // Round Function: F(R, K) = (R ^ K) & 0xF
+  %r_old = %ctx.r;
+  %f_out = %r_old ^ %ctx.k;
+  %f_out = %f_out & %MASK;
 
-  // L_next = R, R_next = L ^ F_out
-  %state.temp = %state.r;
-  %l_v = %state.l;
-  %f_v = %state.f_out;
-  %state.r = %l_v ^ %f_v;
-  %state.l = %state.temp;
+  // Feistel Step:
+  %l_old = %ctx.l;
+  %ctx.l = %r_old;
+  %ctx.r = %l_old ^ %f_out;
 
-  br ^round2;
-
-^round2:
-  // Round 2
-  %r_v = %state.r;
-  %k_v = %state.k;
-  %f_v = %r_v ^ %k_v;
-  %f_v = %FIFTEEN & %f_v;
-
-  %state.f_out = %f_v;
-
-  %state.temp = %state.r;
-  %l_v = %state.l;
-  %f_v = %state.f_out;
-  %state.r = %l_v ^ %f_v;
-  %state.l = %state.temp;
-
-  br ^exit;
+  // Increment Round
+  %ctx.round = %curr_round + %ONE;
+  br ^round_cond;
 
 ^exit:
   // =========================================================================================
   // [REQUIREMENT]
-  // We want the output vector to be L=3, R=10.
+  // Target: L=11, R=4 (Achieved by key=5 after 4 rounds)
   // =========================================================================================
-  %l_v = %state.l;
-  %r_v = %state.r;
-  require %l_v == 3, "Left half must be 3";
-  require %r_v == 10, "Right half must be 10";
+  %l_old = %ctx.l;
+  %r_old = %ctx.r;
+  require %l_old == 11, "Left half target";
+  require %r_old == 4, "Right half target";
 
-  %ret = %l_v as i32;
-  ret %ret;
+  %res = %l_old as i32;
+  ret %res;
 }
