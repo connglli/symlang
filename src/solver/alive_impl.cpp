@@ -88,8 +88,14 @@ namespace symir::solver {
     auto type = unwrap(s);
     if (base == 10) {
       return wrap(::alivesmt::expr::mkNumber(val.c_str(), type));
+    } else if (base == 16) {
+      std::string hex = "#x" + val;
+      return wrap(::alivesmt::expr::mkNumber(hex.c_str(), type));
+    } else if (base == 2) {
+      std::string bin = "#b" + val;
+      return wrap(::alivesmt::expr::mkNumber(bin.c_str(), type));
     }
-    // TODO: Handle other bases if necessary
+    // Fallback or error
     return wrap(::alivesmt::expr::mkNumber(val.c_str(), type));
   }
 
@@ -240,9 +246,9 @@ namespace symir::solver {
       case smt::Kind::FP_RTI:
         return wrap(eargs[1].round(eargs[0])); // Round to integral
       case smt::Kind::FP_MIN:
-        throw std::runtime_error("FP_MIN not implemented in AliveSolver");
+        return wrap(eargs[0].fmin(eargs[1]));
       case smt::Kind::FP_MAX:
-        throw std::runtime_error("FP_MAX not implemented in AliveSolver");
+        return wrap(eargs[0].fmax(eargs[1]));
 
       case smt::Kind::FP_EQUAL:
         return wrap(eargs[0].foeq(eargs[1]));
@@ -346,19 +352,8 @@ namespace symir::solver {
       return std::string(e.numeral_string());
     }
     if (base == 2) {
-      uint64_t n;
-      if (e.isUInt(n)) {
-        std::string s;
-        uint32_t width = e.bits();
-        if (width == 0)
-          return "0";
-        for (uint32_t i = 0; i < width; ++i) {
-          s = ((n & 1) ? "1" : "0") + s;
-          n >>= 1;
-        }
-        return s;
-      }
-      throw std::runtime_error("get_bv_value_string base 2 for large BV not impl");
+      // Use Z3_get_numeral_binary_string via expr wrapper
+      return std::string(e.numeral_binary_string());
     }
     return "";
   }

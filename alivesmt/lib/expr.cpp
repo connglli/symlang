@@ -1129,10 +1129,11 @@ namespace alivesmt {
 
   expr expr::copysign(const expr &sign) const { return sign.sign().concat(extract(bits() - 2, 0)); }
 
-  expr expr::sqrt(const expr &rm) const {
-    C(rm);
-    return simplify_const(Z3_mk_fpa_sqrt(ctx(), rm(), ast()), *this);
-  }
+  expr expr::sqrt(const expr &rm) const { return binop_fold(rm, Z3_mk_fpa_sqrt); }
+
+  expr expr::fmin(const expr &rhs) const { return binop_fold(rhs, Z3_mk_fpa_min); }
+
+  expr expr::fmax(const expr &rhs) const { return binop_fold(rhs, Z3_mk_fpa_max); }
 
   std::pair<expr, expr> expr::frexp() const {
     C();
@@ -2217,6 +2218,11 @@ namespace alivesmt {
   string_view expr::numeral_string() const {
     C();
     return Z3_get_numeral_decimal_string(ctx(), ast(), 12);
+  }
+
+  string_view expr::numeral_binary_string() const {
+    C();
+    return Z3_get_numeral_binary_string(ctx(), ast());
   }
 
   string_view expr::fn_name() const {

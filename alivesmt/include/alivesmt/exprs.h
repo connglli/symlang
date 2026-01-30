@@ -11,6 +11,7 @@
 #include <tuple>
 #include <vector>
 #include "alivesmt/expr.h"
+#include "util/compiler.h"
 
 namespace alivesmt {
 

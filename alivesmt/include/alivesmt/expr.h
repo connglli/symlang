@@ -251,6 +251,8 @@ namespace alivesmt {
     expr fneg() const;
     expr copysign(const expr &sign) const;
     expr sqrt(const expr &rm) const;
+    expr fmin(const expr &rhs) const;
+    expr fmax(const expr &rhs) const;
     std::pair<expr, expr> frexp() const;
 
     static expr fma(const expr &a, const expr &b, const expr &c, const expr &rm);
@@ -386,6 +388,7 @@ namespace alivesmt {
     void printHexadecimal(std::ostream &os) const;
     // WARNING: these are temporary strings; don't store them
     std::string_view numeral_string() const;
+    std::string_view numeral_binary_string() const;
     std::string_view fn_name() const; // empty if not a function
 
     unsigned getFnNumArgs() const;
