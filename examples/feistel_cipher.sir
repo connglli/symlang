@@ -1,0 +1,106 @@
+struct @FeistelState {
+  l: i8;      // Left half of the block
+  r: i8;      // Right half of the block
+  k: i8;      // The round key
+  temp: i8;   // Temporary storage for round swaps
+  f_out: i8;  // Output of the round function F
+}
+
+fun @main() : i32 {
+  // =========================================================================================
+  // SymIR Tiny Feistel Cipher (Bitwise Logic & Synthesis)
+  //
+  // This program implements a 2-round Feistel network.
+  //
+  // It demonstrates:
+  // 1. Bitwise Operations: XOR (^), SHL (<<), SHR (>>), OR (|).
+  // 2. Cryptanalysis Synthesis: Finding the key that maps a plaintext to a ciphertext.
+  //
+  // Configuration:
+  // - Plaintext: L=0xA, R=0xB
+  // - Target Ciphertext: L=3, R=10
+  //
+  // Interpret (with key 2):
+  //   ./symiri --sym %?key=2 ./examples/feistel_cipher.sir
+  //
+  // Compile:
+  //   ./symirc -o feistel_cipher.c ./examples/feistel_cipher.sir
+  //
+  // Solve (Synthesize the secret key):
+  //   ./symirsolve --path $(cat ./examples/feistel_cipher_path.txt) -o feistel_cipher.sir ./examples/feistel_cipher.sir
+  // =========================================================================================
+
+  // --- 0. Symbolic Round Key ---
+  sym %?key : value i8 in [0, 15];
+
+  // --- 1. State Variables ---
+  let mut %state: @FeistelState = 0;
+
+  // Locals for coefficients (required for binary ops in v0)
+  let mut %l_v: i8 = 0;
+  let mut %r_v: i8 = 0;
+  let mut %k_v: i8 = 0;
+  let mut %f_v: i8 = 0;
+
+  let mut %ret: i32 = 0;
+
+  // Constants
+  let %ONE: i8 = 1;
+  let %FIFTEEN: i8 = 15;
+
+^entry:
+  // --- 2. Initialize State ---
+  %state.l = 10; // 0xA
+  %state.r = 11; // 0xB
+  %state.k = %?key;
+  br ^round1;
+
+^round1:
+  // F(R, K) = (R ^ K) truncated to 4 bits
+  %r_v = %state.r;
+  %k_v = %state.k;
+  %f_v = %r_v ^ %k_v;
+  // Mask to 4 bits
+  %f_v = %FIFTEEN & %f_v;
+
+  %state.f_out = %f_v;
+
+  // L_next = R, R_next = L ^ F_out
+  %state.temp = %state.r;
+  %l_v = %state.l;
+  %f_v = %state.f_out;
+  %state.r = %l_v ^ %f_v;
+  %state.l = %state.temp;
+
+  br ^round2;
+
+^round2:
+  // Round 2
+  %r_v = %state.r;
+  %k_v = %state.k;
+  %f_v = %r_v ^ %k_v;
+  %f_v = %FIFTEEN & %f_v;
+
+  %state.f_out = %f_v;
+
+  %state.temp = %state.r;
+  %l_v = %state.l;
+  %f_v = %state.f_out;
+  %state.r = %l_v ^ %f_v;
+  %state.l = %state.temp;
+
+  br ^exit;
+
+^exit:
+  // =========================================================================================
+  // [REQUIREMENT]
+  // We want the output vector to be L=3, R=10.
+  // =========================================================================================
+  %l_v = %state.l;
+  %r_v = %state.r;
+  require %l_v == 3, "Left half must be 3";
+  require %r_v == 10, "Right half must be 10";
+
+  %ret = %l_v as i32;
+  ret %ret;
+}

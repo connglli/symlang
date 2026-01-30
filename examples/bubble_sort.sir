@@ -1,0 +1,121 @@
+struct @SortContext {
+  data: [4] i32;  // The array to be sorted
+}
+
+fun @main() : i32 {
+  // =========================================================================================
+  // SymIR Bubble Sort (Array Manipulation & Verification)
+  //
+  // This program implements a fixed-size Bubble Sort on a 4-element array.
+  // It demonstrates:
+  // 1. Array Element Swapping: Using temporary variables to swap values.
+  // 2. Path-based Loop Unrolling: Executing a sequence of comparison/swap steps.
+  // 3. Symbolic Synthesis: Finding a missing array element to satisfy a sorted requirement.
+  //
+  // Configuration:
+  // - Array: [4, %?missing, 2, 1]
+  // - Target: Array must be sorted in ascending order.
+  //
+  // Interpret (with missing=3):
+  //   ./symiri --sym %?missing=3 ./examples/bubble_sort.sir
+  //
+  // Compile:
+  //   ./symirc -o bubble_sort.c ./examples/bubble_sort.sir
+  //
+  // Solve (Synthesize the missing element):
+  //   ./symirsolve --path $(cat ./examples/bubble_sort_path.txt) -o bubble_sort.sir ./examples/bubble_sort.sir
+  // =========================================================================================
+
+  // --- 0. Symbolic Element ---
+  sym %?missing : value i32 in [0, 10];
+
+  // --- 1. State Variables ---
+  let mut %ctx: @SortContext = 0;
+
+  // Locals for comparisons and swaps (required for v0)
+  let mut %v0: i32 = 0;
+  let mut %v1: i32 = 0;
+  let mut %tmp: i32 = 0;
+
+^entry:
+  // --- 2. Initialize Array ---
+  %ctx.data[0] = 4;
+  %ctx.data[1] = %?missing;
+  %ctx.data[2] = 2;
+  %ctx.data[3] = 1;
+  br ^step1_comp;
+
+  // --- Pass 1 ---
+^step1_comp:
+  %v0 = %ctx.data[0];
+  %v1 = %ctx.data[1];
+  br %v0 > %v1, ^step1_swap, ^step2_comp;
+^step1_swap:
+  %ctx.data[0] = %v1;
+  %ctx.data[1] = %v0;
+  br ^step2_comp;
+
+^step2_comp:
+  %v0 = %ctx.data[1];
+  %v1 = %ctx.data[2];
+  br %v0 > %v1, ^step2_swap, ^step3_comp;
+^step2_swap:
+  %ctx.data[1] = %v1;
+  %ctx.data[2] = %v0;
+  br ^step3_comp;
+
+^step3_comp:
+  %v0 = %ctx.data[2];
+  %v1 = %ctx.data[3];
+  br %v0 > %v1, ^step3_swap, ^step4_comp;
+^step3_swap:
+  %ctx.data[2] = %v1;
+  %ctx.data[3] = %v0;
+  br ^step4_comp;
+
+  // --- Pass 2 ---
+^step4_comp:
+  %v0 = %ctx.data[0];
+  %v1 = %ctx.data[1];
+  br %v0 > %v1, ^step4_swap, ^step5_comp;
+^step4_swap:
+  %ctx.data[0] = %v1;
+  %ctx.data[1] = %v0;
+  br ^step5_comp;
+
+^step5_comp:
+  %v0 = %ctx.data[1];
+  %v1 = %ctx.data[2];
+  br %v0 > %v1, ^step5_swap, ^step6_comp;
+^step5_swap:
+  %ctx.data[1] = %v1;
+  %ctx.data[2] = %v0;
+  br ^step6_comp;
+
+  // --- Pass 3 ---
+^step6_comp:
+  %v0 = %ctx.data[0];
+  %v1 = %ctx.data[1];
+  br %v0 > %v1, ^step6_swap, ^exit;
+^step6_swap:
+  %ctx.data[0] = %v1;
+  %ctx.data[1] = %v0;
+  br ^exit;
+
+^exit:
+  // =========================================================================================
+  // [REQUIREMENT]
+  // We want the final array to be sorted: [1, 2, 3, 4]
+  // =========================================================================================
+  %v0 = %ctx.data[0];
+  %v1 = %ctx.data[1];
+  require %v0 == 1, "Elem 0 must be 1";
+  require %v1 == 2, "Elem 1 must be 2";
+
+  %v0 = %ctx.data[2];
+  %v1 = %ctx.data[3];
+  require %v0 == 3, "Elem 2 must be 3";
+  require %v1 == 4, "Elem 3 must be 4";
+
+  ret %v1;
+}

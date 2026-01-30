@@ -1,0 +1,1 @@
+^entry,^step1_comp,^step1_swap,^step2_comp,^step2_swap,^step3_comp,^step3_swap,^step4_comp,^step4_swap,^step5_comp,^step5_swap,^step6_comp,^step6_swap,^exit
