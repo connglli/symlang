@@ -377,10 +377,25 @@ namespace symir {
     if (elements[0].kind == SymbolicValue::Kind::Int) {
       smt::Term res = elements[0].term;
       smt::Term defined = elements[0].is_defined;
+      auto targetSort = solver.get_sort(res);
+      auto idxSort = solver.get_sort(idx);
       for (size_t i = 1; i < elements.size(); ++i) {
-        auto i_term = solver.make_bv_value(solver.get_sort(idx), std::to_string(i), 10);
+        auto i_term = solver.make_bv_value(idxSort, std::to_string(i), 10);
         auto cond = solver.make_term(smt::Kind::EQUAL, {idx, i_term});
-        res = solver.make_term(smt::Kind::ITE, {cond, elements[i].term, res});
+
+        smt::Term nextTerm = elements[i].term;
+        auto nextSort = solver.get_sort(nextTerm);
+        auto targetWidth = solver.get_bv_width(targetSort);
+        auto nextWidth = solver.get_bv_width(nextSort);
+        if (nextWidth < targetWidth) {
+          nextTerm =
+              solver.make_term(smt::Kind::BV_SIGN_EXTEND, {nextTerm}, {targetWidth - nextWidth});
+        } else if (nextWidth > targetWidth) {
+          res = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {res}, {nextWidth - targetWidth});
+          targetSort = solver.get_sort(res);
+        }
+
+        res = solver.make_term(smt::Kind::ITE, {cond, nextTerm, res});
         defined = solver.make_term(smt::Kind::ITE, {cond, elements[i].is_defined, defined});
       }
       return SymbolicValue(SymbolicValue::Kind::Int, res, defined);
@@ -426,11 +441,18 @@ namespace symir {
         } else {
           auto id = std::get<LocalOrSymId>(ai->index);
           idx = std::visit([&](auto &&v) { return store.at(v.name).term; }, id);
+          auto idxSort = solver.get_sort(idx);
+          if (solver.get_bv_width(idxSort) != 32) {
+            idx = solver.make_term(
+                smt::Kind::BV_SIGN_EXTEND, {idx}, {32 - solver.get_bv_width(idxSort)}
+            );
+          }
           res = mergeAggregate(res.arrayVal, idx, solver);
         }
         // Strict UB: bounds check
-        auto size_term = solver.make_bv_value(solver.get_sort(idx), std::to_string(array_size), 10);
-        auto zero = solver.make_bv_zero(solver.get_sort(idx));
+        auto size_term =
+            solver.make_bv_value(solver.make_bv_sort(32), std::to_string(array_size), 10);
+        auto zero = solver.make_bv_zero(solver.make_bv_sort(32));
         pc.push_back(solver.make_term(smt::Kind::BV_SLE, {zero, idx}));
         pc.push_back(solver.make_term(smt::Kind::BV_SLT, {idx, size_term}));
       } else if (auto af = std::get_if<AccessField>(&acc)) {
@@ -454,7 +476,18 @@ namespace symir {
     res.kind = t.kind;
 
     if (t.kind == SymbolicValue::Kind::Int) {
-      res.term = solver.make_term(smt::Kind::ITE, {cond, t.term, f.term});
+      auto tSort = solver.get_sort(t.term);
+      auto fSort = solver.get_sort(f.term);
+      smt::Term tTerm = t.term;
+      smt::Term fTerm = f.term;
+      auto tWidth = solver.get_bv_width(tSort);
+      auto fWidth = solver.get_bv_width(fSort);
+      if (tWidth < fWidth) {
+        tTerm = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {tTerm}, {fWidth - tWidth});
+      } else if (fWidth < tWidth) {
+        fTerm = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {fTerm}, {tWidth - fWidth});
+      }
+      res.term = solver.make_term(smt::Kind::ITE, {cond, tTerm, fTerm});
       res.is_defined = solver.make_term(smt::Kind::ITE, {cond, t.is_defined, f.is_defined});
     } else if (t.kind == SymbolicValue::Kind::Array) {
       if (t.arrayVal.size() != f.arrayVal.size())
@@ -498,6 +531,11 @@ namespace symir {
       } else {
         auto id = std::get<LocalOrSymId>(ai->index);
         idx = std::visit([&](auto &&v) { return store.at(v.name).term; }, id);
+        if (solver.get_bv_width(solver.get_sort(idx)) != 32) {
+          idx = solver.make_term(
+              smt::Kind::BV_SIGN_EXTEND, {idx}, {32 - solver.get_bv_width(solver.get_sort(idx))}
+          );
+        }
       }
 
       // Bounds check UB
@@ -505,8 +543,8 @@ namespace symir {
       if (size == 0)
         throw std::runtime_error("Indexing empty array");
 
-      auto size_term = solver.make_bv_value(solver.get_sort(idx), std::to_string(size), 10);
-      auto zero = solver.make_bv_zero(solver.get_sort(idx));
+      auto size_term = solver.make_bv_value(solver.make_bv_sort(32), std::to_string(size), 10);
+      auto zero = solver.make_bv_zero(solver.make_bv_sort(32));
 
       pc.push_back(solver.make_term(
           smt::Kind::IMPLIES, {pathCond, solver.make_term(smt::Kind::BV_SLE, {zero, idx})}
@@ -525,8 +563,9 @@ namespace symir {
         }
       } else {
         // Symbolic index
+        auto idxSort = solver.get_sort(idx);
         for (size_t k = 0; k < newCur.arrayVal.size(); ++k) {
-          auto k_term = solver.make_bv_value(solver.get_sort(idx), std::to_string(k), 10);
+          auto k_term = solver.make_bv_value(idxSort, std::to_string(k), 10);
           auto match = solver.make_term(smt::Kind::EQUAL, {idx, k_term});
           auto cond = solver.make_term(smt::Kind::AND, {pathCond, match});
           newCur.arrayVal[k] = updateLValueRec(
@@ -670,6 +709,15 @@ namespace symir {
             smt::Term cond = evalCond(*arg.cond, solver, store, pc);
             smt::Term vt = evalSelectVal(arg.vtrue, solver, store, pc, expectedSort);
             smt::Term vf = evalSelectVal(arg.vfalse, solver, store, pc, expectedSort);
+            auto vtSort = solver.get_sort(vt);
+            auto vfSort = solver.get_sort(vf);
+            auto vtWidth = solver.get_bv_width(vtSort);
+            auto vfWidth = solver.get_bv_width(vfSort);
+            if (vtWidth < vfWidth) {
+              vt = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {vt}, {vfWidth - vtWidth});
+            } else if (vfWidth < vtWidth) {
+              vf = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {vf}, {vtWidth - vfWidth});
+            }
             return solver.make_term(smt::Kind::ITE, {cond, vt, vf});
           } else if constexpr (std::is_same_v<T, CoefAtom>) {
             return evalCoef(arg.coef, solver, store, expectedSort);

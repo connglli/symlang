@@ -13,7 +13,7 @@
 #include "frontend/semchecker.hpp"
 #include "frontend/typechecker.hpp"
 #include "solver/solver.hpp"
-#ifdef USE_ALIVESMT
+#if defined(USE_ALIVESMT)
 #include "solver/alive_impl.hpp"
 #elif defined(USE_BITWUZLA)
 #include "solver/bitwuzla_impl.hpp"
@@ -115,11 +115,12 @@ int main(int argc, char **argv) {
 
     auto solverFactory = [](const SymbolicExecutor::Config &cfg
                          ) -> std::unique_ptr<symir::smt::ISolver> {
-#ifdef USE_ALIVESMT
+#if defined(USE_ALIVESMT)
       return std::make_unique<symir::solver::AliveSolver>(cfg.timeout_ms, cfg.seed);
 #elif defined(USE_BITWUZLA)
       return std::make_unique<symir::solver::BitwuzlaSolver>(cfg.timeout_ms, cfg.seed);
 #else
+      (void) cfg;
       throw std::runtime_error("No solver backend available");
 #endif
     };

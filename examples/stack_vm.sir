@@ -1,3 +1,9 @@
+struct @VMContext {
+  stack: [10] i32;  // The VM stack for storing operands and results
+  prog: [10] i32;   // Memory area for storing the VM bytecode program
+  sp: i32;          // Stack Pointer (points to the next free slot in 'stack')
+  pc: i32;          // Program Counter (points to the next instruction in 'prog')
+}
 
 fun @main() : i32 {
   // =========================================================================================
@@ -34,17 +40,14 @@ fun @main() : i32 {
   sym %?missing_op : value i32 in {2, 3}; // 2=ADD, 3=SUB. Expected: 2 (ADD)
 
   // --- 1. VM Memory & Registers ---
-  let mut %stack: [10] i32 = 0;
-  let mut %prog:  [10] i32 = 0;
-
-  let mut %sp: i32 = 0; // Stack Pointer
-  let mut %pc: i32 = 0; // Program Counter
+  let mut %vm: @VMContext = 0;
 
   // Temporaries
   let mut %opcode: i32 = 0;
   let mut %a: i32 = 0;
   let mut %b: i32 = 0;
   let mut %res: i32 = 0;
+  let mut %idx_tmp: i32 = 0;
 
   // Constants
   let %OP_HALT: i32 = 0;
@@ -54,32 +57,38 @@ fun @main() : i32 {
   let %OP_DUP:  i32 = 4;
 
 ^entry:
+  // Initialize VM
+  %vm.sp = 0;
+  %vm.pc = 0;
+
   // --- 2. Load Program ---
   // prog = [ PUSH 10, PUSH 20, <MISSING>, HALT ]
 
   // PUSH 10
-  %prog[0] = 1;
-  %prog[1] = 10;
+  %vm.prog[0] = 1;
+  %vm.prog[1] = 10;
 
   // PUSH 20
-  %prog[2] = 1;
-  %prog[3] = 20;
+  %vm.prog[2] = 1;
+  %vm.prog[3] = 20;
 
   // Symbolic Opcode (Index 4)
-  %prog[4] = %?missing_op;
+  %vm.prog[4] = %?missing_op;
 
   // HALT
-  %prog[5] = 0;
+  %vm.prog[5] = 0;
 
   br ^dispatch;
 
   // --- 3. Execution Loop ---
 ^dispatch:
-  br %pc >= 10, ^exit, ^fetch;
+  %idx_tmp = %vm.pc;
+  br %idx_tmp >= 10, ^exit, ^fetch;
 
 ^fetch:
-  %opcode = %prog[%pc];
-  %pc = %pc + 1;
+  %idx_tmp = %vm.pc;
+  %opcode = %vm.prog[%idx_tmp];
+  %vm.pc = %idx_tmp + 1;
 
   br %opcode == %OP_HALT, ^exit, ^decode_push;
 
@@ -98,45 +107,57 @@ fun @main() : i32 {
 // --- 4. Opcode Implementations ---
 
 ^do_push:
-  %res = %prog[%pc];
-  %pc = %pc + 1;
-  %stack[%sp] = %res;
-  %sp = %sp + 1;
+  %idx_tmp = %vm.pc;
+  %res = %vm.prog[%idx_tmp];
+  %vm.pc = %idx_tmp + 1;
+
+  %idx_tmp = %vm.sp;
+  %vm.stack[%idx_tmp] = %res;
+  %vm.sp = %idx_tmp + 1;
   br ^dispatch;
 
 ^do_add:
-  %sp = %sp - 1;
-  %a = %stack[%sp];
-  %sp = %sp - 1;
-  %b = %stack[%sp];
+  %idx_tmp = %vm.sp;
+  %idx_tmp = %idx_tmp - 1;
+  %a = %vm.stack[%idx_tmp];
+
+  %idx_tmp = %idx_tmp - 1;
+  %b = %vm.stack[%idx_tmp];
+
   %res = %a + %b;
-  %stack[%sp] = %res;
-  %sp = %sp + 1;
+  %vm.stack[%idx_tmp] = %res;
+  %vm.sp = %idx_tmp + 1;
   br ^dispatch;
 
 ^do_sub:
-  %sp = %sp - 1;
-  %a = %stack[%sp];
-  %sp = %sp - 1;
-  %b = %stack[%sp];
+  %idx_tmp = %vm.sp;
+  %idx_tmp = %idx_tmp - 1;
+  %a = %vm.stack[%idx_tmp];
+
+  %idx_tmp = %idx_tmp - 1;
+  %b = %vm.stack[%idx_tmp];
+
   %res = %b - %a;
-  %stack[%sp] = %res;
-  %sp = %sp + 1;
+  %vm.stack[%idx_tmp] = %res;
+  %vm.sp = %idx_tmp + 1;
   br ^dispatch;
 
 ^do_dup:
-  %sp = %sp - 1;
-  %a = %stack[%sp];
-  %stack[%sp] = %a;
-  %sp = %sp + 1;
-  %stack[%sp] = %a;
-  %sp = %sp + 1;
+  %idx_tmp = %vm.sp;
+  %idx_tmp = %idx_tmp - 1;
+  %a = %vm.stack[%idx_tmp];
+
+  %vm.stack[%idx_tmp] = %a;
+  %idx_tmp = %idx_tmp + 1;
+  %vm.stack[%idx_tmp] = %a;
+  %vm.sp = %idx_tmp + 1;
   br ^dispatch;
 
 ^exit:
   // Return the top of the stack
-  %sp = %sp - 1;
-  %res = %stack[%sp];
+  %idx_tmp = %vm.sp;
+  %idx_tmp = %idx_tmp - 1;
+  %res = %vm.stack[%idx_tmp];
 
   // =========================================================================================
   // [REQUIREMENT]

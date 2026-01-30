@@ -1,3 +1,12 @@
+struct @BFContext {
+  tape: [100] i8;    // Memory tape for Brainfuck cells
+  code: [100] i8;    // Memory for the Brainfuck bytecode
+  output: [100] i8;  // Buffer to store program output characters
+  dp: i32;           // Data Pointer (points into 'tape')
+  ip: i32;           // Instruction Pointer (points into 'code')
+  out_idx: i32;      // Index for the next output character
+}
+
 fun @main() : i32 {
   // =========================================================================================
   // SymIR Brainfuck Interpreter
@@ -34,15 +43,11 @@ fun @main() : i32 {
 
   // --- 1. Memory Configuration ---
   // [USER-CONFIG] Change array sizes here if needed.
-  let mut %tape:   [100] i8 = 0;
-  let mut %code:   [100] i8 = 0;
-  let mut %output: [100] i8 = 0;
+  // Broadcast 0 to all members of the context struct
+  let mut %ctx: @BFContext = 0;
 
   // --- 2. State Variables ---
-  // Pointers and Indices
-  let mut %dp:      i32 = 0; // Data Pointer
-  let mut %ip:      i32 = 0; // Instruction Pointer
-  let mut %out_idx: i32 = 0; // Output Buffer Index
+  // Pointers and Indices (Now fields in %ctx)
 
   // Temporary Variables for Logic
   let mut %instr:    i8 = 0;
@@ -52,6 +57,9 @@ fun @main() : i32 {
   // Depth calculation temps for loop scanning
   let mut %d_plus:  i32 = 0;
   let mut %d_minus: i32 = 0;
+
+  // Intermediate indices (v0 doesn't allow nested indexing like %a.b[%c.d])
+  let mut %idx_tmp: i32 = 0;
 
   // --- 3. Constants ---
   // [USER-CONFIG] Update limits to match array sizes above.
@@ -81,42 +89,42 @@ fun @main() : i32 {
   // =========================================================================================
 
   // 0-7: ++++++++ (Set cell #0 to 8)
-  %code[0] = 43; %code[1] = 43; %code[2] = 43; %code[3] = 43;
-  %code[4] = 43; %code[5] = 43; %code[6] = 43; %code[7] = 43;
+  %ctx.code[0] = 43; %ctx.code[1] = 43; %ctx.code[2] = 43; %ctx.code[3] = 43;
+  %ctx.code[4] = 43; %ctx.code[5] = 43; %ctx.code[6] = 43; %ctx.code[7] = 43;
 
   // 8: [ (Start loop)
-  %code[8] = 91;
+  %ctx.code[8] = 91;
 
   // 9: > (Move to cell #1)
-  %code[9] = 62;
+  %ctx.code[9] = 62;
 
   // 10-17: ++++++++ (Add 8 to cell #1)
-  %code[10] = 43; %code[11] = 43; %code[12] = 43; %code[13] = 43;
-  %code[14] = 43; %code[15] = 43; %code[16] = 43; %code[17] = 43;
+  %ctx.code[10] = 43; %ctx.code[11] = 43; %ctx.code[12] = 43; %ctx.code[13] = 43;
+  %ctx.code[14] = 43; %ctx.code[15] = 43; %ctx.code[16] = 43; %ctx.code[17] = 43;
 
   // 18: < (Move back to cell #0)
   // [SYMBOLIC HOLE]
   // Originally this was '<' (60). The solver must find this to satisfy the output requirement.
-  %code[18] = %?missing;
+  %ctx.code[18] = %?missing;
 
   // 19: - (Decrement cell #0)
-  %code[19] = 45;
+  %ctx.code[19] = 45;
 
   // 20: ] (End loop - repeat until cell #0 is 0)
   // Loop logic: cell #1 += 8 for each iteration. Total cell #1 = 8 * 8 = 64.
-  %code[20] = 93;
+  %ctx.code[20] = 93;
 
   // 21: > (Move to cell #1, which is now 64)
-  %code[21] = 62;
+  %ctx.code[21] = 62;
 
   // 22: + (Increment cell #1 to 65)
-  %code[22] = 43;
+  %ctx.code[22] = 43;
 
   // 23: . (Output cell #1 - ASCII 'A')
-  %code[23] = 46;
+  %ctx.code[23] = 46;
 
   // 24: Terminate (0)
-  %code[24] = 0;
+  %ctx.code[24] = 0;
 
   // End of Program Loading
   br ^dispatch;
@@ -124,10 +132,12 @@ fun @main() : i32 {
   // --- Main Dispatch Loop ---
 ^dispatch:
   // Check code bounds
-  br %ip >= %CODE_LIMIT, ^exit, ^fetch;
+  %idx_tmp = %ctx.ip;
+  br %idx_tmp >= %CODE_LIMIT, ^exit, ^fetch;
 
 ^fetch:
-  %instr = %code[%ip];
+  %idx_tmp = %ctx.ip;
+  %instr = %ctx.code[%idx_tmp];
   // 0 terminates execution
   br %instr == 0, ^exit, ^decode_inc_ptr;
 
@@ -156,36 +166,48 @@ fun @main() : i32 {
 // --- Command Execution ---
 
 ^do_inc_ptr: // >
-  %dp = %dp + %ONE;
+  %idx_tmp = %ctx.dp;
+  %ctx.dp = %idx_tmp + %ONE;
   br ^next_instr;
 
 ^do_dec_ptr: // <
-  %dp = %dp - %ONE;
+  %idx_tmp = %ctx.dp;
+  %ctx.dp = %idx_tmp - %ONE;
   br ^next_instr;
 
 ^do_inc_val: // +
-  %tape[%dp] = %tape[%dp] + 1;
+  %idx_tmp = %ctx.dp;
+  %byte_tmp = %ctx.tape[%idx_tmp];
+  %ctx.tape[%idx_tmp] = %byte_tmp + 1;
   br ^next_instr;
 
 ^do_dec_val: // -
-  %tape[%dp] = %tape[%dp] - 1;
+  %idx_tmp = %ctx.dp;
+  %byte_tmp = %ctx.tape[%idx_tmp];
+  %ctx.tape[%idx_tmp] = %byte_tmp - 1;
   br ^next_instr;
 
 ^do_output: // .
   // Hardcoded output limit check (100)
-  br %out_idx < 100, ^write_out, ^next_instr;
+  %idx_tmp = %ctx.out_idx;
+  br %idx_tmp < 100, ^write_out, ^next_instr;
 ^write_out:
-  %output[%out_idx] = %tape[%dp];
-  %out_idx = %out_idx + %ONE;
+  %idx_tmp = %ctx.dp;
+  %byte_tmp = %ctx.tape[%idx_tmp];
+  %idx_tmp = %ctx.out_idx;
+  %ctx.output[%idx_tmp] = %byte_tmp;
+  %ctx.out_idx = %idx_tmp + %ONE;
   br ^next_instr;
 
 ^do_loop_start: // [
-  %byte_tmp = %tape[%dp];
+  %idx_tmp = %ctx.dp;
+  %byte_tmp = %ctx.tape[%idx_tmp];
   // If current tape value is 0, jump to matching ]
   br %byte_tmp == 0, ^scan_fwd_init, ^next_instr;
 
 ^do_loop_end: // ]
-  %byte_tmp = %tape[%dp];
+  %idx_tmp = %ctx.dp;
+  %byte_tmp = %ctx.tape[%idx_tmp];
   // If current tape value is nonzero, jump back to matching [
   br %byte_tmp != 0, ^scan_bwd_init, ^next_instr;
 
@@ -195,11 +217,14 @@ fun @main() : i32 {
   br ^scan_fwd_step;
 
 ^scan_fwd_step:
-  %ip = %ip + %ONE;
-  br %ip >= %CODE_LIMIT, ^exit, ^scan_fwd_check;
+  %idx_tmp = %ctx.ip;
+  %ctx.ip = %idx_tmp + %ONE;
+  %idx_tmp = %ctx.ip;
+  br %idx_tmp >= %CODE_LIMIT, ^exit, ^scan_fwd_check;
 
 ^scan_fwd_check:
-  %byte_tmp = %code[%ip];
+  %idx_tmp = %ctx.ip;
+  %byte_tmp = %ctx.code[%idx_tmp];
 
   // depth++ if we see another [
   %d_plus = %depth + 1;
@@ -218,11 +243,14 @@ fun @main() : i32 {
   br ^scan_bwd_step;
 
 ^scan_bwd_step:
-  %ip = %ip - %ONE;
-  br %ip < 0, ^exit, ^scan_bwd_check;
+  %idx_tmp = %ctx.ip;
+  %ctx.ip = %idx_tmp - %ONE;
+  %idx_tmp = %ctx.ip;
+  br %idx_tmp < 0, ^exit, ^scan_bwd_check;
 
 ^scan_bwd_check:
-  %byte_tmp = %code[%ip];
+  %idx_tmp = %ctx.ip;
+  %byte_tmp = %ctx.code[%idx_tmp];
 
   // depth++ if we see a ] (since we are going backwards)
   %d_plus = %depth + 1;
@@ -242,12 +270,13 @@ fun @main() : i32 {
 
 
 ^next_instr:
-  %ip = %ip + %ONE;
+  %idx_tmp = %ctx.ip;
+  %ctx.ip = %idx_tmp + %ONE;
   br ^dispatch;
 
 ^exit:
   // Return the first byte of output (helpful for testing)
-  %byte_tmp = %output[0];
+  %byte_tmp = %ctx.output[0];
   %ret_val = %byte_tmp as i32;
   ret %ret_val;
 }
