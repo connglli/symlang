@@ -93,21 +93,21 @@ def run_test_suite(test_dir, test_func):
 
     start_time = time.time()
     status, message = test_func(file_path, expectation, args, skips)
-    duration = time.time() - start_time
+    duration_ms = int((time.time() - start_time) * 1000)
 
     if status == TestResult.PASS:
       passed_count += 1
-      print(green("OK"))
+      print(f"{green('OK')} ({duration_ms}ms)")
     elif status == TestResult.TIMEOUT:
       timeout_count += 1
-      print(yellow("TIMEOUT"))
+      print(f"{yellow('TIMEOUT')} ({duration_ms}ms)")
       failures.append((file_path, "Timeout occurred"))
     elif status == TestResult.SKIP:
       skipped_count += 1
       print(yellow("SKIP"))
     else:
       failed_count += 1
-      print(red("FAIL"))
+      print(f"{red('FAIL')} ({duration_ms}ms)")
       failures.append((file_path, message))
 
   print(f"\nSummary: {passed_count}/{total_count} passed", end="")
