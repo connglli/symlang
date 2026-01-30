@@ -190,13 +190,6 @@ namespace alivesmt {
         return {vals.begin()->first, vals.begin()->second, expr(), true};
 
       expr dom = domain();
-      // util::ilog2_ceil is missing. I'll mock it or replace it.
-      // For now assuming 64 bits to be safe or just 0 if not used much.
-      // Actually this is template code. If not instantiated, it's fine.
-      // If instantiated, it will fail.
-      // I should probably just comment out the body if I can't fix it.
-      // Or I can compute ilog2_ceil here.
-      /*
       unsigned bits = util::ilog2_ceil(vals.size() + !dom.isTrue(), false);
       expr qvar = expr::mkFreshVar("choice", expr::mkUInt(0, bits));
 
@@ -206,17 +199,14 @@ namespace alivesmt {
       bool first = true;
 
       for (unsigned i = vals.size(); i > 0; --i) {
-        auto cmp = qvar == (i-1);
+        auto cmp = qvar == (i - 1);
         pre = expr::mkIf(cmp, I->second, pre);
-        ret = first ? std::move(I->first)
-                    : T::mkIf(cmp, std::move(I->first), std::move(ret));
+        ret = first ? std::move(I->first) : T::mkIf(cmp, std::move(I->first), std::move(ret));
         first = false;
         ++I;
       }
 
-      return { std::move(ret), std::move(dom), std::move(qvar), std::move(pre) };
-      */
-      return {};
+      return {std::move(ret), std::move(dom), std::move(qvar), std::move(pre)};
     }
   };
 

@@ -149,7 +149,7 @@ namespace symir::solver {
   }
 
   smt::Term AliveSolver::make_const(smt::Sort s, const std::string &name) {
-    return wrap(::alivesmt::expr::mkVar(name.c_str(), unwrap(s)));
+    return wrap(::alivesmt::expr::mkFreshVar(name.c_str(), unwrap(s)));
   }
 
   smt::Term AliveSolver::make_term(
