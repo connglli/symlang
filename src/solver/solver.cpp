@@ -385,14 +385,16 @@ namespace symir {
 
         smt::Term nextTerm = elements[i].term;
         auto nextSort = solver.get_sort(nextTerm);
-        auto targetWidth = solver.get_bv_width(targetSort);
-        auto nextWidth = solver.get_bv_width(nextSort);
-        if (nextWidth < targetWidth) {
-          nextTerm =
-              solver.make_term(smt::Kind::BV_SIGN_EXTEND, {nextTerm}, {targetWidth - nextWidth});
-        } else if (nextWidth > targetWidth) {
-          res = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {res}, {nextWidth - targetWidth});
-          targetSort = solver.get_sort(res);
+        if (solver.is_bv_sort(targetSort) && solver.is_bv_sort(nextSort)) {
+          auto targetWidth = solver.get_bv_width(targetSort);
+          auto nextWidth = solver.get_bv_width(nextSort);
+          if (nextWidth < targetWidth) {
+            nextTerm =
+                solver.make_term(smt::Kind::BV_SIGN_EXTEND, {nextTerm}, {targetWidth - nextWidth});
+          } else if (nextWidth > targetWidth) {
+            res = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {res}, {nextWidth - targetWidth});
+            targetSort = solver.get_sort(res);
+          }
         }
 
         res = solver.make_term(smt::Kind::ITE, {cond, nextTerm, res});
@@ -480,12 +482,14 @@ namespace symir {
       auto fSort = solver.get_sort(f.term);
       smt::Term tTerm = t.term;
       smt::Term fTerm = f.term;
-      auto tWidth = solver.get_bv_width(tSort);
-      auto fWidth = solver.get_bv_width(fSort);
-      if (tWidth < fWidth) {
-        tTerm = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {tTerm}, {fWidth - tWidth});
-      } else if (fWidth < tWidth) {
-        fTerm = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {fTerm}, {tWidth - fWidth});
+      if (solver.is_bv_sort(tSort) && solver.is_bv_sort(fSort)) {
+        auto tWidth = solver.get_bv_width(tSort);
+        auto fWidth = solver.get_bv_width(fSort);
+        if (tWidth < fWidth) {
+          tTerm = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {tTerm}, {fWidth - tWidth});
+        } else if (fWidth < tWidth) {
+          fTerm = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {fTerm}, {tWidth - fWidth});
+        }
       }
       res.term = solver.make_term(smt::Kind::ITE, {cond, tTerm, fTerm});
       res.is_defined = solver.make_term(smt::Kind::ITE, {cond, t.is_defined, f.is_defined});
@@ -711,12 +715,14 @@ namespace symir {
             smt::Term vf = evalSelectVal(arg.vfalse, solver, store, pc, expectedSort);
             auto vtSort = solver.get_sort(vt);
             auto vfSort = solver.get_sort(vf);
-            auto vtWidth = solver.get_bv_width(vtSort);
-            auto vfWidth = solver.get_bv_width(vfSort);
-            if (vtWidth < vfWidth) {
-              vt = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {vt}, {vfWidth - vtWidth});
-            } else if (vfWidth < vtWidth) {
-              vf = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {vf}, {vtWidth - vfWidth});
+            if (solver.is_bv_sort(vtSort) && solver.is_bv_sort(vfSort)) {
+              auto vtWidth = solver.get_bv_width(vtSort);
+              auto vfWidth = solver.get_bv_width(vfSort);
+              if (vtWidth < vfWidth) {
+                vt = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {vt}, {vfWidth - vtWidth});
+              } else if (vfWidth < vtWidth) {
+                vf = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {vf}, {vtWidth - vfWidth});
+              }
             }
             return solver.make_term(smt::Kind::ITE, {cond, vt, vf});
           } else if constexpr (std::is_same_v<T, CoefAtom>) {

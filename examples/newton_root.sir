@@ -32,7 +32,14 @@ fun @main() : f64 {
   sym %?start_x : value f64;
 
   // --- 1. State Variables ---
-  let mut %ctx: @NewtonContext = undef;
+  let mut %ctx: @NewtonContext = 0.0;
+
+  // Locals for coefficients (v0 restricts Coef to simple LocalId/SymId)
+  let mut %x_v: f64 = 0.0;
+  let mut %fx_v: f64 = 0.0;
+  let mut %dfx_v: f64 = 0.0;
+  let mut %diff_v: f64 = 0.0;
+  let mut %ret_val: f64 = 0.0;
 
   // Constants
   let %TWO: f64 = 2.0;
@@ -42,41 +49,65 @@ fun @main() : f64 {
   %ctx.x = %?start_x;
 
   // Constraint: start_x must be reasonable (e.g., >= 1.0)
-  assume %ctx.x >= 1.0;
+  %x_v = %ctx.x;
+  assume %x_v >= 1.0;
   br ^iter1;
 
   // --- Iteration 1 ---
 ^iter1:
-  %ctx.fx = %ctx.x * %ctx.x - %TWO;
-  %ctx.dfx = %TWO * %ctx.x;
-  %ctx.step = %ctx.fx / %ctx.dfx;
-  %ctx.x = %ctx.x - %ctx.step;
+  %x_v = %ctx.x;
+  %ctx.fx = %x_v * %ctx.x - %TWO;
+
+  %x_v = %ctx.x;
+  %ctx.dfx = %TWO * %x_v;
+
+  %fx_v = %ctx.fx;
+  %ctx.step = %fx_v / %ctx.dfx;
+
+  %x_v = %ctx.x;
+  %ctx.x = %x_v - %ctx.step;
   br ^iter2;
 
   // --- Iteration 2 ---
 ^iter2:
-  %ctx.fx = %ctx.x * %ctx.x - %TWO;
-  %ctx.dfx = %TWO * %ctx.x;
-  %ctx.step = %ctx.fx / %ctx.dfx;
-  %ctx.x = %ctx.x - %ctx.step;
+  %x_v = %ctx.x;
+  %ctx.fx = %x_v * %ctx.x - %TWO;
+
+  %x_v = %ctx.x;
+  %ctx.dfx = %TWO * %x_v;
+
+  %fx_v = %ctx.fx;
+  %ctx.step = %fx_v / %ctx.dfx;
+
+  %x_v = %ctx.x;
+  %ctx.x = %x_v - %ctx.step;
   br ^iter3;
 
   // --- Iteration 3 ---
 ^iter3:
-  %ctx.fx = %ctx.x * %ctx.x - %TWO;
-  %ctx.dfx = %TWO * %ctx.x;
-  %ctx.step = %ctx.fx / %ctx.dfx;
-  %ctx.x = %ctx.x - %ctx.step;
+  %x_v = %ctx.x;
+  %ctx.fx = %x_v * %ctx.x - %TWO;
+
+  %x_v = %ctx.x;
+  %ctx.dfx = %TWO * %x_v;
+
+  %fx_v = %ctx.fx;
+  %ctx.step = %fx_v / %ctx.dfx;
+
+  %x_v = %ctx.x;
+  %ctx.x = %x_v - %ctx.step;
   br ^exit;
 
 ^exit:
   // --- Check Convergence ---
-  %ctx.diff = %ctx.x - %TARGET;
+  %x_v = %ctx.x;
+  %ctx.diff = %x_v - %TARGET;
 
+  %diff_v = %ctx.diff;
   // Absolute difference (relaxed to 1e-5 for 3 iterations)
-  require %ctx.diff < 0.00001, "Must converge to sqrt(2)";
-  require %ctx.diff > -0.00001, "Must converge to sqrt(2)";
+  require %diff_v < 0.00001, "Must converge to sqrt(2)";
+  require %diff_v > -0.00001, "Must converge to sqrt(2)";
 
-  let %ret_val: f64 = %ctx.x;
+  %ret_val = %ctx.x;
   ret %ret_val;
 }
