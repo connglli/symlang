@@ -7,6 +7,19 @@ namespace symir {
       out_ << "  ";
   }
 
+  static void printDouble(std::ostream &out, double d) {
+    std::string s = std::to_string(d);
+    // Remove redundant trailing zeros, but keep at least one after '.' if it's not scientific
+    // notation
+    if (s.find('.') != std::string::npos && s.find('e') == std::string::npos &&
+        s.find('E') == std::string::npos) {
+      while (s.size() > 2 && s.back() == '0' && s[s.size() - 2] != '.') {
+        s.pop_back();
+      }
+    }
+    out << s;
+  }
+
   void SIRPrinter::print(const Program &p) {
     for (const auto &s: p.structs) {
       out_ << "struct " << s.name.name << " {\n";
@@ -206,7 +219,7 @@ namespace symir {
                   if constexpr (std::is_same_v<S, IntLit>) {
                     out_ << src.value;
                   } else if constexpr (std::is_same_v<S, FloatLit>) {
-                    out_ << src.value;
+                    printDouble(out_, src.value);
                   } else if constexpr (std::is_same_v<S, SymId>) {
                     out_ << src.name;
                   } else {
@@ -249,7 +262,7 @@ namespace symir {
           if constexpr (std::is_same_v<T, IntLit>) {
             out_ << arg.value;
           } else if constexpr (std::is_same_v<T, FloatLit>) {
-            out_ << arg.value;
+            printDouble(out_, arg.value);
           } else {
             std::visit(
                 [this](auto &&id) {
@@ -258,7 +271,7 @@ namespace symir {
                     if (std::holds_alternative<int64_t>(val))
                       out_ << std::get<int64_t>(val);
                     else
-                      out_ << std::get<double>(val);
+                      printDouble(out_, std::get<double>(val));
                   } else {
                     out_ << id.name;
                   }
@@ -293,7 +306,7 @@ namespace symir {
                     if (std::holds_alternative<int64_t>(val))
                       out_ << std::get<int64_t>(val);
                     else
-                      out_ << std::get<double>(val);
+                      printDouble(out_, std::get<double>(val));
                   } else {
                     out_ << id.name;
                   }
@@ -312,7 +325,7 @@ namespace symir {
         out_ << std::get<IntLit>(iv.value).value;
         break;
       case InitVal::Kind::Float:
-        out_ << std::get<FloatLit>(iv.value).value;
+        printDouble(out_, std::get<FloatLit>(iv.value).value);
         break;
       case InitVal::Kind::Sym: {
         auto name = std::get<SymId>(iv.value).name;
@@ -321,7 +334,7 @@ namespace symir {
           if (std::holds_alternative<int64_t>(val))
             out_ << std::get<int64_t>(val);
           else
-            out_ << std::get<double>(val);
+            printDouble(out_, std::get<double>(val));
         } else {
           out_ << name;
         }

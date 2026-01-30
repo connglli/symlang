@@ -334,6 +334,15 @@ namespace symir {
       if (v.kind == RuntimeValue::Kind::Undef || right.kind == RuntimeValue::Kind::Undef)
         throw std::runtime_error("UB: Reading undef in expr");
 
+      // Promote Int to Float if needed (Literal inference support)
+      if (v.kind == RuntimeValue::Kind::Float && right.kind == RuntimeValue::Kind::Int) {
+        right.floatVal = static_cast<double>(right.intVal);
+        right.kind = RuntimeValue::Kind::Float;
+      } else if (v.kind == RuntimeValue::Kind::Int && right.kind == RuntimeValue::Kind::Float) {
+        v.floatVal = static_cast<double>(v.intVal);
+        v.kind = RuntimeValue::Kind::Float;
+      }
+
       if (v.kind == RuntimeValue::Kind::Int && right.kind == RuntimeValue::Kind::Int) {
         if (tail.op == AddOp::Plus) {
           if (__builtin_add_overflow(v.intVal, right.intVal, &v.intVal))
@@ -364,6 +373,15 @@ namespace symir {
             RuntimeValue r = evalLValue(arg.rval, store);
             if (c.kind == RuntimeValue::Kind::Undef || r.kind == RuntimeValue::Kind::Undef)
               throw std::runtime_error("UB: Reading undef in op");
+
+            // Promote Int to Float if needed (Literal inference support)
+            if (c.kind == RuntimeValue::Kind::Float && r.kind == RuntimeValue::Kind::Int) {
+              r.floatVal = static_cast<double>(r.intVal);
+              r.kind = RuntimeValue::Kind::Float;
+            } else if (c.kind == RuntimeValue::Kind::Int && r.kind == RuntimeValue::Kind::Float) {
+              c.floatVal = static_cast<double>(c.intVal);
+              c.kind = RuntimeValue::Kind::Float;
+            }
 
             if (c.kind == RuntimeValue::Kind::Int && r.kind == RuntimeValue::Kind::Int) {
               RuntimeValue res;
@@ -614,7 +632,16 @@ namespace symir {
     RuntimeValue r = evalExpr(c.rhs, store);
 
     if (l.kind == RuntimeValue::Kind::Undef || r.kind == RuntimeValue::Kind::Undef)
-      throw std::runtime_error("UB: Reading undef in cond");
+      throw std::runtime_error("UB: Reading undef in condition");
+
+    // Promote Int to Float if needed (Literal inference support)
+    if (l.kind == RuntimeValue::Kind::Float && r.kind == RuntimeValue::Kind::Int) {
+      r.floatVal = static_cast<double>(r.intVal);
+      r.kind = RuntimeValue::Kind::Float;
+    } else if (l.kind == RuntimeValue::Kind::Int && r.kind == RuntimeValue::Kind::Float) {
+      l.floatVal = static_cast<double>(l.intVal);
+      l.kind = RuntimeValue::Kind::Float;
+    }
 
     if (l.kind == RuntimeValue::Kind::Int && r.kind == RuntimeValue::Kind::Int) {
       switch (c.op) {
