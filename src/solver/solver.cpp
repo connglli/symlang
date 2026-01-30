@@ -684,26 +684,6 @@ namespace symir {
             bool srcIsFp = solver.is_fp_sort(solver.get_sort(src));
             bool dstIsFp = solver.is_fp_sort(dstSort);
 
-            if (srcIsFp && dstIsFp) {
-              return solver.make_term(smt::Kind::FP_TO_FP_FROM_FP, {src});
-            } else if (srcIsFp && !dstIsFp) {
-              return solver.make_term(
-                  smt::Kind::FP_TO_SBV, {src}
-              ); // Width implicit in logic? No bitwuzla takes width arg?
-              // solver.make_term handles mapping, but FP_TO_SBV might need extra args (width) if
-              // mapped directly? The Bitwuzla C++ API for fp_to_sbv takes width. My abstract
-              // interface make_term takes args. I need to check how I implemented FP_TO_SBV in
-              // bitwuzla_impl.cpp It maps to bitwuzla::Kind::FP_TO_SBV. But
-              // bitwuzla::mk_term(FP_TO_SBV, {term}, {width}) is required. My make_term signature
-              // allows indices. I need to pass indices here. Wait, I need to know the width.
-              // dstSort has the width.
-              // I should update this call site.
-            } else if (!srcIsFp && dstIsFp) {
-              return solver.make_term(smt::Kind::FP_TO_FP_FROM_SBV, {src});
-              // similarly needs dest indices?
-              // bitwuzla::FP_TO_FP_FROM_SBV takes indices (exp_size, sig_size).
-            }
-
             // Correct handling for FP casts requiring indices
             if (srcIsFp && !dstIsFp) { // FP -> BV
               uint32_t width = solver.get_bv_width(dstSort);
