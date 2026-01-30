@@ -4,6 +4,17 @@ fun @main() : i32 {
   //
   // This program implements a simple Brainfuck interpreter.
   // It executes a hardcoded Brainfuck program stored in the %code array.
+  // The code array contains a symbol %?missing whose expected value is 60.
+  // To solve the program, the path in ./brainfuck_path.txt is required.
+  //
+  // Interpret:
+  //   ./symiri --sym %?missing=60 ./examples/brainfuck.sir
+  //
+  // Compile:
+  //   ./symirc -o brainfuck.c ./examples/brainfuck.sir
+  //
+  // Solve:
+  //   ./symirsolve --path $(cat ./examples/brainfuck_path.txt) -o brainfuck.sir ./examples/brainfuck.sir
   //
   // Configuration:
   // - Tape Size: Defined by the size of %tape (default 100) and %TAPE_LIMIT.
@@ -15,6 +26,11 @@ fun @main() : i32 {
   // 2. Update %CODE_LIMIT and %TAPE_LIMIT constants to match.
   // 3. Edit the "^entry" block to load your Brainfuck bytecode into %code.
   // =========================================================================================
+
+  // --- 0. Symbol Definition ---
+  // [SYMBOL] Missing instruction at %code[18].
+  // Domain restricted to common BF operators to keep solving efficient.
+  sym %?missing : value i8 in {60, 62, 43, 45}; // 60 is expected
 
   // --- 1. Memory Configuration ---
   // [USER-CONFIG] Change array sizes here if needed.
@@ -79,7 +95,9 @@ fun @main() : i32 {
   %code[14] = 43; %code[15] = 43; %code[16] = 43; %code[17] = 43;
 
   // 18: < (Move back to cell #0)
-  %code[18] = 60;
+  // [SYMBOLIC HOLE]
+  // Originally this was '<' (60). The solver must find this to satisfy the output requirement.
+  %code[18] = %?missing;
 
   // 19: - (Decrement cell #0)
   %code[19] = 45;
