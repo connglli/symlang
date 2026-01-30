@@ -125,7 +125,7 @@ Automatically find values for symbols that satisfy a specific execution path:
 ```
 ## SymLang Example
 
-More in [./tests/](./tests/).
+More in [./examples](./examples/) and [./test/](./test/).
 
 ```
 // EXPECT: PASS

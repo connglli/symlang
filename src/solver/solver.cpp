@@ -39,7 +39,16 @@ namespace symir {
       else
         return solver.make_fp_sort(11, 53);
     }
-    throw std::runtime_error("Aggregate types do not have a single SMT sort in this encoding");
+    if (auto at = std::get_if<ArrayType>(&t->v)) {
+      return getSort(at->elem, solver);
+    }
+    if (auto st = std::get_if<StructType>(&t->v)) {
+      auto it = structs_.find(st->name.name);
+      if (it != structs_.end() && !it->second->fields.empty()) {
+        return getSort(it->second->fields[0].type, solver);
+      }
+    }
+    throw std::runtime_error("Unknown type or empty struct in getSort");
   }
 
   SymbolicExecutor::SymbolicValue SymbolicExecutor::createSymbolicValue(
@@ -149,12 +158,20 @@ namespace symir {
     smt::Term val;
     if (iv.kind == InitVal::Kind::Int) {
       auto lit = std::get<IntLit>(iv.value);
-      val = solver.make_bv_value(getSort(t, solver), std::to_string(lit.value), 10);
+      TypePtr leafType = t;
+      while (auto *at = std::get_if<ArrayType>(&leafType->v)) {
+        leafType = at->elem;
+      }
+      val = solver.make_bv_value(getSort(leafType, solver), std::to_string(lit.value), 10);
     } else if (iv.kind == InitVal::Kind::Float) {
       auto lit = std::get<FloatLit>(iv.value);
+      TypePtr leafType = t;
+      while (auto *at = std::get_if<ArrayType>(&leafType->v)) {
+        leafType = at->elem;
+      }
       // Using standard RNE
       val = solver.make_fp_value(
-          getSort(t, solver), std::to_string(lit.value), smt::RoundingMode::RNE
+          getSort(leafType, solver), std::to_string(lit.value), smt::RoundingMode::RNE
       );
     } else if (iv.kind == InitVal::Kind::Sym) {
       val = store.at(std::get<SymId>(iv.value).name).term;
