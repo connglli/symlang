@@ -12,14 +12,32 @@ ifeq ($(PY),)
   $(error "Python not found. Please install Python or create a virtualenv first (e.g., 'python3 -m venv venv && source venv/bin/activate').")
 endif
 
-CXXFLAGS = -std=c++20 -Iinclude -Ibitwuzla/include -Wall -Wextra -O2
-LDFLAGS = -Lbitwuzla/lib/x86_64-linux-gnu -lbitwuzla -lbitwuzlals -lbitwuzlabv -lbitwuzlabb -lgmp
+SOLVER ?= bitwuzla
+
+CXXFLAGS = -std=c++20 -Iinclude -Wall -Wextra -O2
+LDFLAGS =
 ARFLAGS = rcs
 
 # Coverage support
 ifeq ($(COVERAGE), 1)
   CXXFLAGS += --coverage
   LDFLAGS += --coverage
+endif
+
+# Solver support
+ifeq ($(SOLVER), bitwuzla)
+  CXXFLAGS += -DUSE_BITWUZLA -Ibitwuzla/include
+  LDFLAGS += -Lbitwuzla/lib/x86_64-linux-gnu -lbitwuzla -lbitwuzlals -lbitwuzlabv -lbitwuzlabb -lgmp
+  SOLVER_SRCS += src/solver/bitwuzla_impl.cpp
+  SOLVER_IMPL_OBJ = src/solver/bitwuzla_impl.o
+else ifeq ($(SOLVER), alivesmt)
+  CXXFLAGS += -DUSE_ALIVESMT -Ialivesmt/include
+  LDFLAGS += -lz3
+  ALIVESMT_SRCS = alivesmt/lib/ctx.cpp alivesmt/lib/expr.cpp alivesmt/lib/exprs.cpp alivesmt/lib/smt.cpp alivesmt/lib/solver.cpp alivesmt/lib/util.cpp
+  SOLVER_SRCS += src/solver/alive_impl.cpp $(ALIVESMT_SRCS)
+  SOLVER_IMPL_OBJ = src/solver/alive_impl.o $(ALIVESMT_SRCS:.cpp=.o)
+else
+  $(error "Unknown SOLVER: $(SOLVER). Supported: bitwuzla, alivesmt")
 endif
 
 COMMON_SRCS = src/frontend/lexer.cpp src/frontend/parser.cpp src/frontend/ast_dumper.cpp \
@@ -33,13 +51,14 @@ COMMON_SRCS = src/frontend/lexer.cpp src/frontend/parser.cpp src/frontend/ast_du
 TEST_SRCS =
 INTERP_SRCS = src/symiri.cpp src/interp/interpreter.cpp
 COMPILER_SRCS = src/symirc.cpp src/backend/c_backend.cpp src/backend/wasm_backend.cpp
-SOLVER_SRCS = src/symirsolve.cpp src/solver/solver.cpp src/solver/bitwuzla_impl.cpp
+SOLVER_MAIN_SRCS = src/symirsolve.cpp src/solver/solver.cpp
+SOLVER_ALL_SRCS = $(SOLVER_MAIN_SRCS) $(SOLVER_SRCS)
 
 COMMON_OBJS = $(COMMON_SRCS:.cpp=.o)
 TEST_OBJS = $(TEST_SRCS:.cpp=.o)
 INTERP_OBJS = $(INTERP_SRCS:.cpp=.o)
 COMPILER_OBJS = $(COMPILER_SRCS:.cpp=.o)
-SOLVER_OBJS = $(SOLVER_SRCS:.cpp=.o)
+SOLVER_OBJS = $(SOLVER_MAIN_SRCS:.cpp=.o) $(SOLVER_IMPL_OBJ)
 
 TARGET_INTERP = symiri
 TARGET_COMPILER = symirc
@@ -56,7 +75,7 @@ LIBRARY_OBJS = $(COMMON_OBJS) \
                src/backend/c_backend.o \
                src/backend/wasm_backend.o \
                src/solver/solver.o \
-               src/solver/bitwuzla_impl.o
+               $(SOLVER_IMPL_OBJ)
 
 .PHONY: all clean test build
 

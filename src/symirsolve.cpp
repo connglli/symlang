@@ -12,8 +12,13 @@
 #include "frontend/parser.hpp"
 #include "frontend/semchecker.hpp"
 #include "frontend/typechecker.hpp"
-#include "solver/bitwuzla_impl.hpp"
 #include "solver/solver.hpp"
+
+#ifdef USE_ALIVESMT
+#include "solver/alive_impl.hpp"
+#else
+#include "solver/bitwuzla_impl.hpp"
+#endif
 
 using namespace symir;
 
@@ -111,7 +116,11 @@ int main(int argc, char **argv) {
 
     auto solverFactory = [](const SymbolicExecutor::Config &cfg
                          ) -> std::unique_ptr<symir::smt::ISolver> {
+#ifdef USE_ALIVESMT
+      return std::make_unique<symir::solver::AliveSolver>(cfg.timeout_ms, cfg.seed);
+#else
       return std::make_unique<symir::solver::BitwuzlaSolver>(cfg.timeout_ms, cfg.seed);
+#endif
     };
 
     SymbolicExecutor executor(prog, config, solverFactory);
