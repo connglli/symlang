@@ -15,6 +15,7 @@ It provides a robust foundation for building tools that need to reason about pro
   - [Prerequisites](#prerequisites)
   - [Building](#building)
   - [Running Tests](#running-tests)
+  - [Switching SMT Backends](#switching-smt-backends)
 - [Typical Workflows](#typical-workflows)
 - [Project Structure](#project-structure)
 - [Documentation](#documentation)
@@ -34,7 +35,14 @@ It provides a robust foundation for building tools that need to reason about pro
 | :--- | :--- |
 | `symiri` | **Interpreter**: Execute `.sir` programs directly with concrete values or symbol bindings. |
 | `symirc` | **Compiler**: Translate `.sir` programs into optimized C or WebAssembly (WASM). |
-| `symirsolve` | **Solver**: Concretize symbolic programs by solving path constraints via SMT (Bitwuzla). |
+| `symirsolve` | **Solver**: Concretize symbolic programs by solving path constraints via SMT. |
+
+## SMT Backends
+
+SymLang supports multiple SMT solvers via an abstract interface. The following backends are available:
+
+- **Bitwuzla (Default):** Highly optimized for Bit-Vector (BV) and Floating-Point (FP) logic. It is the recommended solver for performance and reliability in symbolic execution tasks.
+- **AliveSMT (Z3):** A Z3-based backend derived from the Alive2 project. It provides an alternative for verification tasks where Z3's specific heuristics or theories are preferred.
 
 ## Getting Started
 
@@ -42,7 +50,9 @@ It provides a robust foundation for building tools that need to reason about pro
 
 - **C++20** compatible compiler (GCC 10+ or Clang 10+)
 - **GMP** (GNU Multi-Precision Arithmetic Library)
-  - Required by the Bitwuzla SMT solver
+  - Required by Bitwuzla
+- **Z3** (Optional)
+  - Required if using the `alivesmt` backend
 - **Python 3** (for running the test suite)
 - **WASM runtime** (optional, for running WASM backend tests such as Wasmtime, Wasmer, or Node.js)
 
@@ -60,12 +70,30 @@ To clean the build artifacts:
 make clean
 ```
 
+To test the build:
+
+```bash
+make test
+```
+
 ### Running Tests
 
 The project includes an extensive test suite covering lexing, parsing, analysis, interpretation, compilation, and solving.
 
 ```bash
 make test
+```
+
+### Switching SMT Backends
+
+The solver backend is selected at compile-time using the `SOLVER` variable in the `Makefile`.
+
+```bash
+# Build with Bitwuzla (default)
+make SOLVER=bitwuzla
+
+# Build with AliveSMT (Z3)
+make SOLVER=alivesmt
 ```
 
 ## Typical Workflows
