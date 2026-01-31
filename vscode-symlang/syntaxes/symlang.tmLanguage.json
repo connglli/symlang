@@ -1,0 +1,189 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "SymLang",
+  "scopeName": "source.symlang",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#identifiers"
+    },
+    {
+      "include": "#literals"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#punctuation"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.symlang",
+          "match": "//.*"
+        },
+        {
+          "name": "comment.block.symlang",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.symlang",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.symlang",
+              "match": "\\."
+            }
+          ]
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.symlang",
+          "match": "\\b(br|ret|unreachable|assume|require|select|as)\\b"
+        },
+        {
+          "name": "keyword.other.symlang",
+          "match": "\\b(struct|fun|sym|let|mut|value|coef|index|in|undef)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.symlang",
+          "match": "\\bi[0-9]+\\b|\\bf32\\b|\\bf64\\b"
+        }
+      ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "name": "variable.other.symbol.global.symlang",
+          "match": "@\\?[a-zA-Z_][a-zA-Z0-9_]*"
+        },
+        {
+          "name": "variable.other.symbol.local.symlang",
+          "match": "%\\?[a-zA-Z_][a-zA-Z0-9_]*"
+        },
+        {
+          "name": "entity.name.function.symlang",
+          "match": "@[a-zA-Z_][a-zA-Z0-9_]*"
+        },
+        {
+          "name": "variable.other.local.symlang",
+          "match": "%[a-zA-Z_][a-zA-Z0-9_]*"
+        },
+        {
+          "name": "entity.name.label.symlang",
+          "match": "\\^[a-zA-Z_][a-zA-Z0-9_]*"
+        }
+      ]
+    },
+    "literals": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.symlang",
+          "match": "-?0x[0-9a-fA-F]+"
+        },
+        {
+          "name": "constant.numeric.octal.symlang",
+          "match": "-?0o[0-7]+"
+        },
+        {
+          "name": "constant.numeric.binary.symlang",
+          "match": "-?0b[01]+"
+        },
+        {
+          "name": "constant.numeric.float.symlang",
+          "match": "-?[0-9]+\\.[0-9]+([eE][-+]?[0-9]+)?"
+        },
+        {
+          "name": "constant.numeric.decimal.symlang",
+          "match": "-?[0-9]+"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.comparison.symlang",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.bitwise.symlang",
+          "match": ">>>|>>|<<|&|\\||\\^|~"
+        },
+        {
+          "name": "keyword.operator.arithmetic.symlang",
+          "match": "\\+|\\-|\\*|/|%"
+        },
+        {
+          "name": "keyword.operator.assignment.symlang",
+          "match": "="
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.terminator.statement.symlang",
+          "match": ";"
+        },
+        {
+          "name": "punctuation.separator.symlang",
+          "match": ",|:"
+        },
+        {
+          "name": "punctuation.accessor.symlang",
+          "match": "\\."
+        },
+        {
+          "name": "punctuation.section.block.begin.symlang",
+          "match": "\\{"
+        },
+        {
+          "name": "punctuation.section.block.end.symlang",
+          "match": "\\}"
+        },
+        {
+          "name": "punctuation.section.brackets.begin.symlang",
+          "match": "\\["
+        },
+        {
+          "name": "punctuation.section.brackets.end.symlang",
+          "match": "\\]"
+        },
+        {
+          "name": "punctuation.section.parens.begin.symlang",
+          "match": "\\("
+        },
+        {
+          "name": "punctuation.section.parens.end.symlang",
+          "match": "\\)"
+        }
+      ]
+    }
+  }
+}

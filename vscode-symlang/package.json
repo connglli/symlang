@@ -1,0 +1,25 @@
+{
+    "name": "symlang-syntax",
+    "displayName": "SymLang Syntax Highlighting",
+    "description": "Syntax highlighting for SymLang (.sir) files",
+    "version": "0.1.1",
+    "engines": {
+        "vscode": "^1.75.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "contributes": {
+        "languages": [{
+            "id": "symlang",
+            "aliases": ["SymLang", "symlang", "SymIR", "symir"],
+            "extensions": [".sir"],
+            "configuration": "./language-configuration.json"
+        }],
+        "grammars": [{
+            "language": "symlang",
+            "scopeName": "source.symlang",
+            "path": "./syntaxes/symlang.tmLanguage.json"
+        }]
+    }
+}

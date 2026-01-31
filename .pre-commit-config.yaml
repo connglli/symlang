@@ -14,11 +14,13 @@ repos:
     rev: v0.12.0
     hooks:
       - id: ruff-format
+        files: \.py$
 
   - repo: https://github.com/pre-commit/mirrors-clang-format
     rev: v17.0.6
     hooks:
       - id: clang-format
+        files: \.(c|cpp|h|hpp|cc|cxx|rs)$
 
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v4.2.0
