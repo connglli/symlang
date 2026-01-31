@@ -24,7 +24,7 @@ Concretization means:
 ## Usage
 
 ```bash
-symirsolve <input.sir> [--main <func>] --path <labels> [options]
+symirsolve <input.sir> [--path <labels> | --sample <n>] [options]
 ```
 
 ### Common Examples
@@ -33,6 +33,12 @@ Concretize using constraints embedded in the program (`assume`, `require`) and a
 
 ```bash
 symirsolve template.sir --path '^entry,^b1,^b3,^b1,^b2,^exit' -o concrete.sir
+```
+
+Concretize by randomly sampling up to 100 paths until a SAT one is found:
+
+```bash
+symirsolve template.sir --sample 100 --require-terminal -o concrete.sir
 ```
 
 Concretize and also emit a model file:
@@ -76,6 +82,16 @@ Rules:
 
 * The sequence must be compatible with `br` edges in the CFG.
 * `symirsolve` uses the path to select which side of conditional branches is taken.
+* If `--sample` is used, the path acts as a mandatory **prefix** for all sampled traces.
+
+
+## Random Path Sampling
+
+Instead of providing a complete path, `symirsolve` can explore the CFG automatically:
+
+- **`--sample N`**: Performs up to $N$ random walks starting from the function entry (or the `--path` prefix).
+- **Early Exit**: The process stops as soon as the first logically feasible (`SAT`) path is found.
+- **`--require-terminal`**: If a random walk reaches `--max-path-len` without hitting a `ret`, `symirsolve` will attempt to complete the trace using the shortest path to any `ret` block. If disabled, non-terminating samples are discarded.
 
 
 ## Outputs
@@ -91,7 +107,10 @@ Rules:
 | Option                | Description                                              |
 | --------------------- | -------------------------------------------------------- |
 | `--main <func>`       | Function to concretize (default: `@main`)                |
-| `--path <labels>`     | Comma-separated block label sequence                     |
+| `--path <labels>`     | Comma-separated block labels (acts as prefix if sampling)|
+| `--sample <n>`        | Number of paths to sample randomly until SAT is found    |
+| `--max-path-len <n>`  | Maximum random path length (default: 100)                |
+| `--require-terminal`  | Force paths to reach 'ret' via shortest path if needed   |
 | `-o <file>`           | Output concrete `.sir` file                              |
 | `--dump-ast`          | Dump concretized AST to stdout                           |
 | `--timeout-ms <n>`    | Solver timeout in milliseconds                           |
