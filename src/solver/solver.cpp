@@ -2,6 +2,7 @@
 #include <cstring>
 #include <functional>
 #include <iostream>
+#include <random>
 #include <stdexcept>
 #include "analysis/cfg.hpp"
 
@@ -889,6 +890,88 @@ namespace symir {
         return solver.make_term(smt::Kind::BV_SGE, {lhs, rhs});
     }
     return {};
+  }
+
+  SymbolicExecutor::Result SymbolicExecutor::sample(
+      const std::string &funcName, uint32_t n, uint32_t maxPathLen, bool requireTerminal,
+      const std::vector<std::string> &prefixPath,
+      const std::unordered_map<std::string, int64_t> &fixedSyms
+  ) {
+    const FunDecl *entry = nullptr;
+    for (const auto &f: prog_.funs) {
+      if (f.name.name == funcName) {
+        entry = &f;
+        break;
+      }
+    }
+    if (!entry)
+      throw std::runtime_error("Function not found: " + funcName);
+
+    DiagBag diags;
+    CFG cfg = CFG::build(*entry, diags);
+    if (diags.hasErrors())
+      throw std::runtime_error("CFG build failed");
+
+    auto nextToRet = cfg.shortestPathToRet(*entry);
+    std::mt19937 rng(config_.seed);
+    Result lastRes;
+    lastRes.unknown = true;
+
+    for (uint32_t i = 0; i < n; ++i) {
+      std::vector<std::string> path = prefixPath;
+      if (path.empty()) {
+        path.push_back(cfg.blocks[cfg.entry]);
+      }
+
+      std::size_t currentIdx = cfg.indexOf.at(path.back());
+      bool terminated = std::holds_alternative<RetTerm>(entry->blocks[currentIdx].term) ||
+                        std::holds_alternative<UnreachableTerm>(entry->blocks[currentIdx].term);
+
+      while (!terminated && path.size() < maxPathLen) {
+        const auto &successors = cfg.succ[currentIdx];
+        if (successors.empty())
+          break;
+
+        std::uniform_int_distribution<std::size_t> dist(0, successors.size() - 1);
+        std::size_t nextIdx = successors[dist(rng)];
+        path.push_back(cfg.blocks[nextIdx]);
+        currentIdx = nextIdx;
+        terminated = std::holds_alternative<RetTerm>(entry->blocks[currentIdx].term) ||
+                     std::holds_alternative<UnreachableTerm>(entry->blocks[currentIdx].term);
+      }
+
+      if (!terminated) {
+        if (requireTerminal) {
+          // Append shortest path to ret
+          while (!std::holds_alternative<RetTerm>(entry->blocks[currentIdx].term)) {
+            auto it = nextToRet.find(currentIdx);
+            if (it == nextToRet.end()) {
+              // Cannot reach ret from here
+              goto next_sample;
+            }
+            currentIdx = it->second;
+            path.push_back(cfg.blocks[currentIdx]);
+          }
+        } else {
+          // Discard if not terminated
+          continue;
+        }
+      }
+
+      try {
+        auto res = solve(funcName, path, fixedSyms);
+        if (res.sat)
+          return res;
+        lastRes = std::move(res);
+      } catch (const std::exception &e) {
+        lastRes.unknown = true;
+        lastRes.message = e.what();
+      }
+
+    next_sample:;
+    }
+
+    return lastRes;
   }
 
 } // namespace symir

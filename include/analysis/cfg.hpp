@@ -43,6 +43,12 @@ namespace symir {
      * RPO is essential for efficient forward dataflow analysis.
      */
     std::vector<std::size_t> rpo() const;
+
+    /**
+     * Computes the shortest path to any block that ends with a 'ret' terminator.
+     * Returns a map from block index to the index of the next block in the shortest path.
+     */
+    std::unordered_map<std::size_t, std::size_t> shortestPathToRet(const FunDecl &f) const;
   };
 
 } // namespace symir

@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// SOLVER_ARGS: --main @main --path '^entry'
+// SOLVER_ARGS: --main @main --path '^entry,^target'
 // INTERP_ARGS: --main @main --sym %?v=42
 // COMPILER_ARGS: --main @main --sym %?v=42
 
@@ -10,12 +10,12 @@ fun @main() : i32 {
   sym %?v : value i32 in [0, 100];
   let mut %o: @Outer;
 
-^init:
+^entry:
   %o.arr[0].val = 10;
   %o.arr[1].val = 20;
-  br ^entry;
+  br ^target;
 
-^entry:
+^target:
   %o.arr[0].val = %?v;
 
   require %o.arr[1].val == 20, "unrelated array element o.arr[1].val must be preserved";

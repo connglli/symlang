@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// SOLVER_ARGS: --main @main --path '^entry'
+// SOLVER_ARGS: --main @main --path '^entry,^target'
 // INTERP_ARGS: --main @main --sym %?val=50 --sym %?idx=0
 // COMPILER_ARGS: --main @main --sym %?val=50 --sym %?idx=0
 
@@ -10,14 +10,14 @@ fun @main() : i32 {
   sym %?val : value i32 in [0, 100];
   let mut %arr: [2] @Point;
 
-^init:
+^entry:
   %arr[0].x = 10;
   %arr[0].y = 11;
   %arr[1].x = 20;
   %arr[1].y = 21;
-  br ^entry;
+  br ^target;
 
-^entry:
+^target:
   %arr[%?idx].x = %?val;
 
   // If ?idx == 0, then arr[0].x == ?val, and arr[1].x should be preserved (20)

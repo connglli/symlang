@@ -221,7 +221,15 @@ namespace symir {
                   } else if constexpr (std::is_same_v<S, FloatLit>) {
                     printDouble(out_, src.value);
                   } else if constexpr (std::is_same_v<S, SymId>) {
-                    out_ << src.name;
+                    if (model_.count(src.name)) {
+                      auto val = model_.at(src.name);
+                      if (std::holds_alternative<int64_t>(val))
+                        out_ << std::get<int64_t>(val);
+                      else
+                        printDouble(out_, std::get<double>(val));
+                    } else {
+                      out_ << src.name;
+                    }
                   } else {
                     printLValue(src);
                   }
@@ -243,6 +251,14 @@ namespace symir {
   }
 
   void SIRPrinter::printLValue(const LValue &lv) {
+    if (model_.count(lv.base.name) && lv.accesses.empty()) {
+      auto val = model_.at(lv.base.name);
+      if (std::holds_alternative<int64_t>(val))
+        out_ << std::get<int64_t>(val);
+      else
+        printDouble(out_, std::get<double>(val));
+      return;
+    }
     out_ << lv.base.name;
     for (const auto &acc: lv.accesses) {
       if (auto ai = std::get_if<AccessIndex>(&acc)) {

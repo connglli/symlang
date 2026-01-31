@@ -38,7 +38,10 @@ int main(int argc, char **argv) {
   options.add_options()
     ("input", "Input .sir file", cxxopts::value<std::string>())
     ("main", "Function to concretize", cxxopts::value<std::string>()->default_value("@main"))
-    ("path", "Comma-separated block labels for execution path", cxxopts::value<std::string>())
+    ("path", "Comma-separated block labels for execution path (acts as prefix if --sample is used)", cxxopts::value<std::string>())
+    ("sample", "Number of paths to sample randomly", cxxopts::value<uint32_t>())
+    ("max-path-len", "Maximum random path length", cxxopts::value<uint32_t>()->default_value("100"))
+    ("require-terminal", "Force paths to reach 'ret' by appending shortest path if needed", cxxopts::value<bool>()->default_value("false"))
     ("o,output", "Output .sir file", cxxopts::value<std::string>())
     ("dump-ast", "Dump concretized AST to stdout", cxxopts::value<bool>()->default_value("false"))
     ("timeout-ms", "Solver timeout in milliseconds", cxxopts::value<uint32_t>()->default_value("0"))
@@ -56,20 +59,24 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-  if (!result.count("input") || !result.count("path")) {
-    std::cerr << "Error: input and --path are required." << std::endl;
+  if (!result.count("input") || (!result.count("path") && !result.count("sample"))) {
+    std::cerr << "Error: input and either --path or --sample are required." << std::endl;
     std::cerr << options.help() << std::endl;
     return 1;
   }
 
   std::string inputPath = result["input"].as<std::string>();
   std::string funcName = result["main"].as<std::string>();
-  std::string path_str = result["path"].as<std::string>();
-  if (path_str.size() >= 2 && ((path_str.front() == '\'' && path_str.back() == '\'') ||
-                               (path_str.front() == '\"' && path_str.back() == '\"'))) {
-    path_str = path_str.substr(1, path_str.size() - 2);
+
+  std::vector<std::string> path;
+  if (result.count("path")) {
+    std::string path_str = result["path"].as<std::string>();
+    if (path_str.size() >= 2 && ((path_str.front() == '\'' && path_str.back() == '\'') ||
+                                 (path_str.front() == '\"' && path_str.back() == '\"'))) {
+      path_str = path_str.substr(1, path_str.size() - 2);
+    }
+    path = split(path_str, ',');
   }
-  std::vector<std::string> path = split(path_str, ',');
 
   std::unordered_map<std::string, int64_t> fixedSyms;
   if (result.count("sym")) {
@@ -126,7 +133,15 @@ int main(int argc, char **argv) {
     };
 
     SymbolicExecutor executor(prog, config, solverFactory);
-    auto res = executor.solve(funcName, path, fixedSyms);
+    SymbolicExecutor::Result res;
+    if (result.count("sample")) {
+      res = executor.sample(
+          funcName, result["sample"].as<uint32_t>(), result["max-path-len"].as<uint32_t>(),
+          result["require-terminal"].as<bool>(), path, fixedSyms
+      );
+    } else {
+      res = executor.solve(funcName, path, fixedSyms);
+    }
 
     if (res.sat) {
       std::cout << "SAT" << std::endl;

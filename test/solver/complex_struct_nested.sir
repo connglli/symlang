@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// SOLVER_ARGS: --main @main --path '^entry'
+// SOLVER_ARGS: --main @main --path '^entry,^target'
 // INTERP_ARGS: --main @main --sym %?v=55
 // COMPILER_ARGS: --main @main --sym %?v=55
 
@@ -15,14 +15,14 @@ fun @main() : i32 {
   let mut %chk1: i32 = 0;
   let mut %chk2: i32 = 0;
 
-^init:
+^entry:
   %l.p1.x = 1;
   %l.p1.y = 2;
   %l.p2.x = 3;
   %l.p2.y = 4;
-  br ^entry;
+  br ^target;
 
-^entry:
+^target:
   %l.p2.y = %?v;
 
   // Check unrelated field preserved

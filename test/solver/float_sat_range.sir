@@ -6,6 +6,7 @@
 fun @test() : f32 {
   sym %?x: value f32;
 ^entry:
+  assume %?x == 1.5;
   require %?x > 1.0;
   require %?x < 2.0;
   ret %?x;

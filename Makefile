@@ -119,4 +119,5 @@ test: $(TARGET_INTERP) $(TARGET_COMPILER) $(TARGET_SOLVER)
 	$(PY) -m test.lib.run_interp_tests test/complex ./$(TARGET_INTERP)
 	$(PY) -m test.lib.run_compiler_tests test/ ./$(TARGET_COMPILER) --target c
 	$(PY) -m test.lib.run_compiler_tests test/ ./$(TARGET_COMPILER) --target wasm
-	$(PY) -m test.lib.run_solver_tests test/solver ./$(TARGET_SOLVER)
+	$(PY) -m test.lib.run_solver_tests test/solver ./$(TARGET_SOLVER) ./$(TARGET_INTERP)
+	$(PY) -m test.lib.run_solver_tests test/sample ./$(TARGET_SOLVER) ./$(TARGET_INTERP)

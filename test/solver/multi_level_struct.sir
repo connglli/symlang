@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// SOLVER_ARGS: --main @main --path '^entry'
+// SOLVER_ARGS: --main @main --path '^entry,^target'
 // INTERP_ARGS: --main @main --sym %?v=99
 // COMPILER_ARGS: --main @main --sym %?v=99
 
@@ -11,13 +11,13 @@ fun @main() : i32 {
   sym %?v : value i32 in [0, 100];
   let mut %c: @C;
 
-^init:
+^entry:
   %c.b.a.x = 1;
   %c.b.y = 2;
   %c.z = 3;
-  br ^entry;
+  br ^target;
 
-^entry:
+^target:
   %c.b.a.x = %?v;
 
   require %c.b.y == 2, "unrelated field c.b.y must be preserved";

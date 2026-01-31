@@ -51,6 +51,16 @@ namespace symir {
         const std::unordered_map<std::string, int64_t> &fixedSyms = {}
     );
 
+    /**
+     * Samples N paths randomly and tries to solve each of them.
+     * Stops and returns the first SAT result found.
+     */
+    Result sample(
+        const std::string &funcName, uint32_t n, uint32_t maxPathLen, bool requireTerminal,
+        const std::vector<std::string> &prefixPath = {},
+        const std::unordered_map<std::string, int64_t> &fixedSyms = {}
+    );
+
   private:
     const Program &prog_;
     Config config_;

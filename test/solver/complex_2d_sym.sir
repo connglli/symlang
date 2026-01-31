@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// SOLVER_ARGS: --main @main --path '^entry'
+// SOLVER_ARGS: --main @main --path '^entry,^target'
 // INTERP_ARGS: --main @main --sym %?c=1 --sym %?r=1
 // COMPILER_ARGS: --main @main --sym %?c=1 --sym %?r=1
 
@@ -14,14 +14,14 @@ fun @main() : i32 {
   let mut %m: [2][2]i32;
   let mut %val: i32 = 0;
 
-^init:
+^entry:
   %m[0][0] = 0;
   %m[0][1] = 0;
   %m[1][0] = 0;
   %m[1][1] = 0;
-  br ^entry;
+  br ^target;
 
-^entry:
+^target:
   %m[%?r][%?c] = 7;
   %val = %m[1][1];
 

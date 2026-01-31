@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <functional>
+#include <limits>
+#include <queue>
 #include "analysis/cfg.hpp"
 
 namespace symir {
@@ -86,6 +88,34 @@ namespace symir {
     dfs(entry);
     std::reverse(order.begin(), order.end());
     return order;
+  }
+
+  std::unordered_map<std::size_t, std::size_t> CFG::shortestPathToRet(const FunDecl &f) const {
+    std::unordered_map<std::size_t, std::size_t> nextStep;
+    std::vector<std::size_t> dist(blocks.size(), std::numeric_limits<std::size_t>::max());
+    std::queue<std::size_t> q;
+
+    for (std::size_t i = 0; i < f.blocks.size(); ++i) {
+      if (std::holds_alternative<RetTerm>(f.blocks[i].term)) {
+        dist[i] = 0;
+        q.push(i);
+      }
+    }
+
+    while (!q.empty()) {
+      std::size_t u = q.front();
+      q.pop();
+
+      for (auto v: pred[u]) {
+        if (dist[v] == std::numeric_limits<std::size_t>::max()) {
+          dist[v] = dist[u] + 1;
+          nextStep[v] = u;
+          q.push(v);
+        }
+      }
+    }
+
+    return nextStep;
   }
 
 } // namespace symir

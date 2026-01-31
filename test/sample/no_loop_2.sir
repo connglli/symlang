@@ -1,0 +1,38 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --sample 1000 --require-terminal --seed 42
+fun @main() : i32 {
+  sym %?a : value i32;
+  sym %?b : value i32;
+  let mut %sum: i32 = 0;
+
+^entry:
+  %sum = %?a + %?b;
+  br %sum > 10, ^b1, ^b2;
+
+^b1:
+  br %?a > 5, ^b1a, ^b1b;
+
+^b1a:
+  %sum = %sum + 1;
+  br ^exit;
+
+^b1b:
+  %sum = %sum + 2;
+  br ^exit;
+
+^b2:
+  br %?b > 5, ^b2a, ^b2b;
+
+^b2a:
+  %sum = %sum - 1;
+  br ^exit;
+
+^b2b:
+  %sum = %sum - 2;
+  br ^exit;
+
+^exit:
+  require %?a == 6;
+  require %?b == 6;
+  ret %sum;
+}

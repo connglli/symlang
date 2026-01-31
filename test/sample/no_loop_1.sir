@@ -1,0 +1,35 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --sample 1000 --require-terminal --seed 42
+fun @main() : i32 {
+  sym %?x : value i32 in [0, 100];
+  let mut %res: i32 = 0;
+
+^entry:
+  br %?x > 50, ^high, ^low;
+
+^high:
+  br %?x > 75, ^very_high, ^mid_high;
+
+^very_high:
+  %res = 100;
+  br ^exit;
+
+^mid_high:
+  %res = 75;
+  br ^exit;
+
+^low:
+  br %?x > 25, ^mid_low, ^very_low;
+
+^mid_low:
+  %res = 25;
+  br ^exit;
+
+^very_low:
+  %res = 0;
+  br ^exit;
+
+^exit:
+  require %?x == 77;
+  ret %res;
+}

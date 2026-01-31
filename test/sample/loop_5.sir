@@ -1,0 +1,24 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --sample 1000 --require-terminal --seed 42
+fun @main() : i32 {
+  sym %?s : value i32 in [0, 1];
+  let mut %i: i32 = 0;
+
+^entry:
+  br ^loop;
+
+^loop:
+  br %i < 5, ^work, ^exit;
+
+^work:
+  %i = %i + 1;
+  br %?s == 1, ^hit, ^loop;
+
+^hit:
+  %i = %i + 1;
+  br ^loop;
+
+^exit:
+  require %?s == 1;
+  ret %i;
+}
