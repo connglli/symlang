@@ -1,3 +1,4 @@
+// EXPECT: PASS
 struct @FeistelContext {
   l: i8;      // Left half of the block
   r: i8;      // Right half of the block

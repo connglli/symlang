@@ -1,3 +1,4 @@
+// EXPECT: PASS
 struct @NewtonContext {
   x: f64;     // The current estimate of the root
   fx: f64;    // The value of the function f(x) at the current estimate

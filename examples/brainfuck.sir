@@ -1,3 +1,4 @@
+// EXPECT: PASS
 struct @BFContext {
   tape: [100] i8;    // Memory tape for Brainfuck cells
   code: [100] i8;    // Memory for the Brainfuck bytecode

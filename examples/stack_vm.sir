@@ -1,3 +1,4 @@
+// EXPECT: PASS
 struct @VMContext {
   stack: [10] i32;  // The VM stack for storing operands and results
   prog: [10] i32;   // Memory area for storing the VM bytecode program

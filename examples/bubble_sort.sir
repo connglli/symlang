@@ -1,3 +1,4 @@
+// EXPECT: PASS
 struct @SortContext {
   data: [4] i32;  // The array to be sorted
   i: i32;         // Outer loop counter
