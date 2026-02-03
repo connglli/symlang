@@ -1,6 +1,6 @@
 #pragma once
 
-#include "bitwuzla/cpp/bitwuzla.h"
+#include <bitwuzla/cpp/bitwuzla.h>
 #include "solver/smt.hpp"
 
 namespace symir::solver {

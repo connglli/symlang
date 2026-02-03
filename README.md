@@ -37,24 +37,17 @@ It provides a robust foundation for building tools that need to reason about pro
 | `symirc` | **Compiler**: Translate `.sir` programs into optimized C or WebAssembly (WASM). |
 | `symirsolve` | **Solver**: Concretize symbolic programs by solving path constraints via SMT. |
 
-## SMT Backends
-
-SymLang supports multiple SMT solvers via an abstract interface. The following backends are available:
-
-- **Bitwuzla (Default):** Highly optimized for Bit-Vector (BV) and Floating-Point (FP) logic. It is the recommended solver for performance and reliability in symbolic execution tasks.
-- **AliveSMT (Z3):** A Z3-based backend derived from the Alive2 project. It provides an alternative for verification tasks where Z3's specific heuristics or theories are preferred.
-
 ## Getting Started
 
 ### Prerequisites
 
 - **C++20** compatible compiler (GCC 10+ or Clang 10+)
-- **GMP** (GNU Multi-Precision Arithmetic Library)
-  - Required by Bitwuzla
+- **Bitwuzla** (Required by default)
+  - Install: https://github.com/bitwuzla/bitwuzla
 - **Z3** (Optional)
-  - Required if using the `alivesmt` backend
+  - Install: https://github.com/Z3Prover/z3
 - **Python 3** (for running the test suite)
-- **WASM runtime** (optional, for running WASM backend tests such as Wasmtime, Wasmer, or Node.js)
+- **WASM runtime** (Optional, for running WASM backend tests such as Wasmtime, Wasmer, or Node.js)
 
 ### Building
 
@@ -85,6 +78,11 @@ make test
 ```
 
 ### Switching SMT Backends
+
+SymLang supports multiple SMT solvers via an abstract interface. The following backends are available:
+
+- **Bitwuzla (Default):** Highly optimized for Bit-Vector (BV) and Floating-Point (FP) logic. It is the recommended solver for performance and reliability in symbolic execution tasks.
+- **AliveSMT (Z3-based):** A Z3-based backend derived from the Alive2 project. It provides an alternative for verification tasks where Z3's specific heuristics or theories are preferred.
 
 The solver backend is selected at compile-time using the `SOLVER` variable in the `Makefile`.
 

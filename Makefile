@@ -26,13 +26,19 @@ endif
 
 # Solver support
 ifeq ($(SOLVER), bitwuzla)
-  CXXFLAGS += -DUSE_BITWUZLA -Ibitwuzla/include
-  LDFLAGS += -Lbitwuzla/lib/x86_64-linux-gnu -lbitwuzla -lbitwuzlals -lbitwuzlabv -lbitwuzlabb -lgmp
+  ifneq ($(shell pkg-config --exists bitwuzla && echo found),found)
+    $(error "Bitwuzla not found. Please install it and ensure it is discoverable via pkg-config.")
+  endif
+  CXXFLAGS += -DUSE_BITWUZLA $(shell pkg-config --cflags bitwuzla)
+  LDFLAGS += $(shell pkg-config --libs bitwuzla)
   SOLVER_SRCS += src/solver/bitwuzla_impl.cpp
   SOLVER_IMPL_OBJ = src/solver/bitwuzla_impl.o
 else ifeq ($(SOLVER), alivesmt)
-  CXXFLAGS += -DUSE_ALIVESMT -Ialivesmt/include
-  LDFLAGS += -lz3
+  ifneq ($(shell pkg-config --exists z3 && echo found),found)
+    $(error "Z3 not found. Please install it and ensure it is discoverable via pkg-config.")
+  endif
+  CXXFLAGS += -DUSE_ALIVESMT -Ialivesmt/include $(shell pkg-config --cflags z3)
+  LDFLAGS += $(shell pkg-config --libs z3)
   ALIVESMT_SRCS = alivesmt/lib/ctx.cpp alivesmt/lib/expr.cpp alivesmt/lib/exprs.cpp alivesmt/lib/smt.cpp alivesmt/lib/solver.cpp alivesmt/lib/util.cpp
   SOLVER_SRCS += src/solver/alive_impl.cpp $(ALIVESMT_SRCS)
   SOLVER_IMPL_OBJ = src/solver/alive_impl.o $(ALIVESMT_SRCS:.cpp=.o)
