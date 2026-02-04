@@ -1,0 +1,23 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --sample 100 --require-terminal --num-threads 2
+// INTERP_ARGS: --main @main
+// SKIP: COMPILER
+
+// Test --num-threads option (long form)
+fun @main() : i32 {
+  sym %?x : value i32 in [1, 100];
+  let mut %result: i32 = 0;
+^entry:
+  br %?x > 50, ^greater, ^less_or_equal;
+
+^greater:
+  %result = 100;
+  br ^exit;
+
+^less_or_equal:
+  %result = 10;
+  br ^exit;
+
+^exit:
+  ret %result;
+}

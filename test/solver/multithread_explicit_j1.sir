@@ -1,0 +1,13 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --sample 100 --require-terminal -j 1
+// INTERP_ARGS: --main @main
+// SKIP: COMPILER
+
+// Test explicit single-threaded with -j 1
+fun @main() : i32 {
+  sym %?x : value i32 in [1, 20];
+^entry:
+  require %?x > 5, "x must be greater than 5";
+  require %?x < 15, "x must be less than 15";
+  ret %?x;
+}

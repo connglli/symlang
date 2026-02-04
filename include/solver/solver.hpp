@@ -20,6 +20,7 @@ namespace symir {
     struct Config {
       uint32_t timeout_ms = 0;
       uint32_t seed = 0;
+      uint32_t num_threads = 1;
     };
 
     using SolverFactory = std::function<std::unique_ptr<smt::ISolver>(const Config &)>;

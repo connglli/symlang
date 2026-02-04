@@ -1,18 +1,20 @@
 #include "solver/solver.hpp"
+#include <atomic>
 #include <cstring>
 #include <functional>
 #include <iostream>
+#include <mutex>
+#include <optional>
 #include <random>
 #include <stdexcept>
+#include <thread>
 #include "analysis/cfg.hpp"
 
 namespace symir {
 
   SymbolicExecutor::SymbolicExecutor(
       const Program &prog, const Config &config, SolverFactory solverFactory
-  ) :
-      prog_(prog),
-      config_(config), solverFactory_(solverFactory) {
+  ) : prog_(prog), config_(config), solverFactory_(solverFactory) {
     for (const auto &s: prog_.structs) {
       structs_[s.name.name] = &s;
     }
@@ -913,11 +915,18 @@ namespace symir {
       throw std::runtime_error("CFG build failed");
 
     auto nextToRet = cfg.shortestPathToRet(*entry);
-    std::mt19937 rng(config_.seed);
-    Result lastRes;
-    lastRes.unknown = true;
 
-    for (uint32_t i = 0; i < n; ++i) {
+    // Determine number of threads
+    uint32_t num_threads = config_.num_threads;
+    if (num_threads == 0) {
+      num_threads = std::thread::hardware_concurrency();
+      if (num_threads == 0)
+        num_threads = 1; // Fallback if hardware_concurrency returns 0
+    }
+
+    // Lambda to generate a random path and attempt to solve it
+    // Returns optional Result: nullopt if path should be skipped, otherwise the solve result
+    auto tryOneSample = [&](std::mt19937 &rng) -> std::optional<Result> {
       std::vector<std::string> path = prefixPath;
       if (path.empty()) {
         path.push_back(cfg.blocks[cfg.entry]);
@@ -927,6 +936,7 @@ namespace symir {
       bool terminated = std::holds_alternative<RetTerm>(entry->blocks[currentIdx].term) ||
                         std::holds_alternative<UnreachableTerm>(entry->blocks[currentIdx].term);
 
+      // Random walk
       while (!terminated && path.size() < maxPathLen) {
         const auto &successors = cfg.succ[currentIdx];
         if (successors.empty())
@@ -940,35 +950,108 @@ namespace symir {
                      std::holds_alternative<UnreachableTerm>(entry->blocks[currentIdx].term);
       }
 
+      // Handle non-terminated paths
       if (!terminated) {
         if (requireTerminal) {
           // Append shortest path to ret
           while (!std::holds_alternative<RetTerm>(entry->blocks[currentIdx].term)) {
             auto it = nextToRet.find(currentIdx);
             if (it == nextToRet.end()) {
-              // Cannot reach ret from here
-              goto next_sample;
+              // Cannot reach ret from here - skip this sample
+              return std::nullopt;
             }
             currentIdx = it->second;
             path.push_back(cfg.blocks[currentIdx]);
           }
         } else {
           // Discard if not terminated
-          continue;
+          return std::nullopt;
         }
       }
 
+      // Try to solve this path
       try {
-        auto res = solve(funcName, path, fixedSyms);
-        if (res.sat)
-          return res;
-        lastRes = std::move(res);
+        return solve(funcName, path, fixedSyms);
       } catch (const std::exception &e) {
-        lastRes.unknown = true;
-        lastRes.message = e.what();
+        Result errRes;
+        errRes.unknown = true;
+        errRes.message = e.what();
+        return errRes;
+      }
+    };
+
+    // Single-threaded execution
+    if (num_threads == 1) {
+      std::mt19937 rng(config_.seed);
+      Result lastRes;
+      lastRes.unknown = true;
+
+      for (uint32_t i = 0; i < n; ++i) {
+        auto res = tryOneSample(rng);
+        if (!res)
+          continue; // Path was skipped
+
+        if (res->sat)
+          return *res;
+        lastRes = std::move(*res);
       }
 
-    next_sample:;
+      return lastRes;
+    }
+
+    // Multi-threaded execution
+    std::atomic<bool> found(false);
+    std::atomic<uint32_t> samplesProcessed(0);
+    std::mutex resultMutex;
+    Result satResult;
+    Result lastRes;
+    lastRes.unknown = true;
+
+    auto workerFunc = [&](uint32_t threadId) {
+      std::mt19937 rng(config_.seed + threadId);
+      Result threadLastRes;
+      threadLastRes.unknown = true;
+
+      while (samplesProcessed.fetch_add(1) < n && !found.load()) {
+        if (found.load())
+          break;
+
+        auto res = tryOneSample(rng);
+        if (!res)
+          continue; // Path was skipped
+
+        if (res->sat) {
+          std::lock_guard<std::mutex> lock(resultMutex);
+          if (!found.load()) {
+            satResult = std::move(*res);
+            found.store(true);
+          }
+          return;
+        }
+        threadLastRes = std::move(*res);
+      }
+
+      // Update last result
+      std::lock_guard<std::mutex> lock(resultMutex);
+      if (!threadLastRes.message.empty() ||
+          (!threadLastRes.sat && !threadLastRes.unsat && threadLastRes.unknown)) {
+        lastRes = std::move(threadLastRes);
+      }
+    };
+
+    // Launch worker threads
+    std::vector<std::thread> threads;
+    for (uint32_t i = 0; i < num_threads; ++i) {
+      threads.emplace_back(workerFunc, i);
+    }
+
+    // Wait for all threads to complete
+    for (auto &t: threads) {
+      t.join();
+    }
+
+    if (found.load()) {
+      return satResult;
     }
 
     return lastRes;

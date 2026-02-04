@@ -1,0 +1,24 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --sample 100 --require-terminal
+// INTERP_ARGS: --main @main
+// SKIP: COMPILER
+
+// Test default single-threaded behavior (no -j option)
+// This should use the default -j 1
+fun @main() : i32 {
+  sym %?x : value i32 in [1, 20];
+  let mut %result: i32 = 0;
+^entry:
+  br %?x == 10, ^found, ^not_found;
+
+^found:
+  %result = 42;
+  br ^exit;
+
+^not_found:
+  %result = 0;
+  br ^exit;
+
+^exit:
+  ret %result;
+}

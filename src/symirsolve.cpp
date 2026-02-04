@@ -46,6 +46,7 @@ int main(int argc, char **argv) {
     ("dump-ast", "Dump concretized AST to stdout", cxxopts::value<bool>()->default_value("false"))
     ("timeout-ms", "Solver timeout in milliseconds", cxxopts::value<uint32_t>()->default_value("0"))
     ("seed", "Solver seed", cxxopts::value<uint32_t>()->default_value("0"))
+    ("j,num-threads", "Number of threads for parallel solving (0 = hardware concurrency)", cxxopts::value<uint32_t>()->default_value("1"))
     ("emit-model", "Emit symbol assignments to a JSON-like file", cxxopts::value<std::string>())
     ("sym", "Fix a symbol to a value (name=val)", cxxopts::value<std::vector<std::string>>())
     ("h,help", "Print usage");
@@ -119,6 +120,7 @@ int main(int argc, char **argv) {
     SymbolicExecutor::Config config;
     config.timeout_ms = result["timeout-ms"].as<uint32_t>();
     config.seed = result["seed"].as<uint32_t>();
+    config.num_threads = result["num-threads"].as<uint32_t>();
 
     auto solverFactory = [](const SymbolicExecutor::Config &cfg
                          ) -> std::unique_ptr<symir::smt::ISolver> {

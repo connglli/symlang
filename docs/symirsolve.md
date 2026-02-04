@@ -41,6 +41,18 @@ Concretize by randomly sampling up to 100 paths until a SAT one is found:
 symirsolve template.sir --sample 100 --require-terminal -o concrete.sir
 ```
 
+Use multi-threading to speed up sampling (2 threads):
+
+```bash
+symirsolve template.sir --sample 100 --require-terminal -j 2 -o concrete.sir
+```
+
+Use all available CPU cores for sampling:
+
+```bash
+symirsolve template.sir --sample 100 --require-terminal -j 0 -o concrete.sir
+```
+
 Concretize and also emit a model file:
 
 ```bash
@@ -94,6 +106,26 @@ Instead of providing a complete path, `symirsolve` can explore the CFG automatic
 - **`--require-terminal`**: If a random walk reaches `--max-path-len` without hitting a `ret`, `symirsolve` will attempt to complete the trace using the shortest path to any `ret` block. If disabled, non-terminating samples are discarded.
 
 
+## Multi-Threading Support
+
+`symirsolve` supports parallel sampling to improve performance when exploring large search spaces:
+
+- **`-j N` or `--num-threads N`**: Use `N` threads for parallel path sampling
+- **`-j 0`**: Automatically use all available CPU cores (determined by `std::thread::hardware_concurrency()`)
+- **Default**: Single-threaded execution (`-j 1`)
+
+Multi-threading is most effective with:
+- **Large sample counts** (`--sample` with high values)
+- **Complex search spaces** (multiple symbolic variables, many paths)
+- **Non-deterministic solving** (where different seeds/paths may have different solve times)
+
+**Notes:**
+- Each thread uses an independent solver instance with a different random seed (based on the base `--seed` + thread ID)
+- The first thread to find a SAT result causes all threads to terminate early
+- Thread-safety is ensured through proper synchronization of shared state
+- Both Bitwuzla and AliveSMT (Z3) backends support multi-threading
+
+
 ## Outputs
 
 * **SAT**: If a solution exists, `symirsolve` reports `SAT`.
@@ -111,6 +143,7 @@ Instead of providing a complete path, `symirsolve` can explore the CFG automatic
 | `--sample <n>`        | Number of paths to sample randomly until SAT is found    |
 | `--max-path-len <n>`  | Maximum random path length (default: 100)                |
 | `--require-terminal`  | Force paths to reach 'ret' via shortest path if needed   |
+| `-j, --num-threads <n>` | Number of threads for parallel solving (0 = use all available CPU cores, default: 1) |
 | `-o <file>`           | Output concrete `.sir` file                              |
 | `--dump-ast`          | Dump concretized AST to stdout                           |
 | `--timeout-ms <n>`    | Solver timeout in milliseconds                           |

@@ -1,0 +1,24 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --sample 100 --require-terminal -j 2
+// INTERP_ARGS: --main @main
+// SKIP: COMPILER
+
+// Test basic multi-threaded solving with -j 2
+// This should find a solution with 2 threads
+fun @main() : i32 {
+  sym %?x : value i32 in [1, 100];
+  let mut %result: i32 = 0;
+^entry:
+  br %?x < 50, ^less, ^greater_or_equal;
+
+^less:
+  %result = 10;
+  br ^exit;
+
+^greater_or_equal:
+  %result = 20;
+  br ^exit;
+
+^exit:
+  ret %result;
+}

@@ -1,0 +1,41 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --sample 200 --require-terminal -j 4
+// INTERP_ARGS: --main @main
+// SKIP: COMPILER
+
+// Test multi-threaded solving with -j 4 and more complex constraints
+// This should find a solution with 4 threads
+fun @main() : i32 {
+  sym %?a : value i32 in [1, 50];
+  sym %?b : value i32 in [1, 50];
+  let mut %result: i32 = 0;
+  let mut %sum: i32 = 0;
+^entry:
+  %sum = %?a + %?b;
+  br %sum > 75, ^path1, ^check2;
+
+^check2:
+  br %?a > 25, ^path2, ^check3;
+
+^check3:
+  br %?b > 25, ^path3, ^path4;
+
+^path1:
+  %result = 1;
+  br ^exit;
+
+^path2:
+  %result = 2;
+  br ^exit;
+
+^path3:
+  %result = 3;
+  br ^exit;
+
+^path4:
+  %result = 4;
+  br ^exit;
+
+^exit:
+  ret %result;
+}
