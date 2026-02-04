@@ -1,9 +1,15 @@
 #include "solver/alive_impl.hpp"
 #include <iostream>
+#include <mutex>
 #include <stdexcept>
 #include <z3.h>
 
 namespace symir::solver {
+
+  // Global mutex to protect Z3 operations.
+  // Z3's reference counting and global context are NOT thread-safe,
+  // so we must serialize all AliveSMT operations across threads.
+  static std::mutex z3_global_mutex;
 
   // Helper to detect RM sort from Alive2 expr
   static bool is_expr_rm(const ::alivesmt::expr &e) {
@@ -16,6 +22,10 @@ namespace symir::solver {
   }
 
   AliveSolver::AliveSolver(uint32_t timeout_ms, uint32_t seed) {
+    // Z3's global context and reference counting are not thread-safe.
+    // We must serialize all Z3 operations across threads.
+    std::lock_guard<std::mutex> lock(z3_global_mutex);
+
     // initializer member handles smt::smt_initializer::init() which calls ctx.init() and
     // solver_init()
     if (timeout_ms > 0) {
@@ -28,6 +38,9 @@ namespace symir::solver {
   }
 
   AliveSolver::~AliveSolver() {
+    std::lock_guard<std::mutex> lock(z3_global_mutex);
+    // Destroy solver while holding the lock
+    solver.reset();
     // optional: ::alivesmt::solver_destroy();
     // Usually better to leave it if other instances exist, but here we likely run one.
   }
@@ -343,9 +356,13 @@ namespace symir::solver {
 
   bool AliveSolver::is_false(smt::Term t) { return unwrap(t).isFalse(); }
 
-  void AliveSolver::assert_formula(smt::Term t) { solver->add(unwrap(t)); }
+  void AliveSolver::assert_formula(smt::Term t) {
+    std::lock_guard<std::mutex> lock(z3_global_mutex);
+    solver->add(unwrap(t));
+  }
 
   smt::Result AliveSolver::check_sat() {
+    std::lock_guard<std::mutex> lock(z3_global_mutex);
     auto res = solver->check("check_sat");
     if (res.isSat()) {
       last_result = std::make_unique<::alivesmt::Result>(std::move(res));
@@ -357,6 +374,7 @@ namespace symir::solver {
   }
 
   smt::Term AliveSolver::get_value(smt::Term t) {
+    std::lock_guard<std::mutex> lock(z3_global_mutex);
     if (!last_result || !last_result->isSat())
       throw std::runtime_error("get_value called without SAT result");
 

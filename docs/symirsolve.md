@@ -119,11 +119,16 @@ Multi-threading is most effective with:
 - **Complex search spaces** (multiple symbolic variables, many paths)
 - **Non-deterministic solving** (where different seeds/paths may have different solve times)
 
-**Notes:**
+**Backend-Specific Limitations:**
+- **Bitwuzla**: Fully supports multi-threading. Each thread creates an independent solver instance.
+- **AliveSMT (Z3)**: Does **NOT** support multi-threading due to Z3's global context being non-thread-safe.
+  - If `-j > 1` is specified with AliveSMT, `symirsolve` will automatically fall back to single-threaded execution with a warning.
+  - This is a limitation of Z3's global state management and reference counting.
+
+**Implementation Notes:**
 - Each thread uses an independent solver instance with a different random seed (based on the base `--seed` + thread ID)
 - The first thread to find a SAT result causes all threads to terminate early
 - Thread-safety is ensured through proper synchronization of shared state
-- Both Bitwuzla and AliveSMT (Z3) backends support multi-threading
 
 
 ## Outputs

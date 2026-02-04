@@ -122,6 +122,16 @@ int main(int argc, char **argv) {
     config.seed = result["seed"].as<uint32_t>();
     config.num_threads = result["num-threads"].as<uint32_t>();
 
+#if defined(USE_ALIVESMT)
+    // AliveSMT (Z3) uses a global context that is not thread-safe.
+    // Force single-threaded execution for AliveSMT backend.
+    if (config.num_threads > 1) {
+      std::cerr << "Warning: AliveSMT backend does not support multi-threading. "
+                << "Forcing single-threaded execution (num_threads=1).\n";
+      config.num_threads = 1;
+    }
+#endif
+
     auto solverFactory = [](const SymbolicExecutor::Config &cfg
                          ) -> std::unique_ptr<symir::smt::ISolver> {
 #if defined(USE_ALIVESMT)
