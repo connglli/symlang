@@ -3,18 +3,21 @@
 
 namespace symir::solver {
 
-  static bitwuzla::Options create_options(uint32_t timeout, uint32_t seed) {
+  static bitwuzla::Options
+  create_options(uint32_t timeout, uint32_t seed, uint32_t num_smt_threads) {
     bitwuzla::Options options;
     options.set(bitwuzla::Option::PRODUCE_MODELS, true);
     if (timeout > 0)
       options.set(bitwuzla::Option::TIME_LIMIT_PER, (uint64_t) timeout);
     if (seed > 0)
       options.set(bitwuzla::Option::SEED, (uint64_t) seed);
+    if (num_smt_threads > 0)
+      options.set(bitwuzla::Option::NTHREADS, (uint64_t) num_smt_threads);
     return options;
   }
 
-  BitwuzlaSolver::BitwuzlaSolver(uint32_t timeout_ms, uint32_t seed) :
-      tm(), solver(tm, create_options(timeout_ms, seed)) {}
+  BitwuzlaSolver::BitwuzlaSolver(uint32_t timeout_ms, uint32_t seed, uint32_t num_smt_threads) :
+      tm(), solver(tm, create_options(timeout_ms, seed, num_smt_threads)) {}
 
   bitwuzla::Sort BitwuzlaSolver::unwrap(smt::Sort s) const {
     if (!s.internal)

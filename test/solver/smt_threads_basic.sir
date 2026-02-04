@@ -1,0 +1,19 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --sample 10 --require-terminal --num-smt-threads 2
+// INTERP_ARGS: --main @main --sym %?x=25 --sym %?y=30
+// COMPILER_ARGS: --sym %?x=25 --sym %?y=30
+// SKIP: COMPILER
+
+// Test --num-smt-threads option with basic SMT query
+// Tests that the SMT solver can use multiple internal threads
+
+fun @main() : i32 {
+  sym %?x : value i32 in [1, 100];
+  sym %?y : value i32 in [1, 100];
+
+^entry:
+  // Simple constraints that should be SAT
+  require %?x > 20;
+  require %?y > 25;
+  ret 0;
+}

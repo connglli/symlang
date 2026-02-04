@@ -108,7 +108,11 @@ Instead of providing a complete path, `symirsolve` can explore the CFG automatic
 
 ## Multi-Threading Support
 
-`symirsolve` supports parallel sampling to improve performance when exploring large search spaces:
+`symirsolve` supports two types of parallelism:
+
+### 1. Path Sampling Parallelism (`-j, --num-threads`)
+
+Controls how many parallel threads explore different paths simultaneously:
 
 - **`-j N` or `--num-threads N`**: Use `N` threads for parallel path sampling
 - **`-j 0`**: Automatically use all available CPU cores (determined by `std::thread::hardware_concurrency()`)
@@ -130,6 +134,22 @@ Multi-threading is most effective with:
 - The first thread to find a SAT result causes all threads to terminate early
 - Thread-safety is ensured through proper synchronization of shared state
 
+### 2. SMT Solver Internal Parallelism (`--num-smt-threads`)
+
+Controls how many threads each SMT solver instance uses internally:
+
+- **`--num-smt-threads N`**: Configure the SMT backend to use `N` threads for parallel solving
+- **Default**: Single-threaded SMT solving (`--num-smt-threads 1`)
+
+**Backend-Specific Behavior:**
+- **Bitwuzla**: Sets the `NTHREADS` option for parallel constraint solving
+- **AliveSMT (Z3)**: Sets the `sat.threads` parameter for parallel SAT solving
+
+**When to Use:**
+- **Use `-j N`** when you want to explore multiple paths in parallel (different symbolic executions)
+- **Use `--num-smt-threads N`** when you want each individual SMT query to be solved faster using parallelism
+- **Combine both** for maximum performance: `-j 4 --num-smt-threads 2` uses 4 path exploration threads, each with a 2-thread SMT solver
+
 
 ## Outputs
 
@@ -148,7 +168,8 @@ Multi-threading is most effective with:
 | `--sample <n>`        | Number of paths to sample randomly until SAT is found    |
 | `--max-path-len <n>`  | Maximum random path length (default: 100)                |
 | `--require-terminal`  | Force paths to reach 'ret' via shortest path if needed   |
-| `-j, --num-threads <n>` | Number of threads for parallel solving (0 = use all available CPU cores, default: 1) |
+| `-j, --num-threads <n>` | Number of threads for parallel path sampling (0 = use all available CPU cores, default: 1) |
+| `--num-smt-threads <n>` | Number of threads for SMT solver internal parallelism (default: 1) |
 | `-o <file>`           | Output concrete `.sir` file                              |
 | `--dump-ast`          | Dump concretized AST to stdout                           |
 | `--timeout-ms <n>`    | Solver timeout in milliseconds                           |

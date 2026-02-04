@@ -9,7 +9,7 @@ namespace symir::solver {
 
   class AliveSolver : public smt::ISolver {
   public:
-    AliveSolver(uint32_t timeout_ms = 0, uint32_t seed = 0);
+    AliveSolver(uint32_t timeout_ms = 0, uint32_t seed = 0, uint32_t num_smt_threads = 1);
     ~AliveSolver() override;
 
     smt::Sort make_bv_sort(uint32_t size) override;

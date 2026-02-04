@@ -7,7 +7,7 @@ namespace symir::solver {
 
   class BitwuzlaSolver : public smt::ISolver {
   public:
-    BitwuzlaSolver(uint32_t timeout_ms = 0, uint32_t seed = 0);
+    BitwuzlaSolver(uint32_t timeout_ms = 0, uint32_t seed = 0, uint32_t num_smt_threads = 1);
     ~BitwuzlaSolver() override = default;
 
     smt::Sort make_bv_sort(uint32_t size) override;

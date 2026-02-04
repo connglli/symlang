@@ -21,6 +21,7 @@ namespace symir {
       uint32_t timeout_ms = 0;
       uint32_t seed = 0;
       uint32_t num_threads = 1;
+      uint32_t num_smt_threads = 1; // Number of threads for the SMT solver backend
     };
 
     using SolverFactory = std::function<std::unique_ptr<smt::ISolver>(const Config &)>;

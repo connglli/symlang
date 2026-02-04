@@ -47,6 +47,7 @@ int main(int argc, char **argv) {
     ("timeout-ms", "Solver timeout in milliseconds", cxxopts::value<uint32_t>()->default_value("0"))
     ("seed", "Solver seed", cxxopts::value<uint32_t>()->default_value("0"))
     ("j,num-threads", "Number of threads for parallel solving (0 = hardware concurrency)", cxxopts::value<uint32_t>()->default_value("1"))
+    ("num-smt-threads", "Number of threads for the SMT solver backend (Bitwuzla/Z3 internal parallelism)", cxxopts::value<uint32_t>()->default_value("1"))
     ("emit-model", "Emit symbol assignments to a JSON-like file", cxxopts::value<std::string>())
     ("sym", "Fix a symbol to a value (name=val)", cxxopts::value<std::vector<std::string>>())
     ("h,help", "Print usage");
@@ -121,6 +122,7 @@ int main(int argc, char **argv) {
     config.timeout_ms = result["timeout-ms"].as<uint32_t>();
     config.seed = result["seed"].as<uint32_t>();
     config.num_threads = result["num-threads"].as<uint32_t>();
+    config.num_smt_threads = result["num-smt-threads"].as<uint32_t>();
 
 #if defined(USE_ALIVESMT)
     // AliveSMT (Z3) uses a global context that is not thread-safe.
@@ -135,9 +137,13 @@ int main(int argc, char **argv) {
     auto solverFactory = [](const SymbolicExecutor::Config &cfg
                          ) -> std::unique_ptr<symir::smt::ISolver> {
 #if defined(USE_ALIVESMT)
-      return std::make_unique<symir::solver::AliveSolver>(cfg.timeout_ms, cfg.seed);
+      return std::make_unique<symir::solver::AliveSolver>(
+          cfg.timeout_ms, cfg.seed, cfg.num_smt_threads
+      );
 #elif defined(USE_BITWUZLA)
-      return std::make_unique<symir::solver::BitwuzlaSolver>(cfg.timeout_ms, cfg.seed);
+      return std::make_unique<symir::solver::BitwuzlaSolver>(
+          cfg.timeout_ms, cfg.seed, cfg.num_smt_threads
+      );
 #else
       (void) cfg;
       throw std::runtime_error("No solver backend available");

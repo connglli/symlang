@@ -21,7 +21,7 @@ namespace symir::solver {
     return e.isSameTypeOf(::alivesmt::expr::rne());
   }
 
-  AliveSolver::AliveSolver(uint32_t timeout_ms, uint32_t seed) {
+  AliveSolver::AliveSolver(uint32_t timeout_ms, uint32_t seed, uint32_t num_smt_threads) {
     // Z3's global context and reference counting are not thread-safe.
     // We must serialize all Z3 operations across threads.
     std::lock_guard<std::mutex> lock(z3_global_mutex);
@@ -33,6 +33,11 @@ namespace symir::solver {
     }
     if (seed > 0) {
       ::alivesmt::set_random_seed(std::to_string(seed));
+    }
+    // Set Z3 thread parameters for parallel solving
+    // Z3's SAT solver supports internal parallelism
+    if (num_smt_threads > 1) {
+      Z3_global_param_set("sat.threads", std::to_string(num_smt_threads).c_str());
     }
     solver = std::make_unique<::alivesmt::Solver>();
   }
