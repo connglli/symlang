@@ -3,30 +3,15 @@
   "name": "SymLang",
   "scopeName": "source.symlang",
   "patterns": [
-    {
-      "include": "#comments"
-    },
-    {
-      "include": "#strings"
-    },
-    {
-      "include": "#keywords"
-    },
-    {
-      "include": "#types"
-    },
-    {
-      "include": "#identifiers"
-    },
-    {
-      "include": "#literals"
-    },
-    {
-      "include": "#operators"
-    },
-    {
-      "include": "#punctuation"
-    }
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#constants" },
+    { "include": "#identifiers" },
+    { "include": "#literals" },
+    { "include": "#operators" },
+    { "include": "#punctuation" }
   ],
   "repository": {
     "comments": {
@@ -51,7 +36,7 @@
           "patterns": [
             {
               "name": "constant.character.escape.symlang",
-              "match": "\\."
+              "match": "\\\\."
             }
           ]
         }
@@ -60,42 +45,89 @@
     "keywords": {
       "patterns": [
         {
+          "comment": "Control-flow terminators",
           "name": "keyword.control.symlang",
-          "match": "\\b(br|ret|unreachable|assume|require|select|as)\\b"
+          "match": "\\b(br|ret|unreachable)\\b"
         },
         {
-          "name": "keyword.other.symlang",
-          "match": "\\b(struct|fun|sym|let|mut|value|coef|index|in|undef)\\b"
+          "comment": "Path assertions / assumptions",
+          "name": "keyword.control.assertion.symlang",
+          "match": "\\b(assume|require)\\b"
+        },
+        {
+          "comment": "Memory and pointer operations (v0.2.0)",
+          "name": "keyword.control.symlang",
+          "match": "\\b(addr|load|store)\\b"
+        },
+        {
+          "comment": "Expression keywords",
+          "name": "keyword.other.expression.symlang",
+          "match": "\\b(select|as)\\b"
+        },
+        {
+          "comment": "Declaration keywords",
+          "name": "keyword.other.declaration.symlang",
+          "match": "\\b(struct|fun|sym|let|mut|value|coef|index|in)\\b"
         }
       ]
     },
     "types": {
       "patterns": [
         {
-          "name": "support.type.symlang",
-          "match": "\\bi[0-9]+\\b|\\bf32\\b|\\bf64\\b"
+          "comment": "Pointer type constructor (v0.2.0)",
+          "name": "support.type.pointer.symlang",
+          "match": "\\bptr\\b"
+        },
+        {
+          "comment": "Integer types: i8, i16, i32, i64, iN",
+          "name": "support.type.integer.symlang",
+          "match": "\\bi[0-9]+\\b"
+        },
+        {
+          "comment": "Floating-point types",
+          "name": "support.type.float.symlang",
+          "match": "\\b(f32|f64)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "comment": "Null pointer constant (v0.2.0)",
+          "name": "constant.language.null.symlang",
+          "match": "\\bnull\\b"
+        },
+        {
+          "comment": "Uninitialized value sentinel",
+          "name": "constant.language.undef.symlang",
+          "match": "\\bundef\\b"
         }
       ]
     },
     "identifiers": {
       "patterns": [
         {
+          "comment": "Global symbol: @?name",
           "name": "variable.other.symbol.global.symlang",
           "match": "@\\?[a-zA-Z_][a-zA-Z0-9_]*"
         },
         {
+          "comment": "Local symbol: %?name",
           "name": "variable.other.symbol.local.symlang",
           "match": "%\\?[a-zA-Z_][a-zA-Z0-9_]*"
         },
         {
+          "comment": "Function / struct name: @name",
           "name": "entity.name.function.symlang",
           "match": "@[a-zA-Z_][a-zA-Z0-9_]*"
         },
         {
+          "comment": "Local variable: %name",
           "name": "variable.other.local.symlang",
           "match": "%[a-zA-Z_][a-zA-Z0-9_]*"
         },
         {
+          "comment": "Block label: ^name",
           "name": "entity.name.label.symlang",
           "match": "\\^[a-zA-Z_][a-zA-Z0-9_]*"
         }
