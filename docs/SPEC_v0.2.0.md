@@ -61,7 +61,7 @@ SymIR uses **strict UB** on the chosen path: if UB occurs during evaluation of a
 `select` is supported as an atom:
 - `select <cond>, <vtrue>, <vfalse>`
 - `select` is **lazy**: only the selected arm is evaluated.
-- In v0.2.0, `vtrue` and `vfalse` are restricted to **scalar values** (`RValue` or constant `Coef`) to avoid nested expressions.
+- In v0.2.0, `vtrue` and `vfalse` are restricted to **scalar or pointer values** (`RValue`, constant `Coef`, or `null`) to avoid nested expressions. Both arms must have the same type (see §6.3 for pointer and `null` arm typing).
 
 ### 2.8 Memory model **[New in v0.2.0]**
 
@@ -97,7 +97,7 @@ Pointer arithmetic is typed and stride-aware:
 - Arithmetic is valid only within the bounds of the originating object. Out-of-bounds arithmetic is UB.
 - `integer + ptr T` (with the integer on the left) is **not supported**. The pointer must be the left operand.
 
-**`sizeof`** is defined as follows (used implicitly by pointer arithmetic and explicitly in UB bounds checks):
+**`sizeof`** is defined as follows (used implicitly by pointer arithmetic and explicitly in UB bounds checks and non-overlap axioms):
 
 | Type | `sizeof` |
 |------|---------|
@@ -105,8 +105,9 @@ Pointer arithmetic is typed and stride-aware:
 | `f32` | 4 bytes |
 | `f64` | 8 bytes |
 | `ptr T` | 8 bytes (64-bit address) |
+| `[N] T` | `N * sizeof(T)` bytes |
 
-Note: no struct or array pointees in v0.2.0, so `sizeof` of aggregates is not needed for pointer arithmetic.
+The `[N] T` row is needed for non-overlap axioms (§9.4.2): when a local `%arr: [N] T` is addr-taken, its full storage occupies `N * sizeof(T)` bytes and the axiom must reserve that entire range.
 
 
 ## 3. Concrete syntax
@@ -311,8 +312,11 @@ Arithmetic (`Expr`) is defined over **scalar integer and floating-point leaves**
 ### 6.3 `select` typing
 `select c, a, b` is well-typed iff:
 - `c` is a boolean condition, and
-- `a` and `b` have the same scalar type (integer or floating-point).
+- `a` and `b` have the same type — scalar (integer or floating-point) **or pointer** (`ptr T`).
+
 The result has that type.
+
+**[New in v0.2.0] Pointer and `null` arms**: either or both arms may be of pointer type. When one arm is `null` and the other has a known `ptr T` type, `null` is inferred to be `ptr T` regardless of which arm it occupies (sibling type propagation). If both arms are `null` with no other type context, this is a type error.
 
 ### 6.4 `as` typing
 `rval as T` is well-typed iff:
@@ -404,7 +408,7 @@ Runtime behavior:
 Literals do not have fixed types but are inferred from their context:
 - **Integer Literals:** Inferred to match the bit-width of the operation target or neighboring operands. Default: `i32`.
 - **Floating-point Literals:** Inferred to match the target or neighbors. Default: `f32`.
-- **`null`:** Inferred to match the `ptr T` context. No default; context must be available.
+- **`null`:** Inferred to match the `ptr T` context. No default; context must be available. In `select c, a, b`, if one arm is `null` and the other has type `ptr T`, `null` is inferred to `ptr T` from the sibling arm (bidirectional — order does not matter).
 - **Homogeneity Requirement:** Since mixed arithmetic is forbidden, a literal in `x + <lit>` is inferred to match the type of `x`.
 
 
@@ -575,6 +579,14 @@ When a `let mut` local `%x : T` is `addr`-taken:
 - `load (addr %x)` equals `Store[%x]` by construction.
 - `store (addr %x), v` and `%x = v` are semantically equivalent and both update the same memory slot.
 
+**Array-element consistency**: when a `let mut` local `%arr : [N] T` is addr-taken via `addr %arr[i]`:
+- The base address constant `addr_%arr` is introduced once for the whole array (§9.4.1).
+- `addr %arr[i]` evaluates to `bvadd(addr_%arr, bvmul(i_bv, sizeof(T)))` (§9.4.3).
+- A direct assignment `%arr[i] = v` updates `Store[%arr][i]` and simultaneously updates `Mem[T][addr_%arr + i*sizeof(T)]` consistently.
+- `load (addr %arr[i])` equals `Store[%arr][i]` by construction.
+- `store (addr %arr[i]), v` and `%arr[i] = v` are semantically equivalent.
+- The non-overlap axiom for `%arr` uses `sizeof([N] T) = N * sizeof(T)` (§9.4.2), reserving the full array storage range.
+
 
 ## 10. Examples
 
@@ -737,6 +749,7 @@ The solver finds the index `%?off` such that `%arr[%?off] == %target` on the cho
 - **Pointer/integer casts** (`ptr T as iN`, `iN as ptr T`).
 - **Aliasing between distinct locals** (deliberately UB in v0.2.0; explicit alias modeling deferred).
 - **SIMD / vector types**. Fixed-width vector types (e.g., `<4 x i32>`, `<8 x f32>`) and lane-wise operations are not supported. SymIR is scalar-only; vectorization is left to the lowering target (C compiler, WASM engine).
+- **Struct layout (padding and alignment)**. Struct field layout rules (padding, natural alignment, ABI compatibility) are unspecified in v0.2.0. Since `ptr @S` is not supported, `sizeof(@S)` is never required. When `ptr @S` is introduced in v0.2.1, structs will use **packed layout** (no padding): `sizeof(@S) = Σ sizeof(field_i)`. C-like alignment padding or ABI-compatible layout is not a goal.
 - **Parentheses and general expression trees**.
 - **SSA / phi nodes**.
 - **Interprocedural calls and summaries**.
