@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:UndefinedBehavior
 struct @S { a: [2] i32; }
 fun @main(): i32 {
   let %s: @S = { {1, 2} };

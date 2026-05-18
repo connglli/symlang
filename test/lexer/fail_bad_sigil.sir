@@ -1,2 +1,2 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:LexError
 struct !BadSigil { x: i32; }

@@ -1,6 +1,6 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: WASM
 // f64 -1.0e18 cast to i32: out of i32 range, UB rule 8
-// SKIP: COMPILER
 fun @main() : i32 {
   let %a: f64 = -1.0e18;
   let mut %i: i32 = 0;

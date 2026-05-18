@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:StaticError
 
 // Using a non-integer type (array) as an array index should fail typechecking.
 fun @bad_idx(%a: [10] i32) : i32 {

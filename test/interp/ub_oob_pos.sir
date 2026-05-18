@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:StaticError
 
 // Out-of-bounds array access (positive) is strict UB and should fail.
 fun @main() : i32 {

@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:StaticError
 
 // Reading a mutable local variable before it is initialized should fail semantic checking.
 fun @uninit() : i32 {

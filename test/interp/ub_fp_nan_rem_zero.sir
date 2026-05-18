@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:UndefinedBehavior
 // 1.0 % 0.0 (f32): IEEE remainder by zero produces NaN: UB rule 7
 // SKIP: COMPILER
 fun @main() : f32 {

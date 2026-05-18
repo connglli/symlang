@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:RequireViolation
 // SOLVER_ARGS: --main @test --path ^entry
 // x in (1.0, 2.0): fmod(x, 1.0) = x - 1 is in (0, 1) — always positive.
 // require r < 0.0 is UNSAT under fmod.

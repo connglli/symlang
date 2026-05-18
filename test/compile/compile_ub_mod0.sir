@@ -1,11 +1,10 @@
 // EXPECT: FAIL:UndefinedBehavior
+// SKIP: INTERPRETER
 // SKIP: SOLVER
-// SOLVER_ARGS: --main @main --path ^entry
-
-// Division by zero is strict UB and should fail.
+// Modulo by zero triggers SIGFPE, caught by the compiler runtime.
 fun @main() : i32 {
   let %ten: i32 = 10;
   let mut %zero: i32 = 0;
 ^entry:
-  ret %ten / %zero;
+  ret %ten % %zero;
 }

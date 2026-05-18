@@ -1,0 +1,11 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: INTERPRETER
+// SKIP: SOLVER
+// ASAN detects out-of-bounds array access at runtime.
+fun @main() : i32 {
+  let %arr: [5] i32 = 0;
+  let mut %val: i32 = 0;
+^entry:
+  %val = %arr[5];
+  ret %val;
+}

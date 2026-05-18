@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:UndefinedBehavior
 // SOLVER_ARGS: --main @test --path ^entry
 // SKIP: COMPILER
 // 1.0 % x where x == 0.0 gives NaN; isFinite(1.0 % x) in PC → UNSAT

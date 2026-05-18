@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:StaticError
 
 // Assigning to a function parameter (which is immutable by default) should fail semantic checking.
 fun @main(%p: i32) : i32 {

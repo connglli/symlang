@@ -1,7 +1,9 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:UndefinedBehavior
 
 // Division by zero is strict UB and should fail in the interpreter.
 fun @main() : i32 {
+  let %one: i32 = 1;
+  let mut %zero: i32 = 0;
 ^entry:
-  ret 1 / 0;
+  ret %one / %zero;
 }

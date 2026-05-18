@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:ParseError
 struct @Bad { x: f32; }
 
 fun @test() : i32 {

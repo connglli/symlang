@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:RequireViolation
 // INTERP_ARGS: --sym %?v=0
 // COMPILER_ARGS: --sym %?v=0
 // SOLVER_ARGS: --path ^entry

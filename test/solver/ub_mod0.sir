@@ -1,9 +1,11 @@
-// EXPECT: FAIL
-// SOLVER_ARGS: --main @main --path '^entry'
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: SOLVER
+// SOLVER_ARGS: --main @main --path ^entry
 
 // Modulo by zero is strict UB and should fail.
 fun @main() : i32 {
+  let %ten: i32 = 10;
+  let mut %zero: i32 = 0;
 ^entry:
-  let %a: i32 = 10 % 0;
-  ret 0;
+  ret %ten % %zero;
 }

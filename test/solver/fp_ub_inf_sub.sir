@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:UndefinedBehavior
 // SOLVER_ARGS: --main @test --path ^entry
 // SKIP: COMPILER
 // x < -1.8e38 forces x-1.8e38 to overflow in f32 → -inf: isFinite must be in PC → UNSAT

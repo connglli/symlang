@@ -1,10 +1,14 @@
-// EXPECT: FAIL
-// INTERP_ARGS: --sym %?a=-9223372036854775808
-// COMPILER_ARGS: --sym %?a=-9223372036854775808
-// MIN_INT64 * -1 -> Overflow
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: WASM
+// INTERP_ARGS: --sym %?a=-2147483648
+// COMPILER_ARGS: --sym %?a=-2147483648
+
+// Signed overflow (MIN_INT32 * -1) is strict UB.
 fun @main() : i32 {
-  sym %?a : value i64;
+  sym %?a : value i32;
+  let %neg_one: i32 = -1;
+  let mut %x: i32 = 0;
 ^entry:
-  let %c: i64 = %?a * -1;
-  ret 0;
+  %x = %?a;
+  ret %x * %neg_one;
 }

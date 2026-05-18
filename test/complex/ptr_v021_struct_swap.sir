@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:StaticError
 // v0.2.1 feature — ptr @S (pointer to struct). Not yet implemented.
 // TODO: change to EXPECT: PASS once ptr @S is supported.
 //

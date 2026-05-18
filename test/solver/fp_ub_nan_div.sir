@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:UndefinedBehavior
 // SOLVER_ARGS: --main @test --path ^entry
 // SKIP: COMPILER
 // x==0 forces x/x = 0/0 = NaN; isFinite(x/x) must be in PC → UNSAT

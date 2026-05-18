@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:StaticError
 fun @main() : i32 {
   let %arr: [2] i32 = undef;
   let %idx: i32 = -1;

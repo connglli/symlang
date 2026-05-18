@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:StaticError
 fun @test() : f32 {
   let %u: f32 = undef;
 ^entry:

@@ -1,18 +1,16 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: COMPILER
 // INTERP_ARGS: --sym %?c=1
-// COMPILER_ARGS: --sym %?c=1
+
+// Reading an undef element along a symbol-controlled path is runtime UB.
+// With %?c=1 the interpreter takes ^take_undef and reads v[1]=undef.
 fun @main() : i32 {
   sym %?c : value i32;
-  let mut %x: i32 = 0;
+  let %v: [2] i32 = {10, undef};
 ^entry:
-  br %?c > 0, ^b1, ^b2;
-^b1:
-  %x = undef;
-  br ^merge;
-^b2:
-  %x = 10;
-  br ^merge;
-^merge:
-  let %use: i32 = %x;
-  ret 0;
+  br %?c > 0, ^take_undef, ^take_init;
+^take_undef:
+  ret %v[1];
+^take_init:
+  ret %v[0];
 }

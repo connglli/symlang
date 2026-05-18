@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:ParseError
 fun @test() : i32 {
   let %a: f128 = 0.0;
   ret 0;

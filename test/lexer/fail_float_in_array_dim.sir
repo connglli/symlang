@@ -1,2 +1,2 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:ParseError
 struct @S { a: [3.5] i32; }

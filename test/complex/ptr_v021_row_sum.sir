@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:StaticError
 // v0.2.1 feature — ptr [N] T (pointer to array). Not yet implemented.
 // TODO: change to EXPECT: PASS once ptr [4] i32 is supported.
 //

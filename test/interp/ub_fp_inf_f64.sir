@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:UndefinedBehavior
 // f64 addition overflow produces +inf: UB rule 6
 // SKIP: COMPILER
 fun @main() : f64 {

@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:StaticError
 
 // Reading an uninitialized ('undef') local variable is strict UB and should fail.
 fun @main() : i32 {

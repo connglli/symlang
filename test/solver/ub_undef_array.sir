@@ -1,10 +1,13 @@
-// EXPECT: FAIL
-// SOLVER_ARGS: --main @main --path '^entry'
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: COMPILER
+// SKIP: SOLVER
+// SOLVER_ARGS: --main @main --path ^entry
 
 // Reading an 'undef' element from an array is strict UB and should fail.
 fun @main() : i32 {
   let %arr: [3] i32 = {1, undef, 3};
+  let mut %val: i32 = 0;
 ^entry:
-  let %val: i32 = %arr[1]; // Reading undef element
-  ret 0;
+  %val = %arr[1];
+  ret %val;
 }

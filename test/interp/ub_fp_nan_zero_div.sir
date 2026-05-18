@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:UndefinedBehavior
 // f32 0.0 / 0.0 produces NaN: UB rule 7
 // SKIP: COMPILER
 fun @main() : f32 {

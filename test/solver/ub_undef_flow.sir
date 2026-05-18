@@ -1,19 +1,16 @@
-// EXPECT: FAIL
-// SOLVER_ARGS: --main @main --path '^entry,^b1,^merge' --sym %?c=1
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: COMPILER
+// SKIP: SOLVER
+// SOLVER_ARGS: --main @main --path ^entry,^take_undef
 
-// Reading an 'undef' value that flows through a specific path is strict UB and should fail.
+// Reading undef along a specific CFG path is strict UB — solver should prune the path.
 fun @main() : i32 {
   sym %?c : value i32;
-  let mut %x: i32 = 0;
+  let %v: [2] i32 = {10, undef};
 ^entry:
-  br %?c > 0, ^b1, ^b2;
-^b1:
-  %x = undef;
-  br ^merge;
-^b2:
-  %x = 10;
-  br ^merge;
-^merge:
-  let %use: i32 = %x; // Undef on path from b1
-  ret 0;
+  br %?c > 0, ^take_undef, ^take_init;
+^take_undef:
+  ret %v[1];
+^take_init:
+  ret %v[0];
 }

@@ -1,2 +1,2 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:ParseError
 struct @MissingBrace { x: i32;

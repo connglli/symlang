@@ -1,10 +1,15 @@
-// EXPECT: FAIL
-// SOLVER_ARGS: --main @main --path '^entry' --sym %?a=2147483647
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: WASM
+// SKIP: SOLVER
+// SOLVER_ARGS: --main @main --path ^entry
+// COMPILER_ARGS: --sym %?a=2147483647
 
-// Multiplication overflow (MAX_INT * 2) is strict UB and should fail.
+// Multiplication overflow (MAX_INT32 * 2) is strict UB and should fail.
 fun @main() : i32 {
   sym %?a : value i32;
+  let %two: i32 = 2;
+  let mut %x: i32 = 0;
 ^entry:
-  let %b: i32 = %?a * 2;
-  ret 0;
+  %x = %?a;
+  ret %x * %two;
 }

@@ -1,10 +1,11 @@
-// EXPECT: FAIL
-// SOLVER_ARGS: --main @main --path '^entry'
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path ^entry
 
 // Out-of-bounds array access is strict UB and should fail.
 fun @main() : i32 {
   let %arr: [5] i32 = 0;
+  let mut %a: i32 = 0;
 ^entry:
-  let %a: i32 = %arr[5];
-  ret 0;
+  %a = %arr[5];
+  ret %a;
 }

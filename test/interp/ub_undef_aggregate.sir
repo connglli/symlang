@@ -1,5 +1,5 @@
 // SKIP: COMPILER
-// EXPECT: FAIL
+// EXPECT: FAIL:UndefinedBehavior
 fun @main() : i32 {
   let %v: [2] i32 = {1, undef};
 ^entry:

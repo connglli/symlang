@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:LexError
 
 // Using an invalid character (like '$') should result in a lexer error.
 fun @bad() : i32 {

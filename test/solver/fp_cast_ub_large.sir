@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:UndefinedBehavior
 // SOLVER_ARGS: --main @test --path ^entry
 // SKIP: COMPILER
 // x > 3.0e9 exceeds INT32_MAX (≈2.147e9); range PC constraint on cast → UNSAT

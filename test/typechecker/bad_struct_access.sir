@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:StaticError
 
 // Accessing a non-existent field in a struct should fail typechecking.
 struct @S { val: i32; }

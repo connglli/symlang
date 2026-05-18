@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:StaticError
 
 // A function must have at least one basic block; an empty function body should fail CFG building.
 fun @empty() : i32 {

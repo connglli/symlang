@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:ParseError
 // SOLVER_ARGS: --path ^entry,^init,^loop_cond,^loop_body,^visit,^next,^exit
 
 struct @NodeState {

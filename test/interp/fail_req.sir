@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:RequireViolation
 // INTERP_ARGS: --sym %?one=1
 // COMPILER_ARGS: --sym %?one=1
 fun @main() : i32 {

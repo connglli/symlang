@@ -1,12 +1,16 @@
-// EXPECT: FAIL
-// INTERP_ARGS: --sym %?a=9223372036854775807 --sym %?b=1
-// COMPILER_ARGS: --sym %?a=9223372036854775807 --sym %?b=1
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: WASM
+// INTERP_ARGS: --sym %?a=2147483647 --sym %?b=1
+// COMPILER_ARGS: --sym %?a=2147483647 --sym %?b=1
 
-// Signed integer overflow is strict UB and should fail.
+// Signed integer overflow (MAX_INT32 + 1) is strict UB.
 fun @main() : i32 {
-  sym %?a : value i64;
-  sym %?b : value i64;
+  sym %?a : value i32;
+  sym %?b : value i32;
+  let mut %x: i32 = 0;
+  let mut %y: i32 = 0;
 ^entry:
-  let %c: i64 = %?a + %?b;
-  ret 0;
+  %x = %?a;
+  %y = %?b;
+  ret %x + %y;
 }

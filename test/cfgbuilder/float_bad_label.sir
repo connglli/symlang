@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:StaticError
 fun @test() : i32 {
 ^entry:
   br ^missing;

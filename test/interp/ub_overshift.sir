@@ -1,10 +1,16 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: WASM
 // INTERP_ARGS: --sym %?n=32
 // COMPILER_ARGS: --sym %?n=32
+
+// Shifting a 32-bit value by its own width (32) is strict UB.
 fun @main() : i32 {
   sym %?n : value i32;
   let %x: i32 = 1;
+  let mut %amount: i32 = 0;
+  let mut %y: i32 = 0;
 ^entry:
-  let %y: i32 = %x << %?n; // UB: Shift by width
-  ret 0;
+  %amount = %?n;
+  %y = %x << %amount;
+  ret %y;
 }

@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:StaticError
 // SOLVER_ARGS: --path ^entry,^init,^loop_cond,^loop_body,^exit
 
 struct @Point {

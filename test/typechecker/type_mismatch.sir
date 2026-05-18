@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:StaticError
 
 // Arithmetic operations between different integer types (i32 and i64) should fail typechecking.
 fun @mismatch() : i32 {

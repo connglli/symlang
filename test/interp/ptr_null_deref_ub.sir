@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:UndefinedBehavior
 // Storing through a null pointer must be undefined behavior.
 fun @main() : i32 {
   let mut %p: ptr i32 = null;

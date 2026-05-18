@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:StaticError
 
 // Reading a variable that is not initialized on all control flow paths should fail semantic checking (definite initialization).
 fun @uninit_br(%c: i32) : i32 {

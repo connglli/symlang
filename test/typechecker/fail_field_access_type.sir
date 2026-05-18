@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:ParseError
 struct @S { a: i32; }
 fun @main(): i32 {
   let %x: @S = { 1 };

@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:StaticError
 
 // Array initialization with an incorrect number of elements should fail typechecking.
 fun @main() : i32 {

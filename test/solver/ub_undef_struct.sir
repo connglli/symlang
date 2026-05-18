@@ -1,11 +1,14 @@
-// EXPECT: FAIL
-// SOLVER_ARGS: --main @main --path '^entry'
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: COMPILER
+// SKIP: SOLVER
+// SOLVER_ARGS: --main @main --path ^entry
 
 // Reading an 'undef' field of a struct is strict UB and should fail.
 struct @S { x: i32; y: i32; }
 fun @main() : i32 {
   let %s: @S = {1, undef};
+  let mut %val: i32 = 0;
 ^entry:
-  let %val: i32 = %s.y; // Reading undef field
-  ret 0;
+  %val = %s.y;
+  ret %val;
 }

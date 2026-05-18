@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: FAIL:StaticError
 struct @S { x: i32; }
 struct @S { y: i32; } // Redefinition
 fun @main(): i32 {

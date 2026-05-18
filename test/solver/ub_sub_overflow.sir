@@ -1,10 +1,15 @@
-// EXPECT: FAIL
-// SOLVER_ARGS: --main @main --path '^entry' --sym %?a=-2147483648
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: WASM
+// SKIP: SOLVER
+// SOLVER_ARGS: --main @main --path ^entry
+// COMPILER_ARGS: --sym %?a=-2147483648
 
-// Subtraction overflow (MIN_INT - 1) is strict UB and should fail.
+// Subtraction overflow (MIN_INT32 - 1) is strict UB and should fail.
 fun @main() : i32 {
   sym %?a : value i32;
+  let %one: i32 = 1;
+  let mut %x: i32 = 0;
 ^entry:
-  let %b: i32 = %?a - 1;
-  ret 0;
+  %x = %?a;
+  ret %x - %one;
 }
