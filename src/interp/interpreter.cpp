@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include "analysis/cfg.hpp"
 #include "analysis/type_utils.hpp"
+#include "error.hpp"
 #include "frontend/diagnostics.hpp"
 
 namespace symir {
@@ -15,9 +16,9 @@ namespace symir {
     if (bits == 32)
       val = static_cast<double>(static_cast<float>(val));
     if (std::isinf(val))
-      throw std::runtime_error("UB: Floating-point result is infinity");
+      throw UndefinedBehaviorError("UB: Floating-point result is infinity");
     if (std::isnan(val))
-      throw std::runtime_error("UB: Floating-point result is NaN");
+      throw UndefinedBehaviorError("UB: Floating-point result is NaN");
     return val;
   }
 
@@ -83,6 +84,19 @@ namespace symir {
   const Interpreter::ObjectInfo *Interpreter::findObject(std::uint64_t addr) const {
     for (const auto &o: objects_)
       if (addr >= o.base && addr < o.end)
+        return &o;
+    return nullptr;
+  }
+
+  // Like findObject, but also matches the one-past-the-end address (valid for arithmetic).
+  // Two-pass: interior membership wins over one-past-the-end so that consecutive
+  // allocations (where src.end == dst.base) are unambiguous.
+  const Interpreter::ObjectInfo *Interpreter::findObjectForArith(std::uint64_t addr) const {
+    for (const auto &o: objects_)
+      if (addr >= o.base && addr < o.end)
+        return &o;
+    for (const auto &o: objects_)
+      if (addr == o.end)
         return &o;
     return nullptr;
   }
@@ -374,23 +388,23 @@ namespace symir {
               } else if constexpr (std::is_same_v<T, RequireInstr>) {
                 if (!evalCond(i.cond, store)) {
                   std::string msg = i.message.value_or("Requirement failed");
-                  throw std::runtime_error("Requirement failed: " + msg);
+                  throw RequireViolationError(msg);
                 }
               } else if constexpr (std::is_same_v<T, StoreInstr>) {
                 RuntimeValue ptrVal = evalExpr(i.ptr, store);
                 RuntimeValue val = evalExpr(i.val, store);
                 if (ptrVal.kind == RuntimeValue::Kind::Undef)
-                  throw std::runtime_error("UB: Store through undef pointer");
+                  throw UndefinedBehaviorError("UB: Store through undef pointer");
                 if (ptrVal.kind != RuntimeValue::Kind::Ptr)
                   throw std::runtime_error("Store requires a pointer operand");
                 if (ptrVal.ptrVal == 0)
-                  throw std::runtime_error("UB: Null pointer dereference in store");
+                  throw UndefinedBehaviorError("UB: Null pointer dereference in store");
                 // Bounds check: address must be within a known object
                 const ObjectInfo *obj = findObject(ptrVal.ptrVal);
                 if (!obj)
-                  throw std::runtime_error("UB: Store to unknown address");
-                if (ptrVal.ptrVal + 1 > obj->end)
-                  throw std::runtime_error("UB: Store out of bounds");
+                  throw UndefinedBehaviorError("UB: Store to unknown address");
+                if (ptrVal.ptrVal >= obj->end)
+                  throw UndefinedBehaviorError("UB: Store out of bounds");
                 heap_[ptrVal.ptrVal] = val;
                 // Sync back to store for scalars (maintain Store/Heap consistency)
                 if (ptrVal.ptrVal == obj->base && obj->count == 1) {
@@ -426,7 +440,7 @@ namespace symir {
               if (t.value) {
                 RuntimeValue res = evalExpr(*t.value, store);
                 if (res.kind == RuntimeValue::Kind::Undef)
-                  throw std::runtime_error("UB: Reading undef in ret");
+                  throw UndefinedBehaviorError("UB: Reading undef in ret");
                 if (res.kind == RuntimeValue::Kind::Int)
                   std::cout << "Result: " << res.intVal << "\n";
                 else if (res.kind == RuntimeValue::Kind::Float)
@@ -454,7 +468,7 @@ namespace symir {
     for (const auto &tail: e.rest) {
       RuntimeValue right = evalAtom(tail.atom, store);
       if (v.kind == RuntimeValue::Kind::Undef || right.kind == RuntimeValue::Kind::Undef)
-        throw std::runtime_error("UB: Reading undef in expr");
+        throw UndefinedBehaviorError("UB: Reading undef in expr");
 
       // Promote Int to Float if needed (Literal inference support)
       if (v.kind == RuntimeValue::Kind::Float && right.kind == RuntimeValue::Kind::Int) {
@@ -466,13 +480,19 @@ namespace symir {
       }
 
       if (v.kind == RuntimeValue::Kind::Int && right.kind == RuntimeValue::Kind::Int) {
-        if (tail.op == AddOp::Plus) {
-          if (__builtin_add_overflow(v.intVal, right.intVal, &v.intVal))
-            throw std::runtime_error("UB: Signed integer overflow in addition");
-        } else {
-          if (__builtin_sub_overflow(v.intVal, right.intVal, &v.intVal))
-            throw std::runtime_error("UB: Signed integer overflow in subtraction");
+        // Check overflow against the *declared* bitwidth, not int64.
+        // Use __int128 so the intermediate result never overflows before the check.
+        __int128 a = v.intVal, b = right.intVal;
+        __int128 result = (tail.op == AddOp::Plus) ? (a + b) : (a - b);
+        int64_t smax = (v.bits == 64) ? INT64_MAX : ((INT64_C(1) << (v.bits - 1)) - 1);
+        int64_t smin = (v.bits == 64) ? INT64_MIN : (-(INT64_C(1) << (v.bits - 1)));
+        if (result > (__int128) smax || result < (__int128) smin) {
+          if (tail.op == AddOp::Plus)
+            throw UndefinedBehaviorError("UB: Signed integer overflow in addition");
+          else
+            throw UndefinedBehaviorError("UB: Signed integer overflow in subtraction");
         }
+        v.intVal = static_cast<int64_t>(result);
         v.intVal = canonicalize(v.intVal, v.bits);
       } else if (v.kind == RuntimeValue::Kind::Float && right.kind == RuntimeValue::Kind::Float) {
         if (tail.op == AddOp::Plus)
@@ -480,19 +500,23 @@ namespace symir {
         else
           v.floatVal = checkFPResult(v.floatVal - right.floatVal, v.bits);
       } else if (v.kind == RuntimeValue::Kind::Ptr && right.kind == RuntimeValue::Kind::Int) {
-        // ptr ± int: scale offset by element size of the pointed-to object
-        const ObjectInfo *obj = findObject(v.ptrVal);
-        uint64_t elemSize = obj ? obj->elemSize : 1;
-        if (tail.op == AddOp::Plus) {
-          v.ptrVal += static_cast<uint64_t>(right.intVal) * elemSize;
-        } else {
-          v.ptrVal -= static_cast<uint64_t>(right.intVal) * elemSize;
-        }
+        // ptr ± int: scale offset by element size; result must stay in [base, end].
+        // One-past-the-end (== end) is valid for arithmetic but not for dereference.
+        const ObjectInfo *obj = findObjectForArith(v.ptrVal);
+        if (!obj)
+          throw UndefinedBehaviorError("UB: Pointer arithmetic on out-of-bounds pointer");
+        uint64_t elemSize = obj->elemSize;
+        int64_t delta = right.intVal * static_cast<int64_t>(elemSize);
+        int64_t newAddr = (tail.op == AddOp::Plus) ? static_cast<int64_t>(v.ptrVal) + delta
+                                                   : static_cast<int64_t>(v.ptrVal) - delta;
+        if (newAddr < static_cast<int64_t>(obj->base) || newAddr > static_cast<int64_t>(obj->end))
+          throw UndefinedBehaviorError("UB: Pointer arithmetic out of bounds");
+        v.ptrVal = static_cast<uint64_t>(newAddr);
       } else if (v.kind == RuntimeValue::Kind::Ptr && right.kind == RuntimeValue::Kind::Ptr) {
         // ptr - ptr: element count distance (only subtraction makes sense)
         if (tail.op != AddOp::Minus)
           throw std::runtime_error("Cannot add two pointers");
-        const ObjectInfo *obj = findObject(v.ptrVal);
+        const ObjectInfo *obj = findObjectForArith(v.ptrVal);
         uint64_t elemSize = obj ? obj->elemSize : 1;
         int64_t diff = static_cast<int64_t>(v.ptrVal) - static_cast<int64_t>(right.ptrVal);
         v.kind = RuntimeValue::Kind::Int;
@@ -513,7 +537,7 @@ namespace symir {
             RuntimeValue c = evalCoef(arg.coef, store);
             RuntimeValue r = evalLValue(arg.rval, store);
             if (c.kind == RuntimeValue::Kind::Undef || r.kind == RuntimeValue::Kind::Undef)
-              throw std::runtime_error("UB: Reading undef in op");
+              throw UndefinedBehaviorError("UB: Reading undef in op");
 
             // Promote Int to Float if needed (Literal inference support)
             if (c.kind == RuntimeValue::Kind::Float && r.kind == RuntimeValue::Kind::Int) {
@@ -529,20 +553,26 @@ namespace symir {
               res.kind = RuntimeValue::Kind::Int;
               res.bits = c.bits;
 
+              // Compute bitwidth-specific signed min/max for overflow detection.
+              int64_t bw_smax = (c.bits == 64) ? INT64_MAX : ((INT64_C(1) << (c.bits - 1)) - 1);
+              int64_t bw_smin = (c.bits == 64) ? INT64_MIN : (-(INT64_C(1) << (c.bits - 1)));
+
               if (arg.op == AtomOpKind::Mul) {
-                if (__builtin_mul_overflow(c.intVal, r.intVal, &res.intVal))
-                  throw std::runtime_error("UB: Signed integer overflow in multiplication");
+                __int128 prod = (__int128) c.intVal * (__int128) r.intVal;
+                if (prod > (__int128) bw_smax || prod < (__int128) bw_smin)
+                  throw UndefinedBehaviorError("UB: Signed integer overflow in multiplication");
+                res.intVal = static_cast<int64_t>(prod);
               } else if (arg.op == AtomOpKind::Div) {
                 if (r.intVal == 0)
-                  throw std::runtime_error("UB: Division by zero");
-                if (c.intVal == INT64_MIN && r.intVal == -1)
-                  throw std::runtime_error("UB: Signed integer overflow in division");
+                  throw UndefinedBehaviorError("UB: Division by zero");
+                if (c.intVal == bw_smin && r.intVal == -1)
+                  throw UndefinedBehaviorError("UB: Signed integer overflow in division");
                 res.intVal = c.intVal / r.intVal;
               } else if (arg.op == AtomOpKind::Mod) {
                 if (r.intVal == 0)
-                  throw std::runtime_error("UB: Modulo by zero");
-                if (c.intVal == INT64_MIN && r.intVal == -1)
-                  throw std::runtime_error("UB: Signed integer overflow in modulo");
+                  throw UndefinedBehaviorError("UB: Modulo by zero");
+                if (c.intVal == bw_smin && r.intVal == -1)
+                  throw UndefinedBehaviorError("UB: Signed integer overflow in modulo");
                 res.intVal = c.intVal % r.intVal;
               } else if (arg.op == AtomOpKind::And) {
                 res.intVal = c.intVal & r.intVal;
@@ -553,7 +583,7 @@ namespace symir {
               } else if (arg.op == AtomOpKind::Shl || arg.op == AtomOpKind::Shr ||
                          arg.op == AtomOpKind::LShr) {
                 if (r.intVal < 0 || (uint64_t) r.intVal >= (uint64_t) res.bits) {
-                  throw std::runtime_error("UB: Overshift");
+                  throw UndefinedBehaviorError("UB: Overshift");
                 }
                 if (arg.op == AtomOpKind::Shl) {
                   res.intVal = c.intVal << r.intVal;
@@ -585,7 +615,7 @@ namespace symir {
           } else if constexpr (std::is_same_v<T, UnaryAtom>) {
             RuntimeValue r = evalLValue(arg.rval, store);
             if (r.kind == RuntimeValue::Kind::Undef)
-              throw std::runtime_error("UB: Reading undef in unary op");
+              throw UndefinedBehaviorError("UB: Reading undef in unary op");
             if (r.kind != RuntimeValue::Kind::Int)
               throw std::runtime_error("Unary op requires int");
             RuntimeValue res;
@@ -682,7 +712,7 @@ namespace symir {
                     idx = idxRv.intVal;
                   }
                   if (idx < 0 || (uint64_t) idx >= obj->count)
-                    throw std::runtime_error("UB: addr of out-of-bounds array element");
+                    throw UndefinedBehaviorError("UB: addr of out-of-bounds array element");
                   addr = base + idx * obj->elemSize;
                 }
                 // Field accesses not supported for addr in v0.2.0
@@ -697,19 +727,19 @@ namespace symir {
             // load <rval>: dereference the pointer
             RuntimeValue ptrRv = evalLValue(arg.rval, store);
             if (ptrRv.kind == RuntimeValue::Kind::Undef)
-              throw std::runtime_error("UB: Load through undef pointer");
+              throw UndefinedBehaviorError("UB: Load through undef pointer");
             if (ptrRv.kind != RuntimeValue::Kind::Ptr)
               throw std::runtime_error("load requires a pointer operand");
             if (ptrRv.ptrVal == 0)
-              throw std::runtime_error("UB: Null pointer dereference in load");
+              throw UndefinedBehaviorError("UB: Null pointer dereference in load");
             const ObjectInfo *obj = findObject(ptrRv.ptrVal);
             if (!obj)
-              throw std::runtime_error("UB: Load from unknown address");
+              throw UndefinedBehaviorError("UB: Load from unknown address");
             if (ptrRv.ptrVal >= obj->end)
-              throw std::runtime_error("UB: Load out of bounds");
+              throw UndefinedBehaviorError("UB: Load out of bounds");
             auto hit = heap_.find(ptrRv.ptrVal);
             if (hit == heap_.end())
-              throw std::runtime_error("UB: Load from uninitialized memory");
+              throw UndefinedBehaviorError("UB: Load from uninitialized memory");
             return hit->second;
           } else if constexpr (std::is_same_v<T, CastAtom>) {
             RuntimeValue v = std::visit(
@@ -736,7 +766,7 @@ namespace symir {
                 arg.src
             );
             if (v.kind == RuntimeValue::Kind::Undef)
-              throw std::runtime_error("UB: Reading undef in cast");
+              throw UndefinedBehaviorError("UB: Reading undef in cast");
 
             RuntimeValue res;
             auto dstBits = TypeUtils::getBitWidth(arg.dstType);
@@ -752,7 +782,7 @@ namespace symir {
                 double hi = std::ldexp(1.0, static_cast<int>(res.bits) - 1);
                 if (std::isnan(v.floatVal) || std::isinf(v.floatVal) || v.floatVal < lo ||
                     v.floatVal >= hi)
-                  throw std::runtime_error("UB: Float-to-integer cast out of range");
+                  throw UndefinedBehaviorError("UB: Float-to-integer cast out of range");
                 res.intVal = static_cast<int64_t>(v.floatVal);
               }
             } else if (arg.dstType && std::holds_alternative<FloatType>(arg.dstType->v)) {
@@ -815,7 +845,7 @@ namespace symir {
     for (const auto &acc: lv.accesses) {
       if (auto ai = std::get_if<AccessIndex>(&acc)) {
         if (cur->kind == RuntimeValue::Kind::Undef)
-          throw std::runtime_error("UB: Reading field of undef");
+          throw UndefinedBehaviorError("UB: Reading field of undef");
         if (cur->kind != RuntimeValue::Kind::Array)
           throw std::runtime_error("Indexing non-array");
 
@@ -834,25 +864,25 @@ namespace symir {
           }
         }
         if (idxVal.kind == RuntimeValue::Kind::Undef)
-          throw std::runtime_error("UB: Undef index");
+          throw UndefinedBehaviorError("UB: Undef index");
 
         if (idxVal.intVal < 0 || (size_t) idxVal.intVal >= cur->arrayVal.size())
-          throw std::runtime_error("UB: Array index out of bounds");
+          throw UndefinedBehaviorError("UB: Array index out of bounds");
 
         cur = &cur->arrayVal[idxVal.intVal];
       } else if (auto af = std::get_if<AccessField>(&acc)) {
         if (cur->kind == RuntimeValue::Kind::Undef)
-          throw std::runtime_error("UB: Reading field of undef");
+          throw UndefinedBehaviorError("UB: Reading field of undef");
         if (cur->kind != RuntimeValue::Kind::Struct)
           throw std::runtime_error("Accessing field of non-struct");
         auto it = cur->structVal.find(af->field);
         if (it == cur->structVal.end())
-          throw std::runtime_error("UB: Uninitialized field read");
+          throw UndefinedBehaviorError("UB: Uninitialized field read");
         cur = &it->second;
       }
     }
     if (cur->kind == RuntimeValue::Kind::Undef)
-      throw std::runtime_error("UB: Reading undef value");
+      throw UndefinedBehaviorError("UB: Reading undef value");
     return *cur;
   }
 
@@ -877,7 +907,7 @@ namespace symir {
           }
         }
         if (idxVal.intVal < 0 || (size_t) idxVal.intVal >= cur->arrayVal.size())
-          throw std::runtime_error("UB: Array index out of bounds");
+          throw UndefinedBehaviorError("UB: Array index out of bounds");
         cur = &cur->arrayVal[idxVal.intVal];
       } else if (auto af = std::get_if<AccessField>(&acc)) {
         if (cur->kind != RuntimeValue::Kind::Struct)
@@ -899,7 +929,7 @@ namespace symir {
     RuntimeValue r = evalExpr(c.rhs, store);
 
     if (l.kind == RuntimeValue::Kind::Undef || r.kind == RuntimeValue::Kind::Undef)
-      throw std::runtime_error("UB: Reading undef in condition");
+      throw UndefinedBehaviorError("UB: Reading undef in condition");
 
     // Promote Int to Float if needed (Literal inference support)
     if (l.kind == RuntimeValue::Kind::Float && r.kind == RuntimeValue::Kind::Int) {
@@ -956,7 +986,9 @@ namespace symir {
           const ObjectInfo *ro = findObject(r.ptrVal);
           // null (0) has no object; allow null==null but relational on null is UB
           if (!lo || !ro || lo != ro)
-            throw std::runtime_error("UB: Relational pointer comparison across different objects");
+            throw UndefinedBehaviorError(
+                "UB: Relational pointer comparison across different objects"
+            );
           if (c.op == RelOp::LT)
             return l.ptrVal < r.ptrVal;
           if (c.op == RelOp::LE)

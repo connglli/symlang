@@ -36,6 +36,14 @@ namespace symir {
         std::runtime_error(msg), span(sp) {}
   };
 
+  /**
+   * A lexer error — a ParseError subclass so existing catch(ParseError)
+   * sites still handle it, but the main driver can distinguish lex vs parse.
+   */
+  struct LexError : ParseError {
+    explicit LexError(const std::string &msg, SourceSpan sp) : ParseError(msg, sp) {}
+  };
+
   // ---------------------------
   // Node Base
   // ---------------------------

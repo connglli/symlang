@@ -70,6 +70,7 @@ namespace symir {
     static std::uint64_t sizeofType(const TypePtr &t);
     std::uint64_t allocObject(const std::string &varName, const TypePtr &t, const Store &store);
     const ObjectInfo *findObject(std::uint64_t addr) const;
+    const ObjectInfo *findObjectForArith(std::uint64_t addr) const;
 
     // --- Runtime evaluation helpers ---
     RuntimeValue makeUndef(const TypePtr &t);

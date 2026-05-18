@@ -96,7 +96,7 @@ namespace symir {
       while (true) {
         char ch = get();
         if (ch == '\0' || ch == '\n') {
-          throw ParseError("Unterminated string literal", SourceSpan{b, pos()});
+          throw LexError("Unterminated string literal", SourceSpan{b, pos()});
         }
         if (ch == '"')
           break;
@@ -132,7 +132,7 @@ namespace symir {
         get();
       }
       if (!isIdentStart(peek())) {
-        throw ParseError("Expected identifier after sigil", SourceSpan{b, pos()});
+        throw LexError("Expected identifier after sigil", SourceSpan{b, pos()});
       }
       std::string name;
       while (isIdentCont(peek()))
@@ -217,7 +217,7 @@ namespace symir {
         if (peek() == '+' || peek() == '-')
           num.push_back(get());
         if (!std::isdigit(static_cast<unsigned char>(peek()))) {
-          throw ParseError("Expected digits in exponent", SourceSpan{b, pos()});
+          throw LexError("Expected digits in exponent", SourceSpan{b, pos()});
         }
         while (std::isdigit(static_cast<unsigned char>(peek())))
           num.push_back(get());
@@ -406,7 +406,7 @@ namespace symir {
       std::string msg = "Unexpected character: '";
       msg.push_back(c);
       msg.push_back('"');
-      throw ParseError(msg, SourceSpan{b, pos()});
+      throw LexError(msg, SourceSpan{b, pos()});
     }
   }
 
