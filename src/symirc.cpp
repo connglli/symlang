@@ -11,6 +11,7 @@
 #include "backend/c_backend.hpp"
 #include "backend/wasm_backend.hpp"
 #include "cxxopts.hpp"
+#include "error.hpp"
 #include "frontend/lexer.hpp"
 #include "frontend/parser.hpp"
 #include "frontend/semchecker.hpp"
@@ -89,7 +90,7 @@ int main(int argc, char **argv) {
           printMessage(std::cerr, src, d.span, d.message, d.level);
         }
       }
-      return 1;
+      return ExitCode::StaticError;
     }
 
     // Print warnings
@@ -130,12 +131,15 @@ int main(int argc, char **argv) {
       return 1;
     }
 
+  } catch (const LexError &e) {
+    printMessage(std::cerr, src, e.span, e.what(), DiagLevel::Error);
+    return ExitCode::LexError;
   } catch (const ParseError &e) {
     printMessage(std::cerr, src, e.span, e.what(), DiagLevel::Error);
-    return 1;
+    return ExitCode::ParseError;
   } catch (const std::exception &e) {
     std::cerr << "Exception: " << e.what() << "\n";
-    return 1;
+    return ExitCode::Error;
   }
 
   return 0;

@@ -10,6 +10,7 @@
 #include "analysis/reachability.hpp"
 #include "analysis/unused_name.hpp"
 #include "cxxopts.hpp"
+#include "error.hpp"
 #include "frontend/lexer.hpp"
 #include "frontend/parser.hpp"
 #include "frontend/semchecker.hpp"
@@ -104,7 +105,7 @@ int main(int argc, char **argv) {
           printMessage(std::cerr, src, d.span, d.message, d.level);
         }
       }
-      return 1;
+      return ExitCode::StaticError;
     }
 
     if (!nowarn) {
@@ -123,12 +124,21 @@ int main(int argc, char **argv) {
     Interpreter interp(prog);
     interp.run(mainFunc, symBindings, result["dump-trace"].as<bool>());
 
+  } catch (const UndefinedBehaviorError &e) {
+    std::cerr << e.what() << "\n";
+    return ExitCode::UndefinedBehavior;
+  } catch (const RequireViolationError &e) {
+    std::cerr << "Requirement failed: " << e.what() << "\n";
+    return ExitCode::RequireViolation;
+  } catch (const LexError &e) {
+    printMessage(std::cerr, src, e.span, e.what(), DiagLevel::Error);
+    return ExitCode::LexError;
   } catch (const ParseError &e) {
     printMessage(std::cerr, src, e.span, e.what(), DiagLevel::Error);
-    return 1;
+    return ExitCode::ParseError;
   } catch (const std::exception &e) {
     std::cerr << "Exception: " << e.what() << "\n";
-    return 1;
+    return ExitCode::Error;
   }
 
   return 0;

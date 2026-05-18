@@ -8,6 +8,7 @@
 #include "ast/ast_dumper.hpp"
 #include "ast/sir_printer.hpp"
 #include "cxxopts.hpp"
+#include "error.hpp"
 #include "frontend/lexer.hpp"
 #include "frontend/parser.hpp"
 #include "frontend/semchecker.hpp"
@@ -115,7 +116,7 @@ int main(int argc, char **argv) {
         if (d.level == DiagLevel::Error)
           printMessage(std::cerr, src, d.span, d.message, d.level);
       }
-      return 1;
+      return ExitCode::StaticError;
     }
 
     SymbolicExecutor::Config config;
@@ -212,12 +213,15 @@ int main(int argc, char **argv) {
       return 1;
     }
 
+  } catch (const LexError &e) {
+    printMessage(std::cerr, src, e.span, e.what(), DiagLevel::Error);
+    return ExitCode::LexError;
   } catch (const ParseError &e) {
     printMessage(std::cerr, src, e.span, e.what(), DiagLevel::Error);
-    return 1;
+    return ExitCode::ParseError;
   } catch (const std::exception &e) {
     std::cerr << "Exception: " << e.what() << std::endl;
-    return 1;
+    return ExitCode::Error;
   }
 
   return 0;
