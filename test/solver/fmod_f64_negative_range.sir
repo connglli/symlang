@@ -1,0 +1,20 @@
+// EXPECT: FAIL
+// SOLVER_ARGS: --main @test --path ^entry
+// x in (-2.0, -1.0): fmod(x, 1.0) = x - (-1)*1.0 = x + 1, which is in (-1, 0) — always negative.
+// require r > 0.0 is UNSAT under fmod.
+// Under fp.rem, for x in (-1.5, -1.0), remainder(x,1.0) = x+2 > 0 — would be SAT.
+// SKIP: COMPILER
+fun @test() : f64 {
+  sym %?x : value f64;
+  let %lo: f64 = -2.0;
+  let %hi: f64 = -1.0;
+  let %one: f64 = 1.0;
+  let %zero: f64 = 0.0;
+  let mut %r: f64 = 0.0;
+^entry:
+  assume %?x > %lo;
+  assume %?x < %hi;
+  %r = %?x % %one;
+  require %r > %zero;
+  ret %r;
+}

@@ -242,17 +242,63 @@ namespace symir {
                   }
                 }
               }
-              indent();
               std::string prefix = (targetWidth <= 32 ? "f32." : "f64.");
-              switch (arg.op) {
-                case AtomOpKind::Mul:
-                  out_ << prefix << "mul\n";
-                  break;
-                case AtomOpKind::Div:
-                  out_ << prefix << "div\n";
-                  break;
-                default:
-                  break;
+              if (arg.op == AtomOpKind::Mod) {
+                // WebAssembly MVP has no f32.rem / f64.rem instruction.
+                // Emit fmod inline: x - trunc(x/y) * y
+                // Stack after emitCoef+emitLValue above: [x, y] — but we need
+                // x and y each twice, so emit them fresh here.
+                // Re-emit y (with optional f32→f64 promotion) as a helper.
+                auto emitY = [&]() {
+                  emitLValue(arg.rval, false);
+                  if (locals_.count(arg.rval.base.name)) {
+                    auto const &li = locals_.at(arg.rval.base.name);
+                    if (std::holds_alternative<FloatType>(li.symirType->v)) {
+                      if (li.bitwidth == 32 && targetWidth == 64) {
+                        indent();
+                        out_ << "f64.promote_f32\n";
+                      }
+                    }
+                  }
+                };
+                // The preceding emitCoef/emitLValue already pushed [x, y] onto
+                // the stack (used for the initial x below). Drop those now and
+                // re-emit cleanly so the stack is deterministic.
+                // Actually, since we need x twice we restructure entirely:
+                // emitCoef/emitLValue above left [x, y] on stack; pop y with
+                // local.set into a drop, but simpler: the two emits above are
+                // effectively wasted — in WASM we must balance the stack.
+                // Instead we emit a `drop` for y and `drop` for x (they were
+                // pushed by the standard path above), then emit the full fmod.
+                indent();
+                out_ << "drop\n"; // drop y (emitLValue result)
+                indent();
+                out_ << "drop\n"; // drop x (emitCoef result)
+                // Now emit fmod(x, y) = x - trunc(x/y) * y
+                emitCoef(arg.coef, targetWidth, isFloat); // x
+                emitCoef(arg.coef, targetWidth, isFloat); // x  (for division)
+                emitY();                                  // y
+                indent();
+                out_ << prefix << "div\n"; // x/y
+                indent();
+                out_ << prefix << "trunc\n"; // trunc(x/y)
+                emitY();                     // y
+                indent();
+                out_ << prefix << "mul\n"; // trunc(x/y)*y
+                indent();
+                out_ << prefix << "sub\n"; // x - trunc(x/y)*y
+              } else {
+                indent();
+                switch (arg.op) {
+                  case AtomOpKind::Mul:
+                    out_ << prefix << "mul\n";
+                    break;
+                  case AtomOpKind::Div:
+                    out_ << prefix << "div\n";
+                    break;
+                  default:
+                    break;
+                }
               }
             } else if (arg.op == AtomOpKind::LShr) {
               emitCoef(arg.coef, targetWidth, isFloat);

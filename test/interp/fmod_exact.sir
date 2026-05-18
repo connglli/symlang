@@ -1,7 +1,6 @@
 // EXPECT: PASS
 // 7.0 % 3.5: exact division, quotient = 2, result = 7.0 - 2*3.5 = 0.0
 // fmod and remainder agree when quotient is exact integer
-// SKIP: WASM
 fun @main() : f64 {
   let %a: f64 = 7.0;
   let %b: f64 = 3.5;

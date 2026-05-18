@@ -1,6 +1,5 @@
 // EXPECT: PASS
 // 1.5 % 1.0 (f64): fmod truncates quotient to 1, result = 1.5 - 1*1.0 = 0.5
-// SKIP: WASM
 fun @main() : f64 {
   let %a: f64 = 1.5;
   let %b: f64 = 1.0;

@@ -1,6 +1,5 @@
 // EXPECT: PASS
 // 5.5 % 2.0: fmod truncates quotient to 2, result = 5.5 - 2*2.0 = 1.5
-// SKIP: WASM
 fun @main() : f32 {
   let %a: f32 = 5.5;
   let %b: f32 = 2.0;

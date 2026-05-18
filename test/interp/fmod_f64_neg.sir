@@ -1,7 +1,6 @@
 // EXPECT: PASS
 // -3.5 % 2.0 (f64): fmod truncates quotient to -1, result = -3.5 - (-1)*2.0 = -1.5
 // (IEEE remainder gives 0.5 since it rounds quotient to -2)
-// SKIP: WASM
 fun @main() : f64 {
   let %a: f64 = -3.5;
   let %b: f64 = 2.0;

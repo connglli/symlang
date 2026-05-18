@@ -1,0 +1,19 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @test --path ^entry
+// x in [-1.75, -1.25]: fmod(x, 1.0) = x + 1 in [-0.75, -0.25] — negative, away from boundary.
+// require r < 0.0 is SAT.
+// SKIP: COMPILER
+fun @test() : f64 {
+  sym %?x : value f64;
+  let %lo: f64 = -1.75;
+  let %hi: f64 = -1.25;
+  let %one: f64 = 1.0;
+  let %zero: f64 = 0.0;
+  let mut %r: f64 = 0.0;
+^entry:
+  assume %?x >= %lo;
+  assume %?x <= %hi;
+  %r = %?x % %one;
+  require %r < %zero;
+  ret %r;
+}

@@ -1,0 +1,18 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @test --path ^entry
+// x in (3.0, 5.0): fmod(x, 3.0) in (0, 3) — solver should find a concrete x.
+// SKIP: COMPILER
+fun @test() : f32 {
+  sym %?x : value f32;
+  let %lo: f32 = 3.0;
+  let %hi: f32 = 5.0;
+  let %three: f32 = 3.0;
+  let %zero: f32 = 0.0;
+  let mut %r: f32 = 0.0;
+^entry:
+  assume %?x > %lo;
+  assume %?x < %hi;
+  %r = %?x % %three;
+  require %r > %zero;
+  ret %r;
+}

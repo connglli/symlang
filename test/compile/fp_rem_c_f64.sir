@@ -1,10 +1,12 @@
 // EXPECT: PASS
-// 1.5 % 1.0 (f64): fmod = 0.5
+// 1.5 % 1.0 (f64): fmod = 0.5 (IEEE remainder = -0.5)
 fun @main() : f64 {
   let %a: f64 = 1.5;
   let %b: f64 = 1.0;
+  let %expected: f64 = 0.5;
   let mut %r: f64 = 0.0;
 ^entry:
   %r = %a % %b;
+  require %r == %expected, "1.5 fmod 1.0 (f64) == 0.5";
   ret %r;
 }
