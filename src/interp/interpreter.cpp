@@ -1,4 +1,5 @@
 #include "interp/interpreter.hpp"
+#include <cfenv>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -17,6 +18,8 @@ namespace symir {
   void Interpreter::run(
       const std::string &entryFuncName, const SymBindings &symBindings, bool dumpExec
   ) {
+    // Ensure IEEE 754 RNE rounding mode regardless of process FP environment.
+    std::fesetround(FE_TONEAREST);
     dumpExec_ = dumpExec;
     const FunDecl *entry = nullptr;
     for (const auto &f: prog_.funs) {
@@ -409,7 +412,8 @@ namespace symir {
                 res.intVal = c.intVal | r.intVal;
               } else if (arg.op == AtomOpKind::Xor) {
                 res.intVal = c.intVal ^ r.intVal;
-              } else if (arg.op == AtomOpKind::Shl || arg.op == AtomOpKind::Shr || arg.op == AtomOpKind::LShr) {
+              } else if (arg.op == AtomOpKind::Shl || arg.op == AtomOpKind::Shr ||
+                         arg.op == AtomOpKind::LShr) {
                 if (r.intVal < 0 || (uint64_t) r.intVal >= (uint64_t) res.bits) {
                   throw std::runtime_error("UB: Overshift");
                 }
@@ -434,7 +438,7 @@ namespace symir {
               else if (arg.op == AtomOpKind::Div)
                 res.floatVal = c.floatVal / r.floatVal;
               else if (arg.op == AtomOpKind::Mod)
-                res.floatVal = std::fmod(c.floatVal, r.floatVal);
+                res.floatVal = std::remainder(c.floatVal, r.floatVal);
               else
                 throw std::runtime_error("Unsupported op for floats");
               return res;

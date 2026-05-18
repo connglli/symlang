@@ -1,0 +1,13 @@
+// EXPECT: PASS
+// -3.5 % 2.0 as f64: quotient = -1.75, RNE rounds to -2, result = -3.5 - (-2)*2.0 = 0.5
+// fmod gives -1.5 (truncates quotient to -1).
+fun @main() : f64 {
+  let %a: f64 = -3.5;
+  let %b: f64 = 2.0;
+  let %expected: f64 = 0.5;
+  let mut %r: f64 = 0.0;
+^entry:
+  %r = %a % %b;
+  require %r == %expected, "-3.5 rem 2.0 (f64) == 0.5";
+  ret %r;
+}
