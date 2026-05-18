@@ -1,0 +1,9 @@
+// EXPECT: PASS
+// f64 2147483647.0 == INT32_MAX: cast to i32 should succeed (in range)
+fun @main() : i32 {
+  let %a: f64 = 2147483647.0;
+  let mut %i: i32 = 0;
+^entry:
+  %i = %a as i32;
+  ret %i;
+}

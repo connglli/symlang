@@ -507,10 +507,18 @@ namespace symir {
             if (dstBits) {
               res.kind = RuntimeValue::Kind::Int;
               res.bits = *dstBits;
-              if (v.kind == RuntimeValue::Kind::Int)
+              if (v.kind == RuntimeValue::Kind::Int) {
                 res.intVal = canonicalize(v.intVal, res.bits);
-              else
-                res.intVal = static_cast<int64_t>(v.floatVal); // Float to Int
+              } else {
+                // Float to Int: check for out-of-range (spec §7.4 rule 8).
+                // lo = -2^(bits-1), hi = 2^(bits-1); valid range is [lo, hi).
+                double lo = -std::ldexp(1.0, static_cast<int>(res.bits) - 1);
+                double hi = std::ldexp(1.0, static_cast<int>(res.bits) - 1);
+                if (std::isnan(v.floatVal) || std::isinf(v.floatVal) || v.floatVal < lo ||
+                    v.floatVal >= hi)
+                  throw std::runtime_error("UB: Float-to-integer cast out of range");
+                res.intVal = static_cast<int64_t>(v.floatVal);
+              }
             } else if (arg.dstType && std::holds_alternative<FloatType>(arg.dstType->v)) {
               res.kind = RuntimeValue::Kind::Float;
               res.bits =
