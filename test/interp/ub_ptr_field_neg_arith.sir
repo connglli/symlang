@@ -1,0 +1,17 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: COMPILER
+// SKIP: SOLVER
+// Arithmetic before field base is immediately OOB — UB at arithmetic step.
+struct @Pair { a: i32; b: i32; }
+
+fun @main() : i32 {
+  let mut %s: @Pair = {10, 20};
+  let mut %pa: ptr i32 = null;
+  let %one: i32 = 1;
+  let mut %v: i32 = 0;
+^entry:
+  %pa = addr %s.a;
+  %pa = %pa - %one;
+  %v = load %pa;
+  ret %v;
+}

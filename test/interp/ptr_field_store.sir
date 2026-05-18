@@ -1,0 +1,17 @@
+// EXPECT: PASS
+// SKIP: COMPILER
+// SKIP: SOLVER
+// Store through a field pointer, read back — stored value must be visible.
+struct @Pair { a: i32; b: i32; }
+
+fun @main() : i32 {
+  let mut %s: @Pair = {10, 20};
+  let mut %pa: ptr i32 = null;
+  let mut %v: i32 = 0;
+^entry:
+  %pa = addr %s.a;
+  store %pa, 777;
+  %v = load %pa;
+  require %v == 777, "stored==777";
+  ret 0;
+}

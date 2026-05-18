@@ -1,0 +1,18 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: COMPILER
+// SKIP: SOLVER
+// Load from one-past-the-end of a field pointer is UB.
+// Field 'a' has provenance [base, base+4); loading from base+4 is out of bounds.
+struct @Pair { a: i32; b: i32; }
+
+fun @main() : i32 {
+  let mut %s: @Pair = {10, 20};
+  let mut %pa: ptr i32 = null;
+  let %one: i32 = 1;
+  let mut %v: i32 = 0;
+^entry:
+  %pa = addr %s.a;
+  %pa = %pa + %one;
+  %v = load %pa;
+  ret %v;
+}

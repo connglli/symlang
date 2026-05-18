@@ -1,0 +1,16 @@
+// EXPECT: PASS
+// SKIP: COMPILER
+// SKIP: SOLVER
+// Take addr of a struct's first scalar field, load through it — should return 42.
+struct @Pair { a: i32; b: i32; }
+
+fun @main() : i32 {
+  let mut %s: @Pair = {42, 99};
+  let mut %pa: ptr i32 = null;
+  let mut %v: i32 = 0;
+^entry:
+  %pa = addr %s.a;
+  %v = load %pa;
+  require %v == 42, "a==42";
+  ret 0;
+}

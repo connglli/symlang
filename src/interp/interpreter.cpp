@@ -30,7 +30,7 @@ namespace symir {
 
   // ---- Memory helpers ----
 
-  std::uint64_t Interpreter::sizeofType(const TypePtr &t) {
+  std::uint64_t Interpreter::sizeofType(const TypePtr &t) const {
     if (!t)
       return 8;
     if (auto it = std::get_if<IntType>(&t->v)) {
@@ -44,6 +44,15 @@ namespace symir {
       return 8;
     if (auto at = std::get_if<ArrayType>(&t->v)) {
       return at->size * sizeofType(at->elem);
+    }
+    if (auto st = std::get_if<StructType>(&t->v)) {
+      auto it = structs_.find(st->name.name);
+      if (it == structs_.end())
+        return 8;
+      uint64_t total = 0;
+      for (const auto &f: it->second->fields)
+        total += sizeofType(f.type);
+      return total;
     }
     return 8;
   }
@@ -64,7 +73,7 @@ namespace symir {
     uint64_t elemSize =
         sizeofType(std::get_if<ArrayType>(&t->v) ? std::get<ArrayType>(t->v).elem : t);
     uint64_t count = std::get_if<ArrayType>(&t->v) ? std::get<ArrayType>(t->v).size : 1;
-    objects_.push_back(ObjectInfo{varName, base, base + totalSize, elemSize, count});
+    objects_.push_back(ObjectInfo{varName, "", base, base + totalSize, elemSize, count});
     addrMap_[varName] = base;
 
     // Sync current store value into heap
@@ -99,6 +108,76 @@ namespace symir {
       if (addr == o.end)
         return &o;
     return nullptr;
+  }
+
+  // Find an ObjectInfo by exact base address — used for provenance-based lookups.
+  const Interpreter::ObjectInfo *Interpreter::findObjectByBase(std::uint64_t base) const {
+    for (const auto &o: objects_)
+      if (o.base == base)
+        return &o;
+    return nullptr;
+  }
+
+  // Byte offset of named field within struct s (sequential layout, no padding).
+  std::uint64_t Interpreter::fieldOffset(const StructDecl &s, const std::string &fieldName) const {
+    uint64_t offset = 0;
+    for (const auto &f: s.fields) {
+      if (f.name == fieldName)
+        return offset;
+      offset += sizeofType(f.type);
+    }
+    throw std::runtime_error("Internal: field '" + fieldName + "' not found in struct");
+  }
+
+  // Materialize a struct variable into the heap: allocate one ObjectInfo per field
+  // with provenance [fieldBase, fieldBase+sizeof(T)).  Idempotent (no-op if already done).
+  std::uint64_t Interpreter::materializeStruct(
+      const std::string &varName, const StructDecl &s, const Store &store
+  ) {
+    auto it = addrMap_.find(varName);
+    if (it != addrMap_.end())
+      return it->second;
+
+    // Compute total size (sequential field layout, no padding).
+    uint64_t totalSize = 0;
+    for (const auto &f: s.fields)
+      totalSize += sizeofType(f.type);
+
+    uint64_t base = nextAddr_;
+    nextAddr_ += (totalSize + 7) & ~7ULL;
+    addrMap_[varName] = base;
+
+    // Create one ObjectInfo per field and sync its value into the heap.
+    uint64_t offset = 0;
+    auto sv = store.find(varName);
+    for (const auto &f: s.fields) {
+      uint64_t fBase = base + offset;
+      uint64_t fElemSize;
+      uint64_t fCount;
+      if (auto at = std::get_if<ArrayType>(&f.type->v)) {
+        fCount = at->size;
+        fElemSize = sizeofType(at->elem);
+      } else {
+        fCount = 1;
+        fElemSize = sizeofType(f.type);
+      }
+      uint64_t fSize = fCount * fElemSize;
+      objects_.push_back(ObjectInfo{varName, f.name, fBase, fBase + fSize, fElemSize, fCount});
+
+      if (sv != store.end() && sv->second.kind == RuntimeValue::Kind::Struct) {
+        auto fit = sv->second.structVal.find(f.name);
+        if (fit != sv->second.structVal.end()) {
+          if (fit->second.kind == RuntimeValue::Kind::Array) {
+            for (size_t i = 0; i < fit->second.arrayVal.size(); ++i)
+              heap_[fBase + i * fElemSize] = fit->second.arrayVal[i];
+          } else {
+            heap_[fBase] = fit->second;
+          }
+        }
+      }
+      offset += fSize;
+    }
+    return base;
   }
 
   void Interpreter::run(
@@ -283,7 +362,16 @@ namespace symir {
     heap_.clear();
     objects_.clear();
     addrMap_.clear();
+    typeMap_.clear();
     nextAddr_ = 4096; // leave address 0 for null
+
+    // Build name→type map for addr provenance lookups.
+    for (const auto &p: f.params)
+      typeMap_[p.name.name] = p.type;
+    for (const auto &s: f.syms)
+      typeMap_[s.name.name] = s.type;
+    for (const auto &l: f.lets)
+      typeMap_[l.name.name] = l.type;
 
     Store store;
     DiagBag diags;
@@ -399,22 +487,26 @@ namespace symir {
                   throw std::runtime_error("Store requires a pointer operand");
                 if (ptrVal.ptrVal == 0)
                   throw UndefinedBehaviorError("UB: Null pointer dereference in store");
-                // Bounds check: address must be within a known object
-                const ObjectInfo *obj = findObject(ptrVal.ptrVal);
+                // Provenance-based bounds check.
+                const ObjectInfo *obj = findObjectByBase(ptrVal.ptrBase);
                 if (!obj)
                   throw UndefinedBehaviorError("UB: Store to unknown address");
-                if (ptrVal.ptrVal >= obj->end)
+                if (ptrVal.ptrVal < obj->base || ptrVal.ptrVal >= obj->end)
                   throw UndefinedBehaviorError("UB: Store out of bounds");
                 heap_[ptrVal.ptrVal] = val;
-                // Sync back to store for scalars (maintain Store/Heap consistency)
-                if (ptrVal.ptrVal == obj->base && obj->count == 1) {
+                // Sync back to store for Store/Heap consistency.
+                if (!obj->fieldName.empty()) {
+                  // Struct-field pointer: sync to structVal.
+                  if (store.count(obj->varName) &&
+                      store.at(obj->varName).kind == RuntimeValue::Kind::Struct)
+                    store[obj->varName].structVal[obj->fieldName] = val;
+                } else if (obj->count == 1) {
                   store[obj->varName] = val;
-                } else if (obj->count > 1) {
+                } else {
                   uint64_t idx = (ptrVal.ptrVal - obj->base) / obj->elemSize;
                   if (store.count(obj->varName) &&
-                      store.at(obj->varName).kind == RuntimeValue::Kind::Array) {
+                      store.at(obj->varName).kind == RuntimeValue::Kind::Array)
                     store[obj->varName].arrayVal[idx] = val;
-                  }
                 }
               }
             },
@@ -502,7 +594,8 @@ namespace symir {
       } else if (v.kind == RuntimeValue::Kind::Ptr && right.kind == RuntimeValue::Kind::Int) {
         // ptr ± int: scale offset by element size; result must stay in [base, end].
         // One-past-the-end (== end) is valid for arithmetic but not for dereference.
-        const ObjectInfo *obj = findObjectForArith(v.ptrVal);
+        // Use ptrBase to find the exact provenance object (enforces field-level boundaries).
+        const ObjectInfo *obj = findObjectByBase(v.ptrBase);
         if (!obj)
           throw UndefinedBehaviorError("UB: Pointer arithmetic on out-of-bounds pointer");
         uint64_t elemSize = obj->elemSize;
@@ -512,11 +605,14 @@ namespace symir {
         if (newAddr < static_cast<int64_t>(obj->base) || newAddr > static_cast<int64_t>(obj->end))
           throw UndefinedBehaviorError("UB: Pointer arithmetic out of bounds");
         v.ptrVal = static_cast<uint64_t>(newAddr);
+        // ptrBase preserved: arithmetic does not change provenance.
       } else if (v.kind == RuntimeValue::Kind::Ptr && right.kind == RuntimeValue::Kind::Ptr) {
         // ptr - ptr: element count distance (only subtraction makes sense)
         if (tail.op != AddOp::Minus)
           throw std::runtime_error("Cannot add two pointers");
-        const ObjectInfo *obj = findObjectForArith(v.ptrVal);
+        if (v.ptrBase != right.ptrBase)
+          throw UndefinedBehaviorError("UB: Pointer subtraction across different objects");
+        const ObjectInfo *obj = findObjectByBase(v.ptrBase);
         uint64_t elemSize = obj ? obj->elemSize : 1;
         int64_t diff = static_cast<int64_t>(v.ptrVal) - static_cast<int64_t>(right.ptrVal);
         v.kind = RuntimeValue::Kind::Int;
@@ -632,95 +728,106 @@ namespace symir {
           } else if constexpr (std::is_same_v<T, RValueAtom>) {
             return evalLValue(arg.rval, store);
           } else if constexpr (std::is_same_v<T, AddrAtom>) {
-            // addr <lv>: return the address of the lvalue's storage
+            // addr <lv>: return the address of the lvalue's storage with provenance.
             const std::string &varName = arg.lv.base.name;
-            auto it = store.find(varName);
-            if (it == store.end())
+            if (!store.count(varName))
               throw std::runtime_error("UB: addr of unknown variable " + varName);
-            // Get the type from the store value (we need it for allocation)
-            // Determine type from the store entry
-            // For now, find the type from the FunDecl — we hold f reference in execFunction
-            // Workaround: use the current store/heap to infer allocation size
-            // We store the LValue so we can compute element address for indexed access
+
+            // Allocate / materialize storage.  Use typeMap_ when available so
+            // that structs get per-field ObjectInfos and scalars/arrays get a
+            // typed ObjectInfo with the correct elemSize and count.
             uint64_t base;
-            {
-              // Check if already allocated; if not, we need to alloc now.
-              // We don't have the TypePtr here easily — use the stored RuntimeValue to infer size.
-              // For scalars: size 8 (safe over-alloc). For arrays: count * elemSize.
-              const RuntimeValue &sv = it->second;
+            auto tit = typeMap_.find(varName);
+            if (tit != typeMap_.end()) {
+              if (auto st = std::get_if<StructType>(&tit->second->v)) {
+                auto sit = structs_.find(st->name.name);
+                if (sit == structs_.end())
+                  throw std::runtime_error("Unknown struct: " + st->name.name);
+                base = materializeStruct(varName, *sit->second, store);
+              } else {
+                base = allocObject(varName, tit->second, store);
+              }
+            } else {
+              // Fallback for variables without type info: infer from RuntimeValue shape.
               auto ait = addrMap_.find(varName);
-              if (ait == addrMap_.end()) {
-                // Allocate based on RuntimeValue shape
-                uint64_t elemSize = 8;
-                uint64_t count = 1;
+              if (ait != addrMap_.end()) {
+                base = ait->second;
+              } else {
+                const RuntimeValue &sv = store.at(varName);
+                uint64_t elemSize = 8, count = 1;
                 if (sv.kind == RuntimeValue::Kind::Array) {
                   count = sv.arrayVal.size();
-                  // elemSize: assume 4 (i32) for now, refine later
-                  elemSize = 4;
-                  if (!sv.arrayVal.empty()) {
-                    auto &e = sv.arrayVal[0];
-                    if (e.kind == RuntimeValue::Kind::Int)
-                      elemSize = (e.bits + 7) / 8;
-                    else if (e.kind == RuntimeValue::Kind::Float)
-                      elemSize = e.bits / 8;
-                    else if (e.kind == RuntimeValue::Kind::Ptr)
-                      elemSize = 8;
-                  }
+                  elemSize = sv.arrayVal.empty() ? 4
+                             : (sv.arrayVal[0].kind == RuntimeValue::Kind::Int)
+                                 ? (sv.arrayVal[0].bits + 7) / 8
+                             : (sv.arrayVal[0].kind == RuntimeValue::Kind::Float)
+                                 ? sv.arrayVal[0].bits / 8
+                                 : 8;
                 } else if (sv.kind == RuntimeValue::Kind::Int) {
                   elemSize = (sv.bits + 7) / 8;
                 } else if (sv.kind == RuntimeValue::Kind::Float) {
                   elemSize = sv.bits / 8;
-                } else if (sv.kind == RuntimeValue::Kind::Ptr) {
-                  elemSize = 8;
-                } else if (sv.kind == RuntimeValue::Kind::Undef) {
-                  elemSize = 8;
                 }
-                uint64_t totalSize = elemSize * count;
                 base = nextAddr_;
-                nextAddr_ += (totalSize + 7) & ~7ULL;
-                objects_.push_back(ObjectInfo{varName, base, base + totalSize, elemSize, count});
+                nextAddr_ += (elemSize * count + 7) & ~7ULL;
+                objects_.push_back(
+                    ObjectInfo{varName, "", base, base + elemSize * count, elemSize, count}
+                );
                 addrMap_[varName] = base;
-                // Sync store to heap
                 if (sv.kind == RuntimeValue::Kind::Array) {
-                  for (std::size_t i = 0; i < sv.arrayVal.size(); ++i)
+                  for (size_t i = 0; i < sv.arrayVal.size(); ++i)
                     heap_[base + i * elemSize] = sv.arrayVal[i];
                 } else {
                   heap_[base] = sv;
                 }
-              } else {
-                base = ait->second;
               }
             }
-            // Compute element address from accesses
+
+            // Walk accesses to compute final address and provenance base.
             uint64_t addr = base;
-            if (!arg.lv.accesses.empty()) {
-              const ObjectInfo *obj = findObject(base);
-              if (!obj)
-                throw std::runtime_error("Internal error: object not found");
-              for (const auto &acc: arg.lv.accesses) {
-                if (auto ai = std::get_if<AccessIndex>(&acc)) {
-                  int64_t idx = 0;
-                  if (std::holds_alternative<IntLit>(ai->index)) {
-                    idx = std::get<IntLit>(ai->index).value;
-                  } else {
-                    const auto &id = std::get<LocalOrSymId>(ai->index);
-                    RuntimeValue idxRv;
-                    if (auto lid = std::get_if<LocalId>(&id))
-                      idxRv = store.at(lid->name);
-                    else
-                      idxRv = store.at(std::get_if<SymId>(&id)->name);
-                    idx = idxRv.intVal;
-                  }
-                  if (idx < 0 || (uint64_t) idx >= obj->count)
-                    throw UndefinedBehaviorError("UB: addr of out-of-bounds array element");
-                  addr = base + idx * obj->elemSize;
+            uint64_t ptrBase = base; // updated by field accesses (rule 15)
+            for (const auto &acc: arg.lv.accesses) {
+              if (auto ai = std::get_if<AccessIndex>(&acc)) {
+                const ObjectInfo *obj = findObjectByBase(ptrBase);
+                if (!obj)
+                  throw std::runtime_error("Internal: no ObjectInfo at ptrBase for addr");
+                int64_t idx = 0;
+                if (std::holds_alternative<IntLit>(ai->index)) {
+                  idx = std::get<IntLit>(ai->index).value;
+                } else {
+                  const auto &id = std::get<LocalOrSymId>(ai->index);
+                  RuntimeValue idxRv = std::get_if<LocalId>(&id)
+                                           ? store.at(std::get_if<LocalId>(&id)->name)
+                                           : store.at(std::get_if<SymId>(&id)->name);
+                  idx = idxRv.intVal;
                 }
-                // Field accesses not supported for addr in v0.2.0
+                if (idx < 0 || (uint64_t) idx >= obj->count)
+                  throw UndefinedBehaviorError("UB: addr of out-of-bounds array element");
+                addr = ptrBase + idx * obj->elemSize;
+                // ptrBase stays at the array's base (arithmetic walks the array).
+              } else if (auto af = std::get_if<AccessField>(&acc)) {
+                // addr lv.f: field pointer has provenance over one element (spec rule 15).
+                auto tit2 = typeMap_.find(varName);
+                if (tit2 == typeMap_.end())
+                  throw std::runtime_error("No type info for field access on " + varName);
+                auto st = std::get_if<StructType>(&tit2->second->v);
+                if (!st)
+                  throw std::runtime_error("Field access on non-struct variable " + varName);
+                auto sit = structs_.find(st->name.name);
+                if (sit == structs_.end())
+                  throw std::runtime_error("Unknown struct for field access");
+                // materializeStruct is idempotent; ensures per-field ObjectInfos exist.
+                uint64_t structBase = materializeStruct(varName, *sit->second, store);
+                addr = structBase + fieldOffset(*sit->second, af->field);
+                // Field pointer provenance = field's own ObjectInfo base.
+                ptrBase = addr;
               }
             }
+
             RuntimeValue rv;
             rv.kind = RuntimeValue::Kind::Ptr;
             rv.ptrVal = addr;
+            rv.ptrBase = ptrBase;
             rv.bits = 64;
             return rv;
           } else if constexpr (std::is_same_v<T, LoadAtom>) {
@@ -732,10 +839,11 @@ namespace symir {
               throw std::runtime_error("load requires a pointer operand");
             if (ptrRv.ptrVal == 0)
               throw UndefinedBehaviorError("UB: Null pointer dereference in load");
-            const ObjectInfo *obj = findObject(ptrRv.ptrVal);
+            // Provenance-based bounds check: use ptrBase to locate the exact object.
+            const ObjectInfo *obj = findObjectByBase(ptrRv.ptrBase);
             if (!obj)
               throw UndefinedBehaviorError("UB: Load from unknown address");
-            if (ptrRv.ptrVal >= obj->end)
+            if (ptrRv.ptrVal < obj->base || ptrRv.ptrVal >= obj->end)
               throw UndefinedBehaviorError("UB: Load out of bounds");
             auto hit = heap_.find(ptrRv.ptrVal);
             if (hit == heap_.end())
@@ -981,11 +1089,9 @@ namespace symir {
         case RelOp::LE:
         case RelOp::GT:
         case RelOp::GE: {
-          // Relational comparison between different objects is UB (spec §8.14)
-          const ObjectInfo *lo = findObject(l.ptrVal);
-          const ObjectInfo *ro = findObject(r.ptrVal);
-          // null (0) has no object; allow null==null but relational on null is UB
-          if (!lo || !ro || lo != ro)
+          // Relational comparison requires same provenance object (spec §7.5 rule 14).
+          // ptrBase==0 implies null or invalid pointer — always UB for relational ops.
+          if (l.ptrBase == 0 || r.ptrBase == 0 || l.ptrBase != r.ptrBase)
             throw UndefinedBehaviorError(
                 "UB: Relational pointer comparison across different objects"
             );

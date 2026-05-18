@@ -1,0 +1,16 @@
+// EXPECT: PASS
+// SKIP: COMPILER
+// SKIP: SOLVER
+// Take addr of a struct's second scalar field — address must differ from first.
+struct @Pair { a: i32; b: i32; }
+
+fun @main() : i32 {
+  let mut %s: @Pair = {10, 99};
+  let mut %pb: ptr i32 = null;
+  let mut %v: i32 = 0;
+^entry:
+  %pb = addr %s.b;
+  %v = load %pb;
+  require %v == 99, "b==99";
+  ret 0;
+}
