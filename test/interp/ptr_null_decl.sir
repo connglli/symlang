@@ -1,0 +1,13 @@
+// EXPECT: PASS
+// Declare a null ptr i32, compare with null — should branch to ^is_null and return 1.
+fun @main() : i32 {
+  let %p: ptr i32 = null;
+  let %one: i32 = 1;
+  let %zero: i32 = 0;
+^entry:
+  br %p == null, ^is_null, ^not_null;
+^is_null:
+  ret %one;
+^not_null:
+  ret %zero;
+}

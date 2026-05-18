@@ -264,6 +264,8 @@ namespace symir {
             out_ << arg.value;
           } else if constexpr (std::is_same_v<T, FloatLit>) {
             out_ << arg.value;
+          } else if constexpr (std::is_same_v<T, NullLit>) {
+            out_ << "null";
           } else {
             std::visit(
                 [this](auto &&id) {
@@ -331,6 +333,9 @@ namespace symir {
         break;
       case InitVal::Kind::Undef:
         out_ << "undef";
+        break;
+      case InitVal::Kind::Null:
+        out_ << "null";
         break;
       case InitVal::Kind::Aggregate: {
         out_ << "{";

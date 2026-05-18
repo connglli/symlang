@@ -45,6 +45,10 @@ namespace symir {
       auto ab = std::get_if<ArrayType>(&b->v);
       return aa->size == ab->size && areTypesEqual(aa->elem, ab->elem);
     }
+    if (auto pa = std::get_if<PtrType>(&a->v)) {
+      auto pb = std::get_if<PtrType>(&b->v);
+      return areTypesEqual(pa->pointee, pb->pointee);
+    }
     return false;
   }
 

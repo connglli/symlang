@@ -19,7 +19,12 @@ namespace symir {
       std::uint32_t bits;
     };
 
-    using Variant = std::variant<BoolTy, BVTy, FloatTy, std::monostate>;
+    /// Pointer type: carries the full ptr T TypePtr for downstream use.
+    struct PtrTy {
+      TypePtr type; // always a PtrType node
+    };
+
+    using Variant = std::variant<BoolTy, BVTy, FloatTy, PtrTy, std::monostate>;
     Variant v;
 
     bool isBool() const { return std::holds_alternative<BoolTy>(v); }
@@ -31,6 +36,10 @@ namespace symir {
     bool isFloat() const { return std::holds_alternative<FloatTy>(v); }
 
     std::uint32_t floatBits() const { return std::get<FloatTy>(v).bits; }
+
+    bool isPtr() const { return std::holds_alternative<PtrTy>(v); }
+
+    TypePtr ptrType() const { return std::get<PtrTy>(v).type; }
   };
 
   /**
@@ -88,13 +97,13 @@ namespace symir {
     Ty typeOfExpr(
         const Expr &e, const std::unordered_map<std::string, VarInfo> &vars,
         const std::unordered_map<std::string, SymInfo> &syms, TypeAnnotations &ann, DiagBag &diags,
-        std::optional<std::uint32_t> expectedBits
+        std::optional<std::uint32_t> expectedBits, TypePtr ptrCtx = nullptr
     );
 
     Ty typeOfAtom(
         const Atom &a, const std::unordered_map<std::string, VarInfo> &vars,
         const std::unordered_map<std::string, SymInfo> &syms, TypeAnnotations &ann, DiagBag &diags,
-        std::optional<std::uint32_t> expectedBits
+        std::optional<std::uint32_t> expectedBits, TypePtr ptrCtx = nullptr
     );
 
     TypePtr typeOfLValue(
@@ -110,13 +119,14 @@ namespace symir {
     TypePtr typeOfCoef(
         const Coef &c, const std::unordered_map<std::string, VarInfo> &vars,
         const std::unordered_map<std::string, SymInfo> &syms, DiagBag &diags,
-        std::optional<std::uint32_t> expectedBits
+        std::optional<std::uint32_t> expectedBits,
+        TypePtr ptrCtx = nullptr // non-null only when null literal needs ptr type resolution
     );
 
     Ty typeOfSelectVal(
         const SelectVal &sv, const std::unordered_map<std::string, VarInfo> &vars,
         const std::unordered_map<std::string, SymInfo> &syms, TypeAnnotations &ann, DiagBag &diags,
-        std::optional<std::uint32_t> expectedBits
+        std::optional<std::uint32_t> expectedBits, TypePtr ptrCtx = nullptr
     );
 
     void checkCond(

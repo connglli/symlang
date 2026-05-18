@@ -371,6 +371,16 @@ namespace symir {
         return make(TokenKind::KwUndef, name, b, pos());
       if (name == "as")
         return make(TokenKind::KwAs, name, b, pos());
+      if (name == "ptr")
+        return make(TokenKind::KwPtr, name, b, pos());
+      if (name == "addr")
+        return make(TokenKind::KwAddr, name, b, pos());
+      if (name == "load")
+        return make(TokenKind::KwLoad, name, b, pos());
+      if (name == "store")
+        return make(TokenKind::KwStore, name, b, pos());
+      if (name == "null")
+        return make(TokenKind::KwNull, name, b, pos());
 
       if (name.size() >= 2 && name[0] == 'i' && std::isdigit(static_cast<unsigned char>(name[1]))) {
         bool allDigits = true;

@@ -72,6 +72,9 @@ namespace symir {
           } else if constexpr (std::is_same_v<T, ArrayType>) {
             // Arrays are emitted as C arrays in context, but here we emit the base type
             emitType(arg.elem);
+          } else if constexpr (std::is_same_v<T, PtrType>) {
+            emitType(arg.pointee);
+            out_ << " *";
           }
         },
         type->v
@@ -80,6 +83,7 @@ namespace symir {
 
   void CBackend::emit(const Program &prog) {
     out_ << "#include <stdint.h>\n";
+    out_ << "#include <stddef.h>\n";
     out_ << "#include <stdbool.h>\n";
     out_ << "#include <math.h>\n";
     out_ << "#include <assert.h>\n\n";
@@ -275,6 +279,12 @@ namespace symir {
                   if (arg.message)
                     out_ << " && \"" << *arg.message << "\"";
                   out_ << ");\n";
+                } else if constexpr (std::is_same_v<T, StoreInstr>) {
+                  out_ << "*";
+                  emitExpr(arg.ptr);
+                  out_ << " = ";
+                  emitExpr(arg.val);
+                  out_ << ";\n";
                 }
               },
               ins
@@ -435,6 +445,12 @@ namespace symir {
             if (arg.op == UnaryOpKind::Not)
               out_ << "~";
             emitLValue(arg.rval);
+          } else if constexpr (std::is_same_v<T, AddrAtom>) {
+            out_ << "&";
+            emitLValue(arg.lv);
+          } else if constexpr (std::is_same_v<T, LoadAtom>) {
+            out_ << "*";
+            emitLValue(arg.rval);
           } else if constexpr (std::is_same_v<T, CastAtom>) {
             out_ << "(";
             emitType(arg.dstType);
@@ -508,6 +524,8 @@ namespace symir {
             out_ << arg.value;
           } else if constexpr (std::is_same_v<T, FloatLit>) {
             out_ << arg.value;
+          } else if constexpr (std::is_same_v<T, NullLit>) {
+            out_ << "NULL";
           } else {
             std::visit(
                 [this](auto &&id) {
@@ -571,6 +589,9 @@ namespace symir {
         break;
       case InitVal::Kind::Undef:
         out_ << "0";
+        break;
+      case InitVal::Kind::Null:
+        out_ << "NULL";
         break;
       case InitVal::Kind::Aggregate: {
         out_ << "{";

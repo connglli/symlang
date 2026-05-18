@@ -291,6 +291,9 @@ namespace symir {
                 pathConstraints.push_back(evalCond(arg.cond, solver, store, pathConstraints));
               } else if constexpr (std::is_same_v<T, RequireInstr>) {
                 requirements.push_back(evalCond(arg.cond, solver, store, pathConstraints));
+              } else if constexpr (std::is_same_v<T, StoreInstr>) {
+                // TODO v0.2.0: store instruction not yet implemented in solver
+                throw std::runtime_error("'store' is not yet supported in symbolic execution");
               }
             },
             ins
@@ -836,7 +839,15 @@ namespace symir {
             } else {
               return solver.make_term(smt::Kind::BV_EXTRACT, {src}, {dstWidth - 1, 0});
             }
+          } else if constexpr (std::is_same_v<T, AddrAtom>) {
+            // TODO v0.2.0: addr encoding not yet implemented in solver
+            throw std::runtime_error("'addr' is not yet supported in symbolic execution");
+          } else if constexpr (std::is_same_v<T, LoadAtom>) {
+            // TODO v0.2.0: load encoding not yet implemented in solver
+            throw std::runtime_error("'load' is not yet supported in symbolic execution");
           }
+          // Unreachable
+          return solver.make_bv_value(solver.make_bv_sort(32), "0", 10);
         },
         a.v
     );
@@ -853,6 +864,10 @@ namespace symir {
     if (auto flit = std::get_if<FloatLit>(&c)) {
       smt::Sort s = expectedSort.value_or(solver.make_fp_sort(8, 24));
       return solver.make_fp_value(s, std::to_string(flit->value), smt::RoundingMode::RNE);
+    }
+    if (std::get_if<NullLit>(&c)) {
+      // null = 0 as BV64 (pointer width)
+      return solver.make_bv_value(solver.make_bv_sort(64), "0", 10);
     }
     auto id = std::get<LocalOrSymId>(c);
     return std::visit([&](auto &&v) { return store.at(v.name).term; }, id);

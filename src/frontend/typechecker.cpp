@@ -33,6 +33,12 @@ namespace symir {
     if (iv.kind == InitVal::Kind::Undef)
       return;
 
+    if (iv.kind == InitVal::Kind::Null) {
+      if (!targetType || !std::holds_alternative<PtrType>(targetType->v))
+        diags.error("'null' can only initialize a pointer (ptr T) variable", iv.span);
+      return;
+    }
+
     auto at = TypeUtils::asArray(targetType);
     auto st = TypeUtils::asStruct(targetType);
 
@@ -156,9 +162,10 @@ namespace symir {
 
     auto retBits = TypeUtils::getBitWidth(f.retType);
     bool isRetFloat = f.retType && std::holds_alternative<FloatType>(f.retType->v);
+    bool isRetPtr = f.retType && std::holds_alternative<PtrType>(f.retType->v);
 
-    if (!retBits && !isRetFloat)
-      diags.error("Return type must be a scalar type (integer or float)", f.span);
+    if (!retBits && !isRetFloat && !isRetPtr)
+      diags.error("Return type must be a scalar or pointer type", f.span);
 
     for (const auto &b: f.blocks) {
       for (const auto &ins: b.instrs) {
@@ -172,32 +179,42 @@ namespace symir {
                 }
                 auto lt = typeOfLValue(arg.lhs, vars, syms, diags);
                 if (lt) {
-                  std::optional<uint32_t> expected;
-                  bool isFloat = false;
-                  if (auto lb = TypeUtils::getBitWidth(lt)) {
-                    expected = *lb;
-                  } else if (std::holds_alternative<FloatType>(lt->v)) {
-                    auto &ft = std::get<FloatType>(lt->v);
-                    expected = (ft.kind == FloatType::Kind::F32) ? 32 : 64;
-                    isFloat = true;
+                  if (std::holds_alternative<PtrType>(lt->v)) {
+                    // Pointer assignment: RHS must be ptr T or null
+                    Ty rhsTy = typeOfExpr(arg.rhs, vars, syms, ann, diags, std::nullopt, lt);
+                    if (!rhsTy.isPtr())
+                      diags.error(
+                          "Expected pointer expression on RHS of pointer assignment", arg.rhs.span
+                      );
+                    else if (!TypeUtils::areTypesEqual(rhsTy.ptrType(), lt))
+                      diags.error("Pointer type mismatch in assignment", arg.rhs.span);
                   } else {
-                    diags.error(
-                        "LHS of assignment must be a scalar (integer or float)", arg.lhs.span
-                    );
-                  }
-
-                  if (expected) {
-                    Ty rhsTy = typeOfExpr(arg.rhs, vars, syms, ann, diags, expected);
-                    if (isFloat) {
-                      if (!rhsTy.isFloat())
-                        diags.error("Expected float expression on RHS", arg.rhs.span);
-                      else if (rhsTy.floatBits() != *expected)
-                        diags.error("Float width mismatch in assignment", arg.rhs.span);
+                    std::optional<uint32_t> expected;
+                    bool isFloat = false;
+                    if (auto lb = TypeUtils::getBitWidth(lt)) {
+                      expected = *lb;
+                    } else if (std::holds_alternative<FloatType>(lt->v)) {
+                      auto &ft = std::get<FloatType>(lt->v);
+                      expected = (ft.kind == FloatType::Kind::F32) ? 32 : 64;
+                      isFloat = true;
                     } else {
-                      if (!rhsTy.isBV())
-                        diags.error("Expected integer expression on RHS", arg.rhs.span);
-                      else if (rhsTy.bvBits() != *expected)
-                        diags.error("Bitwidth mismatch in assignment", arg.rhs.span);
+                      diags.error(
+                          "LHS of assignment must be a scalar or pointer type", arg.lhs.span
+                      );
+                    }
+                    if (expected) {
+                      Ty rhsTy = typeOfExpr(arg.rhs, vars, syms, ann, diags, expected);
+                      if (isFloat) {
+                        if (!rhsTy.isFloat())
+                          diags.error("Expected float expression on RHS", arg.rhs.span);
+                        else if (rhsTy.floatBits() != *expected)
+                          diags.error("Float width mismatch in assignment", arg.rhs.span);
+                      } else {
+                        if (!rhsTy.isBV())
+                          diags.error("Expected integer expression on RHS", arg.rhs.span);
+                        else if (rhsTy.bvBits() != *expected)
+                          diags.error("Bitwidth mismatch in assignment", arg.rhs.span);
+                      }
                     }
                   }
                 }
@@ -205,6 +222,32 @@ namespace symir {
                 checkCond(arg.cond, vars, syms, ann, diags);
               } else if constexpr (std::is_same_v<T, RequireInstr>) {
                 checkCond(arg.cond, vars, syms, ann, diags);
+              } else if constexpr (std::is_same_v<T, StoreInstr>) {
+                // store <ptr>, <val>: ptr must be ptr T, val must be T
+                Ty ptrTy = typeOfExpr(arg.ptr, vars, syms, ann, diags, std::nullopt);
+                if (!ptrTy.isPtr()) {
+                  diags.error("First operand of 'store' must be a pointer (ptr T)", arg.ptr.span);
+                } else {
+                  auto &pt = std::get<PtrType>(ptrTy.ptrType()->v);
+                  TypePtr valueTy = pt.pointee;
+                  if (auto vb = TypeUtils::getBitWidth(valueTy)) {
+                    Ty valTy = typeOfExpr(arg.val, vars, syms, ann, diags, *vb);
+                    if (!valTy.isBV() || valTy.bvBits() != *vb)
+                      diags.error("'store' value type mismatch", arg.val.span);
+                  } else if (valueTy && std::holds_alternative<FloatType>(valueTy->v)) {
+                    auto &ft = std::get<FloatType>(valueTy->v);
+                    uint32_t bits = (ft.kind == FloatType::Kind::F32) ? 32u : 64u;
+                    Ty valTy = typeOfExpr(arg.val, vars, syms, ann, diags, bits);
+                    if (!valTy.isFloat() || valTy.floatBits() != bits)
+                      diags.error("'store' value float type mismatch", arg.val.span);
+                  } else if (valueTy && std::holds_alternative<PtrType>(valueTy->v)) {
+                    Ty valTy = typeOfExpr(arg.val, vars, syms, ann, diags, std::nullopt, valueTy);
+                    if (!valTy.isPtr() || !TypeUtils::areTypesEqual(valTy.ptrType(), valueTy))
+                      diags.error("'store' pointer value type mismatch", arg.val.span);
+                  } else {
+                    diags.error("'store' pointee type not supported", arg.span);
+                  }
+                }
               }
             },
             ins
@@ -233,6 +276,12 @@ namespace symir {
                     diags.error("Expected float return value", arg.value->span);
                   else if (rhsTy.floatBits() != bits)
                     diags.error("Return float width mismatch", arg.value->span);
+                } else if (isRetPtr) {
+                  rhsTy = typeOfExpr(*arg.value, vars, syms, ann, diags, std::nullopt, f.retType);
+                  if (!rhsTy.isPtr())
+                    diags.error("Expected pointer return value", arg.value->span);
+                  else if (!TypeUtils::areTypesEqual(rhsTy.ptrType(), f.retType))
+                    diags.error("Return pointer type mismatch", arg.value->span);
                 }
               } else if (!arg.value) {
                 diags.error("Missing return value", arg.span);
@@ -315,22 +364,37 @@ namespace symir {
   Ty TypeChecker::typeOfExpr(
       const Expr &e, const std::unordered_map<std::string, VarInfo> &vars,
       const std::unordered_map<std::string, SymInfo> &syms, TypeAnnotations &ann, DiagBag &diags,
-      std::optional<std::uint32_t> expectedBits
+      std::optional<std::uint32_t> expectedBits, TypePtr ptrCtx
   ) {
-    auto t = typeOfAtom(e.first, vars, syms, ann, diags, expectedBits);
+    auto t = typeOfAtom(e.first, vars, syms, ann, diags, expectedBits, ptrCtx);
     for (const auto &tail: e.rest) {
-      auto ti = typeOfAtom(
-          tail.atom, vars, syms, ann, diags,
-          t.isBV()      ? std::optional(t.bvBits())
-          : t.isFloat() ? std::optional(t.floatBits())
-                        : expectedBits
-      );
-      if (t.isBV() && ti.isBV() && t.bvBits() != ti.bvBits())
-        diags.error("Bitwidth mismatch", tail.span);
-      if (t.isFloat() && ti.isFloat() && t.floatBits() != ti.floatBits())
-        diags.error("Float width mismatch", tail.span);
-      if (t.isBV() != ti.isBV() || t.isFloat() != ti.isFloat())
-        diags.error("Mixed integer/float arithmetic not allowed", tail.span);
+      if (t.isPtr()) {
+        // Pointer arithmetic: ptr T +/- iN → ptr T,  ptr T - ptr T → i64
+        auto ti = typeOfAtom(tail.atom, vars, syms, ann, diags, 64);
+        if (tail.op == AddOp::Minus && ti.isPtr()) {
+          // ptr - ptr → i64
+          if (!TypeUtils::areTypesEqual(t.ptrType(), ti.ptrType()))
+            diags.error("Pointer subtraction requires same pointee type", tail.span);
+          t = Ty{Ty::BVTy{64}};
+        } else if (ti.isBV()) {
+          // ptr +/- int → ptr (type unchanged)
+        } else {
+          diags.error("Pointer arithmetic requires integer offset or same-type pointer", tail.span);
+        }
+      } else {
+        auto ti = typeOfAtom(
+            tail.atom, vars, syms, ann, diags,
+            t.isBV()      ? std::optional(t.bvBits())
+            : t.isFloat() ? std::optional(t.floatBits())
+                          : expectedBits
+        );
+        if (t.isBV() && ti.isBV() && t.bvBits() != ti.bvBits())
+          diags.error("Bitwidth mismatch", tail.span);
+        if (t.isFloat() && ti.isFloat() && t.floatBits() != ti.floatBits())
+          diags.error("Float width mismatch", tail.span);
+        if (t.isBV() != ti.isBV() || t.isFloat() != ti.isFloat())
+          diags.error("Mixed integer/float arithmetic not allowed", tail.span);
+      }
     }
     return t;
   }
@@ -338,7 +402,7 @@ namespace symir {
   Ty TypeChecker::typeOfAtom(
       const Atom &a, const std::unordered_map<std::string, VarInfo> &vars,
       const std::unordered_map<std::string, SymInfo> &syms, TypeAnnotations &ann, DiagBag &diags,
-      std::optional<std::uint32_t> expectedBits
+      std::optional<std::uint32_t> expectedBits, TypePtr ptrCtx
   ) {
     return std::visit(
         [&](auto &&arg) -> Ty {
@@ -386,23 +450,35 @@ namespace symir {
             return Ty{std::monostate{}};
           } else if constexpr (std::is_same_v<T, SelectAtom>) {
             checkCond(*arg.cond, vars, syms, ann, diags);
-            auto t1 = typeOfSelectVal(arg.vtrue, vars, syms, ann, diags, expectedBits);
-            auto t2 = typeOfSelectVal(arg.vfalse, vars, syms, ann, diags, expectedBits);
+            auto t1 = typeOfSelectVal(arg.vtrue, vars, syms, ann, diags, expectedBits, ptrCtx);
+            auto t2 = typeOfSelectVal(
+                arg.vfalse, vars, syms, ann, diags, expectedBits, t1.isPtr() ? t1.ptrType() : ptrCtx
+            );
+            // Resolve null arm using sibling's type
+            if (t1.isPtr() && !t2.isPtr())
+              diags.error("Select arm type mismatch (pointer vs non-pointer)", arg.span);
+            if (!t1.isPtr() && t2.isPtr())
+              diags.error("Select arm type mismatch (non-pointer vs pointer)", arg.span);
             if (t1.isBV() && t2.isBV() && t1.bvBits() != t2.bvBits())
               diags.error("Select width mismatch", arg.span);
             if (t1.isFloat() && t2.isFloat() && t1.floatBits() != t2.floatBits())
               diags.error("Select float width mismatch", arg.span);
-            if (t1.isBV() != t2.isBV() || t1.isFloat() != t2.isFloat())
+            if ((t1.isBV() || t1.isFloat()) &&
+                (t2.isBV() != t1.isBV() || t2.isFloat() != t1.isFloat()))
               diags.error("Select type mismatch", arg.span);
             return t1;
           } else if constexpr (std::is_same_v<T, CoefAtom>) {
-            auto ct = typeOfCoef(arg.coef, vars, syms, diags, expectedBits);
+            auto ct = typeOfCoef(arg.coef, vars, syms, diags, expectedBits, ptrCtx);
+            if (!ct)
+              return Ty{std::monostate{}};
             if (auto cb = TypeUtils::getBitWidth(ct))
               return Ty{Ty::BVTy{*cb}};
-            if (ct && std::holds_alternative<FloatType>(ct->v))
+            if (std::holds_alternative<FloatType>(ct->v))
               return Ty{
                   Ty::FloatTy{(std::get<FloatType>(ct->v).kind == FloatType::Kind::F32) ? 32u : 64u}
               };
+            if (std::holds_alternative<PtrType>(ct->v))
+              return Ty{Ty::PtrTy{ct}};
             return Ty{std::monostate{}};
           } else if constexpr (std::is_same_v<T, RValueAtom>) {
             auto rt = typeOfLValue(arg.rval, vars, syms, diags);
@@ -412,14 +488,16 @@ namespace symir {
               return Ty{
                   Ty::FloatTy{(std::get<FloatType>(rt->v).kind == FloatType::Kind::F32) ? 32u : 64u}
               };
+            if (rt && std::holds_alternative<PtrType>(rt->v))
+              return Ty{Ty::PtrTy{rt}};
             return Ty{std::monostate{}};
           } else if constexpr (std::is_same_v<T, CastAtom>) {
             // 'as' can cast between Int and Float or Int resizing
             TypePtr srcType = nullptr;
             if (auto lit = std::get_if<IntLit>(&arg.src)) {
-              // IntLit -> infer as default i32 unless dstType hints otherwise
+              (void) lit; // IntLit -> infer from dstType
             } else if (auto flit = std::get_if<FloatLit>(&arg.src)) {
-              // FloatLit
+              (void) flit; // FloatLit
             } else if (auto sid = std::get_if<SymId>(&arg.src)) {
               auto it = syms.find(sid->name);
               if (it != syms.end())
@@ -438,6 +516,42 @@ namespace symir {
             }
             diags.error("Destination of 'as' must be scalar", arg.dstType->span);
             return Ty{std::monostate{}};
+          } else if constexpr (std::is_same_v<T, AddrAtom>) {
+            // addr <lv> : result is ptr T where T = type(lv)
+            auto lvTy = typeOfLValue(arg.lv, vars, syms, diags);
+            if (!lvTy)
+              return Ty{std::monostate{}};
+            // Check that lv root is let mut
+            auto it = vars.find(arg.lv.base.name);
+            if (it != vars.end() && !it->second.isMutable && !it->second.isParam) {
+              diags.error(
+                  "'addr' requires a 'let mut' local; '" + arg.lv.base.name + "' is not mutable",
+                  arg.span
+              );
+            }
+            auto ptrNode = std::make_shared<Type>(PtrType{lvTy, arg.span}, arg.span);
+            return Ty{Ty::PtrTy{ptrNode}};
+          } else if constexpr (std::is_same_v<T, LoadAtom>) {
+            // load <rval> : rval must be ptr T, result type is T
+            auto rvTy = typeOfLValue(arg.rval, vars, syms, diags);
+            if (!rvTy)
+              return Ty{std::monostate{}};
+            auto pt = std::get_if<PtrType>(&rvTy->v);
+            if (!pt) {
+              diags.error("'load' requires a pointer (ptr T) operand", arg.span);
+              return Ty{std::monostate{}};
+            }
+            TypePtr pointee = pt->pointee;
+            if (auto pb = TypeUtils::getBitWidth(pointee))
+              return Ty{Ty::BVTy{*pb}};
+            if (std::holds_alternative<FloatType>(pointee->v)) {
+              auto &ft = std::get<FloatType>(pointee->v);
+              return Ty{Ty::FloatTy{ft.kind == FloatType::Kind::F32 ? 32u : 64u}};
+            }
+            if (std::holds_alternative<PtrType>(pointee->v))
+              return Ty{Ty::PtrTy{pointee}};
+            diags.error("'load' pointee type not supported", arg.span);
+            return Ty{std::monostate{}};
           }
           return Ty{std::monostate{}};
         },
@@ -448,7 +562,7 @@ namespace symir {
   TypePtr TypeChecker::typeOfCoef(
       const Coef &c, const std::unordered_map<std::string, VarInfo> &vars,
       const std::unordered_map<std::string, SymInfo> &syms, DiagBag &diags,
-      std::optional<std::uint32_t> expectedBits
+      std::optional<std::uint32_t> expectedBits, TypePtr ptrCtx
   ) {
     if (auto lit = std::get_if<IntLit>(&c)) {
       uint32_t bits = expectedBits.value_or(32);
@@ -477,6 +591,12 @@ namespace symir {
       t->v = ft;
       t->span = flit->span;
       return t;
+    }
+    if (auto nl = std::get_if<NullLit>(&c)) {
+      if (ptrCtx && std::holds_alternative<PtrType>(ptrCtx->v))
+        return ptrCtx;
+      diags.error("'null' requires a pointer type context (ptr T)", nl->span);
+      return nullptr;
     }
     auto id = std::get<LocalOrSymId>(c);
     if (auto lid = std::get_if<LocalId>(&id)) {
@@ -508,22 +628,26 @@ namespace symir {
   Ty TypeChecker::typeOfSelectVal(
       const SelectVal &sv, const std::unordered_map<std::string, VarInfo> &vars,
       const std::unordered_map<std::string, SymInfo> &syms, [[maybe_unused]] TypeAnnotations &ann,
-      DiagBag &diags, std::optional<std::uint32_t> expectedBits
+      DiagBag &diags, std::optional<std::uint32_t> expectedBits, TypePtr ptrCtx
   ) {
     TypePtr t;
     if (auto rv = std::get_if<RValue>(&sv)) {
       t = typeOfLValue(*rv, vars, syms, diags);
     } else {
-      t = typeOfCoef(std::get<Coef>(sv), vars, syms, diags, expectedBits);
+      t = typeOfCoef(std::get<Coef>(sv), vars, syms, diags, expectedBits, ptrCtx);
     }
 
+    if (!t)
+      return Ty{std::monostate{}};
     if (auto bits = TypeUtils::getBitWidth(t)) {
       return Ty{Ty::BVTy{*bits}};
     }
-    if (t && std::holds_alternative<FloatType>(t->v)) {
+    if (std::holds_alternative<FloatType>(t->v)) {
       auto &ft = std::get<FloatType>(t->v);
       return Ty{Ty::FloatTy{ft.kind == FloatType::Kind::F32 ? 32u : 64u}};
     }
+    if (std::holds_alternative<PtrType>(t->v))
+      return Ty{Ty::PtrTy{t}};
     return Ty{std::monostate{}};
   }
 
@@ -532,11 +656,20 @@ namespace symir {
       const std::unordered_map<std::string, SymInfo> &syms, TypeAnnotations &ann, DiagBag &diags
   ) {
     auto t1 = typeOfExpr(c.lhs, vars, syms, ann, diags, std::nullopt);
+    // If LHS is a pointer, pass it as ptrCtx for RHS (null inference)
+    TypePtr rhsPtrCtx = t1.isPtr() ? t1.ptrType() : nullptr;
     auto t2 = typeOfExpr(
-        c.rhs, vars, syms, ann, diags, t1.isBV() ? std::optional(t1.bvBits()) : std::nullopt
+        c.rhs, vars, syms, ann, diags, t1.isBV() ? std::optional(t1.bvBits()) : std::nullopt,
+        rhsPtrCtx
     );
     if (t1.isBV() && t2.isBV() && t1.bvBits() != t2.bvBits())
       diags.error("Bitwidth mismatch in condition", c.span);
+    if (t1.isPtr() && !t2.isPtr())
+      diags.error("Pointer condition requires both operands to be pointers", c.span);
+    if (!t1.isPtr() && t2.isPtr())
+      diags.error("Pointer condition requires both operands to be pointers", c.span);
+    if (t1.isPtr() && t2.isPtr() && !TypeUtils::areTypesEqual(t1.ptrType(), t2.ptrType()))
+      diags.error("Pointer comparison requires same pointee type", c.span);
   }
 
 } // namespace symir

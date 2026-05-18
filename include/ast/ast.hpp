@@ -119,6 +119,7 @@ namespace symir {
   };
 
   struct ArrayType;
+  struct PtrType;
   struct Type;
   using TypePtr = std::shared_ptr<Type>;
 
@@ -132,10 +133,19 @@ namespace symir {
   };
 
   /**
+   * Represents pointer types: ptr T.
+   * In v0.2.0 the pointee must be a scalar (iN, f32, f64) or another ptr T.
+   */
+  struct PtrType {
+    TypePtr pointee;
+    SourceSpan span;
+  };
+
+  /**
    * Wrapper for all possible types in SymIR.
    */
   struct Type {
-    using Variant = std::variant<IntType, FloatType, StructType, ArrayType>;
+    using Variant = std::variant<IntType, FloatType, StructType, ArrayType, PtrType>;
     Variant v;
     SourceSpan span;
   };
@@ -161,9 +171,16 @@ namespace symir {
   };
 
   /**
-   * A coefficient in an expression (literal or variable).
+   * The null pointer constant, typed by context.
    */
-  using Coef = std::variant<IntLit, FloatLit, LocalOrSymId>;
+  struct NullLit {
+    SourceSpan span;
+  };
+
+  /**
+   * A coefficient in an expression (literal, variable, or null pointer).
+   */
+  using Coef = std::variant<IntLit, FloatLit, LocalOrSymId, NullLit>;
 
   /**
    * An index for array access.
@@ -272,10 +289,29 @@ namespace symir {
   };
 
   /**
+   * Address-of atom: addr <lv>.  Result type is ptr T where T = type(lv).
+   * The root of lv must be a let mut local.
+   */
+  struct AddrAtom {
+    LValue lv;
+    SourceSpan span;
+  };
+
+  /**
+   * Load-through-pointer atom: load <rval>.
+   * rval must have type ptr T; result type is T.
+   */
+  struct LoadAtom {
+    RValue rval;
+    SourceSpan span;
+  };
+
+  /**
    * The fundamental building block of expressions.
    */
   struct Atom {
-    using Variant = std::variant<OpAtom, SelectAtom, CoefAtom, RValueAtom, CastAtom, UnaryAtom>;
+    using Variant = std::variant<
+        OpAtom, SelectAtom, CoefAtom, RValueAtom, CastAtom, UnaryAtom, AddrAtom, LoadAtom>;
     Variant v;
     SourceSpan span;
   };
@@ -338,7 +374,17 @@ namespace symir {
     SourceSpan span;
   };
 
-  using Instr = std::variant<AssignInstr, AssumeInstr, RequireInstr>;
+  /**
+   * Store instruction: store <ptr>, <val>.
+   * Writes val (type T) through ptr (type ptr T).
+   */
+  struct StoreInstr {
+    Expr ptr; // must evaluate to ptr T
+    Expr val; // must evaluate to T
+    SourceSpan span;
+  };
+
+  using Instr = std::variant<AssignInstr, AssumeInstr, RequireInstr, StoreInstr>;
 
   /**
    * Branch terminator (conditional or unconditional).
@@ -431,7 +477,7 @@ namespace symir {
    * Initializer value for variables.
    */
   struct InitVal {
-    enum class Kind { Int, Float, Sym, Local, Undef, Aggregate } kind;
+    enum class Kind { Int, Float, Sym, Local, Undef, Aggregate, Null } kind;
     std::variant<IntLit, FloatLit, SymId, LocalId, std::vector<InitValPtr>> value;
     SourceSpan span;
   };

@@ -1,0 +1,14 @@
+// EXPECT: PASS
+// Store a value through a pointer, load it back — should return 99.
+fun @main() : i32 {
+  let mut %x: i32 = 0;
+  let mut %p: ptr i32 = null;
+  let %expected: i32 = 99;
+  let mut %r: i32 = 0;
+^entry:
+  %p = addr %x;
+  store %p, 99;
+  %r = load %p;
+  require %r == %expected, "store then load == 99";
+  ret %r;
+}

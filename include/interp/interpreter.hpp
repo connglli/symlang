@@ -36,15 +36,40 @@ namespace symir {
      * Represents a value during runtime.
      */
     struct RuntimeValue {
-      enum class Kind { Int, Float, Array, Struct, Undef } kind;
+      enum class Kind { Int, Float, Array, Struct, Undef, Ptr } kind;
       std::int64_t intVal = 0;
       double floatVal = 0.0;
-      std::uint32_t bits = 64; // bitwidth for Int or Float (32/64)
+      std::uint32_t bits = 64;  // bitwidth for Int or Float (32/64)
+      std::uint64_t ptrVal = 0; // for Ptr kind: raw address
       std::vector<RuntimeValue> arrayVal;
       std::unordered_map<std::string, RuntimeValue> structVal;
     };
 
     using Store = std::unordered_map<std::string, RuntimeValue>;
+
+    // ---- Memory model for pointer operations ----
+
+    /// Per-object provenance: tracks base address, size, element size.
+    struct ObjectInfo {
+      std::string varName;    // originating local name
+      std::uint64_t base;     // base address (never 0)
+      std::uint64_t end;      // base + totalSize (exclusive)
+      std::uint64_t elemSize; // sizeof(element type) in bytes
+      std::uint64_t count;    // number of elements
+    };
+
+    // heap_: flat address → RuntimeValue (one slot per element)
+    std::unordered_map<std::uint64_t, RuntimeValue> heap_;
+    // objects_: per-function allocation tracking
+    std::vector<ObjectInfo> objects_;
+    // addrMap_: varName → base address (assigned lazily on first addr)
+    std::unordered_map<std::string, std::uint64_t> addrMap_;
+    // nextAddr_: allocator counter (starts at 4096 to leave null = 0 at bottom)
+    std::uint64_t nextAddr_ = 4096;
+
+    static std::uint64_t sizeofType(const TypePtr &t);
+    std::uint64_t allocObject(const std::string &varName, const TypePtr &t, const Store &store);
+    const ObjectInfo *findObject(std::uint64_t addr) const;
 
     // --- Runtime evaluation helpers ---
     RuntimeValue makeUndef(const TypePtr &t);

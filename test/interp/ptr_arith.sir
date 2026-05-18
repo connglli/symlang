@@ -1,0 +1,18 @@
+// EXPECT: PASS
+// Pointer arithmetic: iterate through [3] i32 array via pointer, sum elements.
+// 10 + 20 + 30 = 60
+fun @main() : i32 {
+  let mut %arr: [3] i32 = {10, 20, 30};
+  let mut %p: ptr i32 = null;
+  let %one: i32 = 1;
+  let mut %r: i32 = 0;
+^entry:
+  %p = addr %arr[0];
+  %r = load %p;
+  %p = %p + %one;
+  %r = %r + load %p;
+  %p = %p + %one;
+  %r = %r + load %p;
+  require %r == 60, "10+20+30 == 60";
+  ret %r;
+}

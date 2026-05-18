@@ -112,7 +112,14 @@ namespace symir {
           ArrayType{size, std::move(elem), SourceSpan{b, prevEnd()}}, SourceSpan{b, prevEnd()}
       );
     }
-    errorHere("Expected a type (iN, f32/f64, array type, or struct type @Name)");
+    if (is(TokenKind::KwPtr)) {
+      consume(TokenKind::KwPtr, "'ptr'");
+      TypePtr pointee = parseType();
+      return std::make_shared<Type>(
+          PtrType{std::move(pointee), SourceSpan{b, prevEnd()}}, SourceSpan{b, prevEnd()}
+      );
+    }
+    errorHere("Expected a type (iN, f32/f64, array type, struct type @Name, or ptr T)");
   }
 
   SourcePos Parser::prevEnd() const {
@@ -297,6 +304,14 @@ namespace symir {
       return iv;
     }
 
+    if (is(TokenKind::KwNull)) {
+      consume(TokenKind::KwNull, "'null'");
+      InitVal iv;
+      iv.kind = InitVal::Kind::Null;
+      iv.span = SourceSpan{b, prevEnd()};
+      return iv;
+    }
+
     if (is(TokenKind::IntLit)) {
       const Token &t = consume(TokenKind::IntLit, "integer literal");
       IntLit lit{parseIntegerLiteral(t.lexeme), t.span};
@@ -335,7 +350,7 @@ namespace symir {
       return iv;
     }
 
-    errorHere("Expected initializer: IntLit, SymId, LocalId, 'undef', or '{...}'");
+    errorHere("Expected initializer: IntLit, SymId, LocalId, 'undef', 'null', or '{...}'");
   }
 
   Block Parser::parseBlock() {
@@ -353,7 +368,8 @@ namespace symir {
   }
 
   bool Parser::isStartOfInstr() const {
-    return is(TokenKind::LocalId) || is(TokenKind::KwAssume) || is(TokenKind::KwRequire);
+    return is(TokenKind::LocalId) || is(TokenKind::KwAssume) || is(TokenKind::KwRequire) ||
+           is(TokenKind::KwStore);
   }
 
   Instr Parser::parseInstr() {
@@ -361,7 +377,19 @@ namespace symir {
       return Instr{parseAssumeInstr()};
     if (is(TokenKind::KwRequire))
       return Instr{parseRequireInstr()};
+    if (is(TokenKind::KwStore))
+      return Instr{parseStoreInstr()};
     return Instr{parseAssignInstr()};
+  }
+
+  StoreInstr Parser::parseStoreInstr() {
+    SourcePos b = peek().span.begin;
+    consume(TokenKind::KwStore, "'store'");
+    Expr ptr = parseExpr();
+    consume(TokenKind::Comma, "','");
+    Expr val = parseExpr();
+    consume(TokenKind::Semicolon, "';'");
+    return StoreInstr{std::move(ptr), std::move(val), SourceSpan{b, prevEnd()}};
   }
 
   AssignInstr Parser::parseAssignInstr() {
@@ -505,7 +533,11 @@ namespace symir {
     if (is(TokenKind::SymId)) {
       return Coef{LocalOrSymId{parseSymId()}};
     }
-    errorHere("Expected coefficient: IntLit, LocalId, or SymId");
+    if (is(TokenKind::KwNull)) {
+      const Token &t = consume(TokenKind::KwNull, "'null'");
+      return Coef{NullLit{t.span}};
+    }
+    errorHere("Expected coefficient: IntLit, LocalId, SymId, or 'null'");
   }
 
   Cond Parser::parseCond() {
@@ -552,6 +584,20 @@ namespace symir {
 
   Atom Parser::parseAtom() {
     SourcePos b = peek().span.begin;
+
+    if (is(TokenKind::KwAddr)) {
+      consume(TokenKind::KwAddr, "'addr'");
+      LValue lv = parseLValue();
+      AddrAtom aa{std::move(lv), SourceSpan{b, prevEnd()}};
+      return Atom{std::move(aa), aa.span};
+    }
+
+    if (is(TokenKind::KwLoad)) {
+      consume(TokenKind::KwLoad, "'load'");
+      RValue rv = parseLValue();
+      LoadAtom la{std::move(rv), SourceSpan{b, prevEnd()}};
+      return Atom{std::move(la), la.span};
+    }
 
     if (is(TokenKind::KwSelect)) {
       consume(TokenKind::KwSelect, "'select'");
@@ -612,6 +658,9 @@ namespace symir {
           ca.src = *lit;
         } else if (auto flit = std::get_if<FloatLit>(&c)) {
           ca.src = *flit;
+        } else if (std::get_if<NullLit>(&c)) {
+          // `null as T` is not supported; use null in a typed context instead
+          throw ParseError("'null as T' is not supported; null is inferred from context", ca.span);
         } else {
           auto &lsid = std::get<LocalOrSymId>(c);
           if (auto sid = std::get_if<SymId>(&lsid)) {
@@ -637,7 +686,7 @@ namespace symir {
 
     // Leaf Atom
     if (is(TokenKind::IntLit) || is(TokenKind::FloatLit) || is(TokenKind::SymId) ||
-        is(TokenKind::LocalId)) {
+        is(TokenKind::LocalId) || is(TokenKind::KwNull)) {
       std::size_t save_leaf = idx_;
       Coef c = parseCoef();
       if (auto lsid = std::get_if<LocalOrSymId>(&c)) {
@@ -682,11 +731,12 @@ namespace symir {
       RValue rv = parseLValue();
       return SelectVal{rv};
     }
-    if (is(TokenKind::IntLit) || is(TokenKind::FloatLit) || is(TokenKind::SymId)) {
+    if (is(TokenKind::IntLit) || is(TokenKind::FloatLit) || is(TokenKind::SymId) ||
+        is(TokenKind::KwNull)) {
       Coef c = parseCoef();
       return SelectVal{c};
     }
-    errorHere("Expected select arm value: lvalue or coefficient");
+    errorHere("Expected select arm value: lvalue, coefficient, or 'null'");
   }
 
 } // namespace symir

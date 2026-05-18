@@ -1,0 +1,14 @@
+// EXPECT: PASS
+// Start with null pointer, set it to addr %x in the null branch, then load.
+// Path: ^entry -> ^is_null -> ^load_it, returns 55.
+fun @main() : i32 {
+  let mut %x: i32 = 55;
+  let mut %p: ptr i32 = null;
+^entry:
+  br %p == null, ^is_null, ^load_it;
+^is_null:
+  %p = addr %x;
+  br ^load_it;
+^load_it:
+  ret load %p;
+}

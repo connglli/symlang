@@ -52,6 +52,7 @@ namespace symir {
     AssignInstr parseAssignInstr();
     AssumeInstr parseAssumeInstr();
     RequireInstr parseRequireInstr();
+    StoreInstr parseStoreInstr();
     Terminator parseTerminator();
     BrTerm parseBrTerm();
     RetTerm parseRetTerm();

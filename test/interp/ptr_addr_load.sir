@@ -1,0 +1,9 @@
+// EXPECT: PASS
+// Take the address of a local, load it through the pointer — should return 42.
+fun @main() : i32 {
+  let mut %x: i32 = 42;
+  let mut %p: ptr i32 = null;
+^entry:
+  %p = addr %x;
+  ret load %p;
+}

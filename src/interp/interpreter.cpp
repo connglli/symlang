@@ -27,6 +27,66 @@ namespace symir {
     }
   }
 
+  // ---- Memory helpers ----
+
+  std::uint64_t Interpreter::sizeofType(const TypePtr &t) {
+    if (!t)
+      return 8;
+    if (auto it = std::get_if<IntType>(&t->v)) {
+      uint32_t bits = it->bits.value_or(it->kind == IntType::Kind::I32 ? 32 : 64);
+      return (bits + 7) / 8;
+    }
+    if (auto ft = std::get_if<FloatType>(&t->v)) {
+      return ft->kind == FloatType::Kind::F32 ? 4 : 8;
+    }
+    if (std::holds_alternative<PtrType>(t->v))
+      return 8;
+    if (auto at = std::get_if<ArrayType>(&t->v)) {
+      return at->size * sizeofType(at->elem);
+    }
+    return 8;
+  }
+
+  // Allocate (or return existing) base address for varName with type t.
+  // Syncs the current store value into the heap.
+  std::uint64_t
+  Interpreter::allocObject(const std::string &varName, const TypePtr &t, const Store &store) {
+    auto it = addrMap_.find(varName);
+    if (it != addrMap_.end())
+      return it->second;
+
+    uint64_t base = nextAddr_;
+    uint64_t totalSize = sizeofType(t);
+    // Align allocation to 8 bytes
+    nextAddr_ += (totalSize + 7) & ~7ULL;
+
+    uint64_t elemSize =
+        sizeofType(std::get_if<ArrayType>(&t->v) ? std::get<ArrayType>(t->v).elem : t);
+    uint64_t count = std::get_if<ArrayType>(&t->v) ? std::get<ArrayType>(t->v).size : 1;
+    objects_.push_back(ObjectInfo{varName, base, base + totalSize, elemSize, count});
+    addrMap_[varName] = base;
+
+    // Sync current store value into heap
+    auto sit = store.find(varName);
+    if (sit != store.end()) {
+      const RuntimeValue &sv = sit->second;
+      if (sv.kind == RuntimeValue::Kind::Array) {
+        for (std::size_t i = 0; i < sv.arrayVal.size(); ++i)
+          heap_[base + i * elemSize] = sv.arrayVal[i];
+      } else {
+        heap_[base] = sv;
+      }
+    }
+    return base;
+  }
+
+  const Interpreter::ObjectInfo *Interpreter::findObject(std::uint64_t addr) const {
+    for (const auto &o: objects_)
+      if (addr >= o.base && addr < o.end)
+        return &o;
+    return nullptr;
+  }
+
   void Interpreter::run(
       const std::string &entryFuncName, const SymBindings &symBindings, bool dumpExec
   ) {
@@ -60,6 +120,8 @@ namespace symir {
         return "[...]";
       case RuntimeValue::Kind::Struct:
         return "{...}";
+      case RuntimeValue::Kind::Ptr:
+        return "ptr(0x" + std::to_string(rv.ptrVal) + ")";
     }
     return "?";
   }
@@ -96,6 +158,9 @@ namespace symir {
       } else if (t && std::holds_alternative<FloatType>(t->v)) {
         res.kind = RuntimeValue::Kind::Undef;
         res.bits = (std::get<FloatType>(t->v).kind == FloatType::Kind::F32) ? 32 : 64;
+      } else if (t && std::holds_alternative<PtrType>(t->v)) {
+        res.kind = RuntimeValue::Kind::Undef;
+        res.bits = 64;
       } else {
         res.kind = RuntimeValue::Kind::Undef;
         res.bits = 64;
@@ -137,6 +202,14 @@ namespace symir {
   Interpreter::evalInit(const InitVal &iv, const TypePtr &t, const Store &store) {
     if (iv.kind == InitVal::Kind::Undef)
       return makeUndef(t);
+
+    if (iv.kind == InitVal::Kind::Null) {
+      RuntimeValue rv;
+      rv.kind = RuntimeValue::Kind::Ptr;
+      rv.ptrVal = 0; // null = address 0
+      rv.bits = 64;
+      return rv;
+    }
 
     if (iv.kind == InitVal::Kind::Aggregate) {
       const auto &elements = std::get<std::vector<InitValPtr>>(iv.value);
@@ -192,6 +265,12 @@ namespace symir {
   void Interpreter::execFunction(
       const FunDecl &f, const std::vector<RuntimeValue> &args, const SymBindings &symBindings
   ) {
+    // Reset per-function memory state
+    heap_.clear();
+    objects_.clear();
+    addrMap_.clear();
+    nextAddr_ = 4096; // leave address 0 for null
+
     Store store;
     DiagBag diags;
 
@@ -297,6 +376,32 @@ namespace symir {
                   std::string msg = i.message.value_or("Requirement failed");
                   throw std::runtime_error("Requirement failed: " + msg);
                 }
+              } else if constexpr (std::is_same_v<T, StoreInstr>) {
+                RuntimeValue ptrVal = evalExpr(i.ptr, store);
+                RuntimeValue val = evalExpr(i.val, store);
+                if (ptrVal.kind == RuntimeValue::Kind::Undef)
+                  throw std::runtime_error("UB: Store through undef pointer");
+                if (ptrVal.kind != RuntimeValue::Kind::Ptr)
+                  throw std::runtime_error("Store requires a pointer operand");
+                if (ptrVal.ptrVal == 0)
+                  throw std::runtime_error("UB: Null pointer dereference in store");
+                // Bounds check: address must be within a known object
+                const ObjectInfo *obj = findObject(ptrVal.ptrVal);
+                if (!obj)
+                  throw std::runtime_error("UB: Store to unknown address");
+                if (ptrVal.ptrVal + 1 > obj->end)
+                  throw std::runtime_error("UB: Store out of bounds");
+                heap_[ptrVal.ptrVal] = val;
+                // Sync back to store for scalars (maintain Store/Heap consistency)
+                if (ptrVal.ptrVal == obj->base && obj->count == 1) {
+                  store[obj->varName] = val;
+                } else if (obj->count > 1) {
+                  uint64_t idx = (ptrVal.ptrVal - obj->base) / obj->elemSize;
+                  if (store.count(obj->varName) &&
+                      store.at(obj->varName).kind == RuntimeValue::Kind::Array) {
+                    store[obj->varName].arrayVal[idx] = val;
+                  }
+                }
               }
             },
             ins
@@ -324,8 +429,10 @@ namespace symir {
                   throw std::runtime_error("UB: Reading undef in ret");
                 if (res.kind == RuntimeValue::Kind::Int)
                   std::cout << "Result: " << res.intVal << "\n";
-                else
+                else if (res.kind == RuntimeValue::Kind::Float)
                   std::cout << "Result: " << res.floatVal << "\n";
+                else if (res.kind == RuntimeValue::Kind::Ptr)
+                  std::cout << "Result: ptr(0x" << std::hex << res.ptrVal << std::dec << ")\n";
               } else {
                 std::cout << "Result: void\n";
               }
@@ -372,6 +479,25 @@ namespace symir {
           v.floatVal = checkFPResult(v.floatVal + right.floatVal, v.bits);
         else
           v.floatVal = checkFPResult(v.floatVal - right.floatVal, v.bits);
+      } else if (v.kind == RuntimeValue::Kind::Ptr && right.kind == RuntimeValue::Kind::Int) {
+        // ptr ± int: scale offset by element size of the pointed-to object
+        const ObjectInfo *obj = findObject(v.ptrVal);
+        uint64_t elemSize = obj ? obj->elemSize : 1;
+        if (tail.op == AddOp::Plus) {
+          v.ptrVal += static_cast<uint64_t>(right.intVal) * elemSize;
+        } else {
+          v.ptrVal -= static_cast<uint64_t>(right.intVal) * elemSize;
+        }
+      } else if (v.kind == RuntimeValue::Kind::Ptr && right.kind == RuntimeValue::Kind::Ptr) {
+        // ptr - ptr: element count distance (only subtraction makes sense)
+        if (tail.op != AddOp::Minus)
+          throw std::runtime_error("Cannot add two pointers");
+        const ObjectInfo *obj = findObject(v.ptrVal);
+        uint64_t elemSize = obj ? obj->elemSize : 1;
+        int64_t diff = static_cast<int64_t>(v.ptrVal) - static_cast<int64_t>(right.ptrVal);
+        v.kind = RuntimeValue::Kind::Int;
+        v.intVal = diff / static_cast<int64_t>(elemSize);
+        v.bits = 64;
       } else {
         throw std::runtime_error("Expr ops only on same scalar kinds (Int/Float)");
       }
@@ -475,6 +601,116 @@ namespace symir {
             return evalCoef(arg.coef, store);
           } else if constexpr (std::is_same_v<T, RValueAtom>) {
             return evalLValue(arg.rval, store);
+          } else if constexpr (std::is_same_v<T, AddrAtom>) {
+            // addr <lv>: return the address of the lvalue's storage
+            const std::string &varName = arg.lv.base.name;
+            auto it = store.find(varName);
+            if (it == store.end())
+              throw std::runtime_error("UB: addr of unknown variable " + varName);
+            // Get the type from the store value (we need it for allocation)
+            // Determine type from the store entry
+            // For now, find the type from the FunDecl — we hold f reference in execFunction
+            // Workaround: use the current store/heap to infer allocation size
+            // We store the LValue so we can compute element address for indexed access
+            uint64_t base;
+            {
+              // Check if already allocated; if not, we need to alloc now.
+              // We don't have the TypePtr here easily — use the stored RuntimeValue to infer size.
+              // For scalars: size 8 (safe over-alloc). For arrays: count * elemSize.
+              const RuntimeValue &sv = it->second;
+              auto ait = addrMap_.find(varName);
+              if (ait == addrMap_.end()) {
+                // Allocate based on RuntimeValue shape
+                uint64_t elemSize = 8;
+                uint64_t count = 1;
+                if (sv.kind == RuntimeValue::Kind::Array) {
+                  count = sv.arrayVal.size();
+                  // elemSize: assume 4 (i32) for now, refine later
+                  elemSize = 4;
+                  if (!sv.arrayVal.empty()) {
+                    auto &e = sv.arrayVal[0];
+                    if (e.kind == RuntimeValue::Kind::Int)
+                      elemSize = (e.bits + 7) / 8;
+                    else if (e.kind == RuntimeValue::Kind::Float)
+                      elemSize = e.bits / 8;
+                    else if (e.kind == RuntimeValue::Kind::Ptr)
+                      elemSize = 8;
+                  }
+                } else if (sv.kind == RuntimeValue::Kind::Int) {
+                  elemSize = (sv.bits + 7) / 8;
+                } else if (sv.kind == RuntimeValue::Kind::Float) {
+                  elemSize = sv.bits / 8;
+                } else if (sv.kind == RuntimeValue::Kind::Ptr) {
+                  elemSize = 8;
+                } else if (sv.kind == RuntimeValue::Kind::Undef) {
+                  elemSize = 8;
+                }
+                uint64_t totalSize = elemSize * count;
+                base = nextAddr_;
+                nextAddr_ += (totalSize + 7) & ~7ULL;
+                objects_.push_back(ObjectInfo{varName, base, base + totalSize, elemSize, count});
+                addrMap_[varName] = base;
+                // Sync store to heap
+                if (sv.kind == RuntimeValue::Kind::Array) {
+                  for (std::size_t i = 0; i < sv.arrayVal.size(); ++i)
+                    heap_[base + i * elemSize] = sv.arrayVal[i];
+                } else {
+                  heap_[base] = sv;
+                }
+              } else {
+                base = ait->second;
+              }
+            }
+            // Compute element address from accesses
+            uint64_t addr = base;
+            if (!arg.lv.accesses.empty()) {
+              const ObjectInfo *obj = findObject(base);
+              if (!obj)
+                throw std::runtime_error("Internal error: object not found");
+              for (const auto &acc: arg.lv.accesses) {
+                if (auto ai = std::get_if<AccessIndex>(&acc)) {
+                  int64_t idx = 0;
+                  if (std::holds_alternative<IntLit>(ai->index)) {
+                    idx = std::get<IntLit>(ai->index).value;
+                  } else {
+                    const auto &id = std::get<LocalOrSymId>(ai->index);
+                    RuntimeValue idxRv;
+                    if (auto lid = std::get_if<LocalId>(&id))
+                      idxRv = store.at(lid->name);
+                    else
+                      idxRv = store.at(std::get_if<SymId>(&id)->name);
+                    idx = idxRv.intVal;
+                  }
+                  if (idx < 0 || (uint64_t) idx >= obj->count)
+                    throw std::runtime_error("UB: addr of out-of-bounds array element");
+                  addr = base + idx * obj->elemSize;
+                }
+                // Field accesses not supported for addr in v0.2.0
+              }
+            }
+            RuntimeValue rv;
+            rv.kind = RuntimeValue::Kind::Ptr;
+            rv.ptrVal = addr;
+            rv.bits = 64;
+            return rv;
+          } else if constexpr (std::is_same_v<T, LoadAtom>) {
+            // load <rval>: dereference the pointer
+            RuntimeValue ptrRv = evalLValue(arg.rval, store);
+            if (ptrRv.kind == RuntimeValue::Kind::Undef)
+              throw std::runtime_error("UB: Load through undef pointer");
+            if (ptrRv.kind != RuntimeValue::Kind::Ptr)
+              throw std::runtime_error("load requires a pointer operand");
+            if (ptrRv.ptrVal == 0)
+              throw std::runtime_error("UB: Null pointer dereference in load");
+            const ObjectInfo *obj = findObject(ptrRv.ptrVal);
+            if (!obj)
+              throw std::runtime_error("UB: Load from unknown address");
+            if (ptrRv.ptrVal >= obj->end)
+              throw std::runtime_error("UB: Load out of bounds");
+            auto hit = heap_.find(ptrRv.ptrVal);
+            if (hit == heap_.end())
+              throw std::runtime_error("UB: Load from uninitialized memory");
+            return hit->second;
           } else if constexpr (std::is_same_v<T, CastAtom>) {
             RuntimeValue v = std::visit(
                 [&](auto &&src) -> RuntimeValue {
@@ -548,6 +784,13 @@ namespace symir {
       RuntimeValue rv;
       rv.kind = RuntimeValue::Kind::Float;
       rv.floatVal = std::get<FloatLit>(c).value;
+      rv.bits = 64;
+      return rv;
+    }
+    if (std::holds_alternative<NullLit>(c)) {
+      RuntimeValue rv;
+      rv.kind = RuntimeValue::Kind::Ptr;
+      rv.ptrVal = 0;
       rv.bits = 64;
       return rv;
     }
@@ -696,6 +939,32 @@ namespace symir {
           return l.floatVal > r.floatVal;
         case RelOp::GE:
           return l.floatVal >= r.floatVal;
+      }
+    }
+    if (l.kind == RuntimeValue::Kind::Ptr && r.kind == RuntimeValue::Kind::Ptr) {
+      switch (c.op) {
+        case RelOp::EQ:
+          return l.ptrVal == r.ptrVal;
+        case RelOp::NE:
+          return l.ptrVal != r.ptrVal;
+        case RelOp::LT:
+        case RelOp::LE:
+        case RelOp::GT:
+        case RelOp::GE: {
+          // Relational comparison between different objects is UB (spec §8.14)
+          const ObjectInfo *lo = findObject(l.ptrVal);
+          const ObjectInfo *ro = findObject(r.ptrVal);
+          // null (0) has no object; allow null==null but relational on null is UB
+          if (!lo || !ro || lo != ro)
+            throw std::runtime_error("UB: Relational pointer comparison across different objects");
+          if (c.op == RelOp::LT)
+            return l.ptrVal < r.ptrVal;
+          if (c.op == RelOp::LE)
+            return l.ptrVal <= r.ptrVal;
+          if (c.op == RelOp::GT)
+            return l.ptrVal > r.ptrVal;
+          return l.ptrVal >= r.ptrVal;
+        }
       }
     }
     throw std::runtime_error("Cond operands must be same scalar kind");

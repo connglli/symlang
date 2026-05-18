@@ -104,6 +104,8 @@ namespace symir {
             return 0;
           } else if constexpr (std::is_same_v<T, ArrayType>) {
             return arg.size * getTypeSize(arg.elem);
+          } else if constexpr (std::is_same_v<T, PtrType>) {
+            return 4; // WASM pointers are 32-bit (4 bytes)
           }
           return 0;
         },
@@ -404,6 +406,60 @@ namespace symir {
                 out_ << "i64.xor\n";
               }
               emitSignExtend(targetWidth, wasmWidth);
+            }
+          } else if constexpr (std::is_same_v<T, AddrAtom>) {
+            // Return the WASM memory address of the lvalue (must be an aggregate/spilled local)
+            emitAddress(arg.lv);
+          } else if constexpr (std::is_same_v<T, LoadAtom>) {
+            // Load through pointer: *ptr
+            // Push ptr twice — first copy stays for the actual load,
+            // second copy is used for the null check.
+            const std::string &pname = arg.rval.base.name;
+            // Null check: push ptr for null test, then keep first for load
+            indent();
+            out_ << "local.get " << mangleName(pname) << "\n";
+            indent();
+            out_ << "local.get " << mangleName(pname) << "\n";
+            indent();
+            out_ << "i32.eqz\n";
+            indent();
+            out_ << "if\n";
+            indent_level_++;
+            indent();
+            out_ << "unreachable\n";
+            indent_level_--;
+            indent();
+            out_ << "end\n";
+            // stack: [ptr_for_load]; determine pointee type for load instruction
+            uint32_t loadWidth = targetWidth;
+            bool loadIsFloat = isFloat;
+            if (locals_.count(pname)) {
+              const auto &info = locals_.at(pname);
+              if (auto pt = std::get_if<PtrType>(&info.symirType->v)) {
+                if (auto bits = TypeUtils::getBitWidth(pt->pointee)) {
+                  loadWidth = *bits;
+                  loadIsFloat = false;
+                } else if (pt->pointee && std::holds_alternative<FloatType>(pt->pointee->v)) {
+                  loadIsFloat = true;
+                  loadWidth =
+                      (std::get<FloatType>(pt->pointee->v).kind == FloatType::Kind::F32) ? 32 : 64;
+                }
+              }
+            }
+            indent();
+            if (loadIsFloat) {
+              out_ << (loadWidth <= 32 ? "f32.load\n" : "f64.load\n");
+            } else {
+              out_
+                  << (loadWidth <= 8    ? "i32.load8_s\n"
+                      : loadWidth <= 16 ? "i32.load16_s\n"
+                      : loadWidth <= 32 ? "i32.load\n"
+                                        : "i64.load\n");
+            }
+            // Sign-extend if needed
+            if (!loadIsFloat && loadWidth <= 32 && targetWidth > 32) {
+              indent();
+              out_ << "i64.extend_i32_s\n";
             }
           } else if constexpr (std::is_same_v<T, CastAtom>) {
             std::uint32_t srcWidth = 32;
@@ -728,6 +784,10 @@ namespace symir {
           } else if constexpr (std::is_same_v<T, FloatLit>) {
             indent();
             out_ << (wasmWidth == 32 ? "f32.const " : "f64.const ") << arg.value << "\n";
+          } else if constexpr (std::is_same_v<T, NullLit>) {
+            // null pointer = 0 as i32 (WASM pointers are 32-bit)
+            indent();
+            out_ << "i32.const 0\n";
           } else {
             std::visit(
                 [this, targetWidth](auto &&id) {
@@ -982,6 +1042,37 @@ namespace symir {
       syms_.clear();
       stackSize_ = 0;
 
+      // Pre-scan: collect variables whose address is taken (must be spilled to shadow stack)
+      std::unordered_set<std::string> addrTaken;
+      for (const auto &b: f.blocks) {
+        auto scanExpr = [&](const Expr &e) {
+          auto scanAtom = [&](const Atom &a) {
+            if (auto aa = std::get_if<AddrAtom>(&a.v))
+              addrTaken.insert(aa->lv.base.name);
+          };
+          scanAtom(e.first);
+          for (const auto &t: e.rest)
+            scanAtom(t.atom);
+        };
+        for (const auto &ins: b.instrs) {
+          std::visit(
+              [&](auto &&instr) {
+                using IT = std::decay_t<decltype(instr)>;
+                if constexpr (std::is_same_v<IT, AssignInstr>) {
+                  scanExpr(instr.rhs);
+                } else if constexpr (std::is_same_v<IT, StoreInstr>) {
+                  scanExpr(instr.ptr);
+                  scanExpr(instr.val);
+                }
+              },
+              ins
+          );
+        }
+        if (auto rt = std::get_if<RetTerm>(&b.term))
+          if (rt->value)
+            scanExpr(*rt->value);
+      }
+
       for (const auto &s: f.syms) {
         syms_[s.name.name] = s.type;
       }
@@ -990,8 +1081,9 @@ namespace symir {
         locals_[p.name.name] = {getWasmType(p.type), true, getIntWidth(p.type), false, 0, p.type};
       }
       for (const auto &l: f.lets) {
+        // Mark as aggregate if it's struct/array OR if its address is taken (needs memory slot)
         bool isAgg = std::holds_alternative<StructType>(l.type->v) ||
-                     std::holds_alternative<ArrayType>(l.type->v);
+                     std::holds_alternative<ArrayType>(l.type->v) || addrTaken.count(l.name.name);
         if (isAgg) {
           std::uint32_t size = getTypeSize(l.type);
           if (stackSize_ % 8 != 0)
@@ -1020,6 +1112,8 @@ namespace symir {
       out_ << "(local $pc i32)\n";
       indent();
       out_ << "(local $__old_sp i32)\n";
+      indent();
+      out_ << "(local $__ptr_temp i32)\n"; // scratch register for null-checked ptr ops
       for (const auto &l: f.lets) {
         if (!locals_[l.name.name].isAggregate) {
           indent();
@@ -1066,6 +1160,12 @@ namespace symir {
             indent();
             out_ << (locals_[l.name.name].wasmType == "f32" ? "f32.const " : "f64.const ")
                  << std::get<FloatLit>(l.init->value).value << "\n";
+            indent();
+            out_ << "local.set " << mangleName(l.name.name) << "\n";
+          } else if (l.init->kind == InitVal::Kind::Null) {
+            // null pointer = i32 0 in WASM
+            indent();
+            out_ << "i32.const 0\n";
             indent();
             out_ << "local.set " << mangleName(l.name.name) << "\n";
           } else if (l.init->kind == InitVal::Kind::Local) {
@@ -1184,7 +1284,12 @@ namespace symir {
                       }
                     } else {
                       bool isFloat = std::holds_alternative<FloatType>(info.symirType->v);
-                      emitExpr(arg.rhs, info.bitwidth, isFloat);
+                      bool isPtr = std::holds_alternative<PtrType>(info.symirType->v);
+                      if (isPtr) {
+                        emitPtrExpr(arg.rhs, info.symirType);
+                      } else {
+                        emitExpr(arg.rhs, info.bitwidth, isFloat);
+                      }
                       indent();
                       out_ << "local.set " << mangleName(arg.lhs.base.name) << "\n";
                     }
@@ -1201,6 +1306,55 @@ namespace symir {
                   indent_level_--;
                   indent();
                   out_ << "end\n";
+                } else if constexpr (std::is_same_v<T, StoreInstr>) {
+                  // *ptr = val — with null-pointer trap
+                  // Determine pointee type from the pointer expression
+                  uint32_t storeWidth = 32;
+                  bool storeIsFloat = false;
+                  if (auto rva = std::get_if<RValueAtom>(&arg.ptr.first.v)) {
+                    if (locals_.count(rva->rval.base.name)) {
+                      const auto &pinfo = locals_.at(rva->rval.base.name);
+                      if (auto pt = std::get_if<PtrType>(&pinfo.symirType->v)) {
+                        if (auto bits = TypeUtils::getBitWidth(pt->pointee)) {
+                          storeWidth = *bits;
+                        } else if (pt->pointee &&
+                                   std::holds_alternative<FloatType>(pt->pointee->v)) {
+                          storeIsFloat = true;
+                          storeWidth =
+                              (std::get<FloatType>(pt->pointee->v).kind == FloatType::Kind::F32)
+                                  ? 32
+                                  : 64;
+                        }
+                      }
+                    }
+                  }
+                  // Emit ptr expr → save to $__ptr_temp, null check, then store
+                  emitExpr(arg.ptr, 32, false);
+                  indent();
+                  out_ << "local.tee $__ptr_temp\n";
+                  indent();
+                  out_ << "i32.eqz\n";
+                  indent();
+                  out_ << "if\n";
+                  indent_level_++;
+                  indent();
+                  out_ << "unreachable\n";
+                  indent_level_--;
+                  indent();
+                  out_ << "end\n";
+                  indent();
+                  out_ << "local.get $__ptr_temp\n";
+                  emitExpr(arg.val, storeWidth, storeIsFloat);
+                  indent();
+                  if (storeIsFloat) {
+                    out_ << (storeWidth <= 32 ? "f32.store\n" : "f64.store\n");
+                  } else {
+                    out_
+                        << (storeWidth <= 8    ? "i32.store8\n"
+                            : storeWidth <= 16 ? "i32.store16\n"
+                            : storeWidth <= 32 ? "i32.store\n"
+                                               : "i64.store\n");
+                  }
                 }
               },
               ins
@@ -1302,6 +1456,28 @@ namespace symir {
     if (!noModuleTags_) {
       indent_level_--;
       out_ << ")\n";
+    }
+  }
+
+  void WasmBackend::emitPtrExpr(const Expr &expr, const TypePtr &ptrType) {
+    // Emit a pointer-valued expression as an i32 WASM address.
+    // For ptr ± int, scale the integer offset by the pointee element size.
+    const auto &pt = std::get<PtrType>(ptrType->v);
+    uint32_t elemSize = getTypeSize(pt.pointee);
+
+    emitAtom(expr.first, 32, false);
+
+    for (const auto &t: expr.rest) {
+      emitAtom(t.atom, 32, false);
+      // Scale integer offset by element size (pointer arithmetic)
+      if (elemSize > 1) {
+        indent();
+        out_ << "i32.const " << elemSize << "\n";
+        indent();
+        out_ << "i32.mul\n";
+      }
+      indent();
+      out_ << (t.op == AddOp::Plus ? "i32.add\n" : "i32.sub\n");
     }
   }
 
