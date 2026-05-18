@@ -26,6 +26,8 @@ namespace symir {
     int indent_level_ = 0;
     std::string curFuncName_;
     std::unordered_map<std::string, std::uint32_t> varWidths_;
+    std::unordered_map<std::string, bool> varIsFloat_; // true if f32 or f64
+    std::unordered_map<std::string, bool> varIsF32_;   // true if f32, false if f64
 
     // --- Emission helpers ---
     void indent();

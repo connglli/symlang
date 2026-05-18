@@ -1,0 +1,10 @@
+// EXPECT: PASS
+// 1.5 % 1.0 (f64): IEEE remainder = -0.5
+fun @main() : f64 {
+  let %a: f64 = 1.5;
+  let %b: f64 = 1.0;
+  let mut %r: f64 = 0.0;
+^entry:
+  %r = %a % %b;
+  ret %r;
+}

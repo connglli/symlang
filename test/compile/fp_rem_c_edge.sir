@@ -1,0 +1,9 @@
+// EXPECT: PASS
+// -0.5 % 1.0 (f32): exact half, IEEE remainder = -0.5
+fun @main() : f32 {
+  let %b: f32 = 1.0;
+  let mut %r: f32 = 0.0;
+^entry:
+  %r = -0.5 % %b;
+  ret %r;
+}

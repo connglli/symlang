@@ -81,6 +81,7 @@ namespace symir {
   void CBackend::emit(const Program &prog) {
     out_ << "#include <stdint.h>\n";
     out_ << "#include <stdbool.h>\n";
+    out_ << "#include <math.h>\n";
     out_ << "#include <assert.h>\n\n";
 
     // 1. Forward decls for structs
@@ -130,12 +131,26 @@ namespace symir {
     for (const auto &f: prog.funs) {
       curFuncName_ = f.name.name;
       varWidths_.clear();
-      for (const auto &p: f.params)
+      varIsFloat_.clear();
+      varIsF32_.clear();
+      auto recordFloatKind = [&](const std::string &name, const TypePtr &t) {
+        if (auto ft = std::get_if<FloatType>(&t->v)) {
+          varIsFloat_[name] = true;
+          varIsF32_[name] = (ft->kind == FloatType::Kind::F32);
+        }
+      };
+      for (const auto &p: f.params) {
         varWidths_[p.name.name] = getWidth(p.type);
-      for (const auto &s: f.syms)
+        recordFloatKind(p.name.name, p.type);
+      }
+      for (const auto &s: f.syms) {
         varWidths_[s.name.name] = getWidth(s.type);
-      for (const auto &l: f.lets)
+        recordFloatKind(s.name.name, s.type);
+      }
+      for (const auto &l: f.lets) {
         varWidths_[l.name.name] = getWidth(l.type);
+        recordFloatKind(l.name.name, l.type);
+      }
 
       // 3a. Extern symbols
       for (const auto &s: f.syms) {
@@ -342,6 +357,35 @@ namespace symir {
               out_ << " >> ";
               emitLValue(arg.rval);
               out_ << ")";
+            } else if (arg.op == AtomOpKind::Mod) {
+              // IEEE 754 remainder: C's % is invalid for floats.
+              // Detect float operand via coef type.
+              bool isFloat = std::holds_alternative<FloatLit>(arg.coef);
+              bool isF32 = false;
+              if (!isFloat) {
+                if (auto *lid = std::get_if<LocalOrSymId>(&arg.coef)) {
+                  auto name = std::visit([](auto &&v) { return v.name; }, *lid);
+                  isFloat = varIsFloat_.count(name) && varIsFloat_.at(name);
+                  isF32 = isFloat && varIsF32_.count(name) && varIsF32_.at(name);
+                }
+              }
+              // For a float literal coef, infer f32 vs f64 from the rval variable type
+              if (isFloat && !isF32) {
+                const auto &rname = arg.rval.base.name;
+                if (varIsF32_.count(rname) && varIsF32_.at(rname))
+                  isF32 = true;
+              }
+              if (isFloat) {
+                out_ << (isF32 ? "remainderf(" : "remainder(");
+                emitCoef(arg.coef);
+                out_ << ", ";
+                emitLValue(arg.rval);
+                out_ << ")";
+              } else {
+                emitCoef(arg.coef);
+                out_ << " % ";
+                emitLValue(arg.rval);
+              }
             } else {
               emitCoef(arg.coef);
               switch (arg.op) {
@@ -352,7 +396,7 @@ namespace symir {
                   out_ << " / ";
                   break;
                 case AtomOpKind::Mod:
-                  out_ << " % ";
+                  // unreachable: handled above
                   break;
                 case AtomOpKind::And:
                   out_ << " & ";

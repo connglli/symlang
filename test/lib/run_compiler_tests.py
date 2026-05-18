@@ -182,6 +182,7 @@ def run_symirc_test(symirc_path, target="c"):
         "-w",
         "-fsanitize=address,undefined",
         "-g",
+        "-lm",
       ]
       res_gcc, err_gcc = run_command(gcc_cmd, timeout=10)
       if err_gcc == "TIMEOUT":
@@ -189,8 +190,8 @@ def run_symirc_test(symirc_path, target="c"):
       if res_gcc.returncode != 0:
         return TestResult.FAIL, f"GCC error:\n{res_gcc.stderr}"
 
-      # Run executable
-      run_cmd = [exe_out]
+      # Run executable; disable LSAN so it works outside ptrace environments
+      run_cmd = ["env", "LSAN_OPTIONS=detect_leaks=0", exe_out]
     else:
       # WASM execution
       sir_info = extract_sir_info(file_path, entry_func)
