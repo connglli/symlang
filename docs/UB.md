@@ -92,3 +92,10 @@ In the Solver (`symirsolve`), UB generates constraints that negate the path cond
 
 - **Dynamic:** Interpreter checks that the pointer value is defined (not `undef`) before a store.
 - **Solver:** Treats the `is_defined` flag of the pointer like any other variable; an undefined pointer store prunes the path.
+
+### 7e. Struct-Field Pointer Arithmetic
+**Definition:** `ptr ± n` where `ptr` was derived from `addr lv.f` (a struct field address) and `n ≠ 0` steps past the single-element field boundary.
+
+- **Rationale:** A struct-field pointer has provenance over exactly one element — the storage of field `f`. Adjacent fields may have different types; stepping into them through an `i32` pointer would alias an `i64` field (or vice-versa), breaking type safety. Even adjacent same-typed fields are separate provenance regions.
+- **Dynamic:** Interpreter tracks a `ptrBase` provenance tag per pointer value identifying the backing `ObjectInfo` (one per field). Arithmetic uses `ptrBase` to locate the correct object; results outside `[obj.base, obj.end]` (strictly: `obj.base = field_addr`, `obj.end = field_addr + sizeof(T)`) throw `UndefinedBehaviorError`.
+- **Solver:** Each `addr lv.f` yields an abstract address constant with a one-element non-overlap axiom. Arithmetic that places the result outside this range generates an unsatisfiable constraint.

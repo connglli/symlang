@@ -447,7 +447,7 @@ See §2.9 for the full floating-point value model. Key points:
 
 9. **Null pointer dereference**: `load <ptr>` or `store <ptr>, <val>` where `ptr` evaluates to `null` (address 0) is UB.
 
-10. **Out-of-bounds pointer arithmetic**: let `%p = addr <lv>` where `lv` has type `[N] T` (an array element pointer) or a scalar type (a single-element object of size 1). For pointer arithmetic `%p + n`:
+10. **Out-of-bounds pointer arithmetic**: let `%p = addr <lv>` where `lv` has type `[N] T` (an array element pointer), a scalar type (a single-element object of size 1), or a scalar/pointer field `f : T` of a struct (see rule 15). For pointer arithmetic `%p + n`:
     - Let `base` be the start address of the originating object and `count` be the number of elements in that object.
     - UB if the resulting address falls outside `[base, base + count * sizeof(T))`.
     - The "one-past-the-end" address `base + count * sizeof(T)` is a valid non-dereferenceable address (valid for arithmetic; UB to load/store).
@@ -461,6 +461,10 @@ See §2.9 for the full floating-point value model. Key points:
 14. **Cross-object pointer comparison**: comparing two pointers derived from different originating objects with `<`, `<=`, `>`, `>=` is UB. Equality (`==`, `!=`) between pointers of different objects is well-defined and always produces `false` / `true` respectively (distinct objects occupy disjoint address ranges per the non-overlap axioms). Only `<`/`<=`/`>`/`>=` comparisons between pointers of the same originating object are defined.
 
     **Rationale**: the SMT model assigns abstract address constants that satisfy non-overlap constraints but imposes no ordering between distinct objects. Permitting `<`/`>`/etc. across objects would allow `assume px < py` to spuriously constrain the abstract address assignment, producing results that are model-dependent and meaningless. Declaring it UB prevents this. This matches the C standard (§6.5.8p5).
+
+15. **Struct-field pointer provenance**: a pointer `%p : ptr T` derived from `addr lv.f` where `f : T` is a scalar or pointer field of a struct has provenance over **exactly one element** — the storage of field `f` alone. Formally: `count = 1`, `elemSize = sizeof(T)`. Arithmetic `%p ± n` for `n ≠ 0` steps to the one-past-the-end address (if `n = 1`) or further out-of-bounds. Loading or storing through such an advanced pointer is UB (consequence of rule 11).
+
+    **Rationale**: struct fields may have distinct types. Allowing arithmetic past a scalar field would allow a `ptr i32` to alias a `ptr i64` field, breaking type safety and SMT-model separability. Each field is its own one-element object; arithmetic into a neighbouring field is not defined, even if the neighbouring field happens to have the same type.
 
 
 ## 8. Division and modulo (round toward 0)
