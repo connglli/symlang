@@ -48,3 +48,47 @@ In the Solver (`symirsolve`), UB generates constraints that negate the path cond
   - **Dynamic:** Interpreter checks the shift amount before the operation.
   - **Solver:** Generates `(bvult amount width)` constraints.
   - *Note:* This prevents architecture-defined behavior (like masking) from affecting program semantics.
+
+## 6. Floating-Point UB
+**Definition:** Operations that produce IEEE 754 NaN or infinite results are UB in SymIR.
+
+- **Status:** **Enforced.**
+- **Scope:** Applies to `f32` and `f64` arithmetic (`+`, `-`, `*`, `/`, `%`) and float-to-integer casts.
+- **Cases:**
+  - `inf`: Addition, subtraction, multiplication, or division that produces ±∞.
+  - `nan`: Division of ±∞ by ±∞, or 0.0/0.0, or `%` with 0 divisor.
+  - `cast`: Casting a float to an integer type when the float is ±∞, NaN, or the truncated value is out of range for the target integer type.
+- **Mechanism:**
+  - **Dynamic:** Interpreter checks `std::isinf` / `std::isnan` after each float operation, and checks range before float→int cast.
+  - **Solver:** Adds path constraints that exclude ∞ and NaN results.
+
+## 7. Pointer UB
+**Definition:** Pointer operations that violate the SymIR pointer model.
+
+- **Status:** **Enforced.**
+- **Cases and mechanisms:**
+
+### 7a. Null Pointer Dereference
+**Definition:** Performing `load` or `store` through a pointer with value `null`.
+
+- **Dynamic:** Interpreter checks that `ptr != null` before any `load` or `store`.
+- **Solver:** Adds a constraint `(distinct ptr null_ptr_id)` on every `load`/`store` path.
+
+### 7b. Out-of-Bounds Pointer Arithmetic
+**Definition:** `ptr ± n` that moves the pointer outside `[base, base + size)` of the originating allocation.
+
+- **Dynamic:** Interpreter tracks the backing allocation for every pointer. Arithmetic that would place the result outside the allocation's bounds is UB.
+- **Solver:** Generates `(bvule new_offset size)` constraints to keep the pointer in range.
+
+### 7c. Relational Comparison Across Objects
+**Definition:** Applying `<`, `<=`, `>`, or `>=` to two pointers that do not point into the same object.
+
+- **Rationale:** Cross-object pointer ordering is undefined in C and SymIR; only equality (`==`, `!=`) is always well-defined.
+- **Dynamic:** Interpreter checks that both operands reference the same allocation object before a relational compare.
+- **Solver:** Adds a constraint that both pointers share the same base object on any path that contains a relational pointer comparison.
+
+### 7d. Store Through Undef Pointer
+**Definition:** Executing `store %p, val` when `%p` is `undef`.
+
+- **Dynamic:** Interpreter checks that the pointer value is defined (not `undef`) before a store.
+- **Solver:** Treats the `is_defined` flag of the pointer like any other variable; an undefined pointer store prunes the path.
