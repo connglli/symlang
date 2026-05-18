@@ -363,7 +363,19 @@ namespace symir {
           finalRes.model[s.name.name] = d;
         } else {
           auto val_str = solver.get_bv_value_string(val_term, 10);
-          finalRes.model[s.name.name] = parseIntegerLiteral(val_str);
+          int64_t raw = parseIntegerLiteral(val_str);
+          // Sign-extend: Bitwuzla returns the unsigned bit-pattern as decimal.
+          // Reinterpret as signed so the printer emits e.g. -2 instead of 4294967294.
+          uint32_t width = solver.get_bv_width(solver.get_sort(term));
+          if (width < 64) {
+            uint64_t mask = (uint64_t(1) << width) - 1;
+            uint64_t uval = static_cast<uint64_t>(raw) & mask;
+            if (uval >= (uint64_t(1) << (width - 1)))
+              raw = static_cast<int64_t>(uval - (uint64_t(1) << width));
+            else
+              raw = static_cast<int64_t>(uval);
+          }
+          finalRes.model[s.name.name] = raw;
         }
       }
     } else if (res == smt::Result::UNSAT) {
