@@ -56,6 +56,19 @@ SymIR uses **strict UB** on the chosen path:
 - `select` is **lazy**: only the selected arm is evaluated.
 - In v0.1.0, `vtrue` and `vfalse` are restricted to **scalar values** (`RValue` or constant `Coef`) to avoid nested expressions.
 
+### 2.8 Floating-point value model
+
+SymIR uses **finite IEEE 754-2008 semantics** for floating-point:
+
+- **Domain**: the only valid floating-point values are **finite** IEEE 754 values. ±∞ and NaN are **not** SymIR values. Any operation whose IEEE 754 result would be ±∞ or NaN is UB (see §7.4).
+- **Signed zeros**: `+0.0` and `-0.0` are distinct bit patterns and both are valid values. They compare equal (`+0.0 == -0.0` is `true`). Negating `+0.0` yields `-0.0` and vice versa. Writing `-0.0` as a literal is valid.
+- **Subnormals**: subnormal (denormal) values are regular finite values. There is no flush-to-zero behavior.
+- **Rounding mode**: all operations use a single fixed mode — **RNE (Round to Nearest, Ties to Even)**. There are no dynamic rounding modes and no per-operation rounding specifiers.
+- **`%` for floats**: the `%` operator is the **IEEE 754 `remainder`** operation (SMT-LIB2 `fp.rem`), **not** C's `fmod`. They differ when `x/y` is near a half-integer or when operands are negative.
+- **No fast-math**: expressions are evaluated strictly left-to-right (no reassociation). No implicit NaN/infinity assumptions beyond what is stated here. No contraction (`fma`), no approximate functions, no flags of any kind.
+
+SMT encoding: `f32` maps to `(_ FloatingPoint 8 24)` and `f64` maps to `(_ FloatingPoint 11 53)`. All FP operations use `roundNearestTiesToEven`.
+
 
 ## 3. Concrete syntax
 
@@ -245,6 +258,12 @@ The result has that type.
 - `T` is a scalar (integer or floating-point).
 This supports integer resizing, integer-to-float, float-to-integer, and float-resizing conversions.
 
+Runtime cast behavior:
+- **Integer resize**: truncation (narrowing) or sign/zero extension (widening). Never UB.
+- **Integer-to-float** (`iN as fM`): rounded with RNE. Always produces a finite result (integers are bounded).
+- **Float-to-float resize** (`f32 as f64`): exact (widening). (`f64 as f32`): rounded with RNE; UB if the result would overflow to ±∞.
+- **Float-to-integer** (`fN as iM`): truncation toward zero. UB if the truncated value is outside the representable range of `iM` (see §7.4 rule 8).
+
 ### 6.5 Bitwise and Shift typing
 - `Coef op RValue` (`&`, `|`, `^`, `<<`, `>>`, `>>>`): well-typed iff both operands are scalar integers of the same bit-width. Floating-point types are **disallowed**.
 - `~ RValue`: well-typed iff the operand is a scalar integer.
@@ -271,8 +290,8 @@ Literals do not have fixed types but are inferred from their context:
 UB is checked during symbolic execution along the chosen path. Any UB makes the path infeasible.
 
 ### 7.1 UB conditions
-1. **Division/modulo by zero**
-   In `k / x` or `k % x`, UB if `x == 0`.
+1. **Integer division/modulo by zero**
+   In `k / x` or `k % x` where `k` and `x` are integers, UB if `x == 0`. (For floating-point division and remainder, see §7.4 rules 6–7.)
 
 2. **Out-of-bounds array access**
    For `a[i]` where `a : [N] T`, UB if `i < 0` or `i >= N`.
@@ -294,9 +313,18 @@ For `select c, a, b`:
 
 
 ### 7.3 Floating-point arithmetic semantics
-- Floating-point operations (`+`, `-`, `*`, `/`, `%`) use **Round Nearest Ties To Even (RNE)**.
-- Comparisons (`==`, `!=`, `<`, `<=`, `>`, `>=`) follow IEEE 754 semantics.
-- Note: `%` for floating-point corresponds to the IEEE 754 `remainder` operation.
+See §2.8 for the full floating-point value model. Key points:
+- All operations use **RNE** rounding.
+- `%` is the IEEE 754 `remainder` (`fp.rem`), not C's `fmod`.
+- Comparisons are total over the finite domain (NaN never occurs). `+0.0 == -0.0` is `true`.
+
+### 7.4 Floating-point UB rules
+
+6. **FP overflow (±∞ result)**: any arithmetic operation (`+`, `-`, `*`, `/`) whose IEEE 754 result (under RNE) would be ±∞ is UB. This covers finite-operand overflow and division of any non-zero value by ±0.0.
+
+7. **FP invalid operation (NaN result)**: any operation whose IEEE 754 result would be NaN is UB. This covers `±0.0 / ±0.0` and `x % ±0.0` for any `x`.
+
+8. **Float-to-integer out-of-range**: `fN as iM` is UB if the float value, after truncation toward zero, is outside the representable range of `iM`. (Non-finite values are already UB per rules 6–7, but would also trigger this rule.)
 
 ## 8. Integer division and modulo (round toward 0)
 
@@ -503,7 +531,7 @@ A path like `^entry -> ^b1 -> ^body -> ^b1 -> ^body -> ... -> ^exit` is feasible
 
 
 ## 11. Non-goals for v0.1.0 (planned for v0.2.0+)
-- Pointers and pointer arithmetic (planned for v0.2.0; heap allocation skipped).
+- Pointers and pointer arithmetic: scalar/pointer pointees in v0.2.0; aggregate pointees (`ptr [N] T`, `ptr @S`) in v0.2.1. Heap allocation is skipped.
 - Parentheses, operator precedence, general expression trees.
 - SSA/phi.
 - Interprocedural calls and summaries.
