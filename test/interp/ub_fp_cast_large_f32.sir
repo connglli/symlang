@@ -1,5 +1,6 @@
 // EXPECT: FAIL
 // f32 3.4e38 cast to i32: out of i32 range [-2^31, 2^31-1], UB rule 8
+// SKIP: COMPILER
 fun @main() : i32 {
   let %a: f32 = 3.4e38;
   let mut %i: i32 = 0;

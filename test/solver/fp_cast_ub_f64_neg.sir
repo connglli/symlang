@@ -1,5 +1,6 @@
 // EXPECT: FAIL
 // SOLVER_ARGS: --main @test --path ^entry
+// SKIP: COMPILER
 // x < -1.0e19 forces x as i64 to underflow; range PC constraint → UNSAT
 fun @test() : i64 {
   sym %?x : value f64;

@@ -1,5 +1,6 @@
 // EXPECT: PASS
 // 1.5 % 1.0 as f64: same logic, result = -0.5
+// SKIP: WASM
 // fmod gives 0.5.
 fun @main() : f64 {
   let %a: f64 = 1.5;

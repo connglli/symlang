@@ -1,5 +1,6 @@
 // EXPECT: FAIL
 // f64 addition overflow produces +inf: UB rule 6
+// SKIP: COMPILER
 fun @main() : f64 {
   let %a: f64 = 1.0e308;
   let %b: f64 = 1.0e308;

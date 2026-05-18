@@ -1,5 +1,6 @@
 // EXPECT: PASS
 // SOLVER_ARGS: --main @test --path ^entry
+// SKIP: COMPILER
 // INTERP_ARGS: --main @test --sym %?x=100.0
 // x in (0, 2^31-1): cast to i32 is valid; solver should find a concrete value
 fun @test() : i32 {

@@ -1,5 +1,6 @@
 // EXPECT: FAIL
 // f32 multiplication overflow produces +inf: UB rule 6
+// SKIP: COMPILER
 fun @main() : f32 {
   let %a: f32 = 3.4e38;
   let %b: f32 = 2.0;

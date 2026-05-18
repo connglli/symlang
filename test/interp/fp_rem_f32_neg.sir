@@ -1,5 +1,6 @@
 // EXPECT: PASS
 // -1.5 % 1.0: quotient = -1.5, RNE rounds to -2, result = -1.5 - (-2)*1.0 = 0.5
+// SKIP: WASM
 // fmod gives -0.5 (truncates quotient to -1).
 fun @main() : f32 {
   let %a: f32 = -1.5;

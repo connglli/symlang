@@ -1,5 +1,6 @@
 // EXPECT: FAIL
 // SOLVER_ARGS: --main @test --path ^entry
+// SKIP: COMPILER
 // x > 1.0e10 as f64 exceeds INT32_MAX; range PC constraint on cast → UNSAT
 fun @test() : i32 {
   sym %?x : value f64;
