@@ -66,6 +66,10 @@ namespace symir {
                 );
               } else if constexpr (std::is_same_v<T, UnaryAtom>) {
                 collectLValue(arg.rval);
+              } else if constexpr (std::is_same_v<T, AddrAtom>) {
+                collectLValue(arg.lv);
+              } else if constexpr (std::is_same_v<T, LoadAtom>) {
+                collectLValue(arg.rval);
               }
             },
             a.v
@@ -83,13 +87,16 @@ namespace symir {
               using T = std::decay_t<decltype(arg)>;
               if constexpr (std::is_same_v<T, AssignInstr>) {
                 collectExpr(arg.rhs, collectExpr);
-                used.insert(arg.lhs.base.name);
+                collectLValue(arg.lhs);
               } else if constexpr (std::is_same_v<T, AssumeInstr>) {
                 collectExpr(arg.cond.lhs, collectExpr);
                 collectExpr(arg.cond.rhs, collectExpr);
               } else if constexpr (std::is_same_v<T, RequireInstr>) {
                 collectExpr(arg.cond.lhs, collectExpr);
                 collectExpr(arg.cond.rhs, collectExpr);
+              } else if constexpr (std::is_same_v<T, StoreInstr>) {
+                collectExpr(arg.ptr, collectExpr);
+                collectExpr(arg.val, collectExpr);
               }
             },
             ins
