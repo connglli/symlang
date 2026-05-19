@@ -13,6 +13,7 @@
  */
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -20,6 +21,7 @@
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -120,8 +122,8 @@ static GenerateResult generateLeaf(
     int maxRetries, int nInitsPerExec,
     // IO
     const fs::path &outDir, bool keepSymbolic, bool verbose,
-    // RNG
-    std::mt19937 &rng, uint32_t baseSeed
+    // RNG (by value — safe to run in a detached thread)
+    std::mt19937 rng, uint32_t baseSeed
 ) {
   // S1: CFG
   GenCFGParams cfgParams;
@@ -387,6 +389,11 @@ int main(int argc, char **argv) {
   bool safeOffPath = result.count("safe-off-path") > 0;
   bool enableInterestCoefs = !result.count("no-interest-coefs");
   uint32_t timeoutMs = result["timeout-ms"].as<uint32_t>();
+  // Wall-clock budget per function: covers all retries × inits plus 50 ms for non-solver overhead
+  // (CFG gen, path sampling, formula construction, SIRPrinter). Compilation runs outside the
+  // thread.
+  uint32_t funcTimeoutMs =
+      (uint32_t) ((uint64_t) (maxRetries + 1) * nInitsPerExec * timeoutMs + 50);
   bool keepSymbolic = result.count("keep-symbolic") > 0;
   bool doValidate = result.count("validate") > 0;
   bool verbose = result.count("verbose") > 0;
@@ -428,11 +435,46 @@ int main(int argc, char **argv) {
     std::cout << "[" << (i + 1) << "/" << nFuncs << "] generating " << funcName
               << " (seed=" << funcSeed << ")\n";
 
-    auto genRes = generateLeaf(
-        nInterior, pBranch, pBack, maxLoopIter, varCfg, funcName, nStmts, safeOffPath,
-        enableInterestCoefs, coefLo, coefHi, valueLo, valueHi, indexLo, indexHi, exprCfg, timeoutMs,
-        maxRetries, nInitsPerExec, outDir, keepSymbolic, verbose, rng, funcSeed
-    );
+    // Heap-allocated state lets us safely detach the thread on timeout without
+    // dangling references. Leaked on timeout — bounded by nFuncs, cleaned at exit.
+    struct FuncState {
+      std::mt19937 rng;
+      GenerateResult result;
+      std::atomic<bool> done{false};
+    };
+
+    auto *state = new FuncState{std::mt19937(funcSeed), {}, false};
+
+    std::thread t([&, state]() {
+      state->result = generateLeaf(
+          nInterior, pBranch, pBack, maxLoopIter, varCfg, funcName, nStmts, safeOffPath,
+          enableInterestCoefs, coefLo, coefHi, valueLo, valueHi, indexLo, indexHi, exprCfg,
+          timeoutMs, maxRetries, nInitsPerExec, outDir, keepSymbolic, verbose, state->rng, funcSeed
+      );
+      state->done.store(true, std::memory_order_release);
+    });
+
+    bool timedOut = false;
+    if (funcTimeoutMs > 0) {
+      auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(funcTimeoutMs);
+      while (!state->done.load(std::memory_order_acquire)) {
+        if (std::chrono::steady_clock::now() >= deadline) {
+          timedOut = true;
+          break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      }
+    }
+
+    if (timedOut) {
+      t.detach(); // state leaked; thread completes or dies with the process
+      std::cerr << "[TIMEOUT] " << funcName << " exceeded " << funcTimeoutMs << "ms wall clock\n";
+      nFail++;
+      continue;
+    }
+    t.join();
+    GenerateResult genRes = std::move(state->result);
+    delete state;
 
     if (genRes.produced.empty()) {
       std::cerr << "[FAIL] all attempts failed for " << funcName << " (seed=" << funcSeed << ")\n";
