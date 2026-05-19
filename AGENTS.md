@@ -27,7 +27,7 @@ The key design goals are:
 
 SymIR deliberately restricts expressions (flat, left-to-right, no parentheses) and uses **LLVM-style syntax** (`@`, `%`, `br`, basic blocks) while remaining language-agnostic.
 
-The complete formal specification of the language is presented in: **[./docs/SPEC_v0.1.0.md](./docs/SPEC_v0.1.0.md)**
+The current formal specification is **[./docs/SPEC_v0.2.0.md](./docs/SPEC_v0.2.0.md)** (adds pointer support: `ptr T`, `addr`, `load`, `store`, `null`, plus pointer arithmetic and the strict UB rules in §7.5). The pre-pointer baseline is preserved at [./docs/SPEC_v0.1.0.md](./docs/SPEC_v0.1.0.md) for reference.
 
 ## Language at a Glance
 
@@ -44,10 +44,18 @@ Key characteristics:
 - **select** expression:
   - Lazy (only selected arm evaluated)
   - Expression-level conditional
+- **Pointers (v0.2.0)**:
+  - `ptr T` type, restricted to scalar/pointer pointees
+  - `addr lv` produces `ptr T` (requires `let mut` root)
+  - `load p`, `store p, v` for read/write through pointers
+  - `null` literal (typed by context)
+  - Pointer arithmetic: `ptr T ± iN → ptr T`, `ptr T - ptr T → i64` (element distance)
+  - No `sym` of pointer type; no pointer/integer casts
 - **Strict UB**:
   - Division/modulo by zero
   - Out-of-bounds array access
   - Reading `undef`
+  - Null/uninitialised/out-of-bounds pointer dereference, cross-object pointer arithmetic or relational comparison
 
 ## Toolchain Overview
 

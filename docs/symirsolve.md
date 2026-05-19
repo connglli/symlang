@@ -192,7 +192,27 @@ Operators:
 * `/` uses signed truncating division: `bvsdiv`
 * `%` uses signed remainder: `bvsrem`
 
-These match the language semantics in `SPEC.md`.
+These match the language semantics in `docs/SPEC_v0.2.0.md`.
+
+
+## Notes on Pointer Support (v0.2.0)
+
+The solver encodes pointers as **64-bit BV tags** identifying the addressed local (tag `0` reserved for `null`; tags derived from local names via FNV-1a). `addr` / `load` / `store` dispatch builds an `ite`-chain over candidate targets of the matching pointee type, so load/store through symbolic pointers resolves to the right local without requiring SMT array theory.
+
+**Currently supported in the solver:**
+
+* `addr %v` for a whole `let mut` local `%v` (scalar or pointer).
+* `load %p` / `store %p, v` where `%p` is a `ptr T` local that ultimately points at another local of type `T`.
+* Pointer-to-pointer chains (`ptr ptr T`).
+* Pointer equality and inequality (`==`, `!=`) — these are plain BV equality on the 64-bit tags.
+
+**Not yet supported in the solver** (these are valid SymIR programs accepted by the interpreter and the C/WASM backends, but `symirsolve` will raise an error or return a model that ignores them):
+
+* `addr %arr[i]` and `addr %st.f` — array-element and struct-field addressing. These need the full spec §9.4 array-theory memory model (abstract address constants + `Mem[T]` SMT arrays).
+* Pointer arithmetic (`ptr + iN`, `ptr - iN`, `ptr - ptr`). Requires the same address model so the solver can reason about offsets.
+* Pointer parameters of functions with no addr-taken locals — the solver has no externally-allocated storage to dispatch into.
+
+These gaps are intentional simplifications: the BV-tag model gives sound, fast symbolic execution for the common "single-cell aliasing" case that random program generation typically produces, at the cost of leaving arithmetic-heavy pointer programs unsolvable until the spec §9.4 model lands.
 
 
 ## Failure Modes

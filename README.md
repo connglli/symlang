@@ -1,7 +1,7 @@
 # SymLang (SymIR): A CFG-Based Symbolic Language / Intermediate Representation
 
 > [!WARNING]
-> The project is under active development. APIs and IR details are still evolving, but semantic decisions in `SPEC.md` are authoritative for v0.1.0.
+> The project is under active development. APIs and IR details are still evolving, but semantic decisions in `docs/SPEC_v0.2.0.md` are authoritative for the current release (v0.2.0).
 
 SymIR (also referred to as SymLang) is a **CFG-based symbolic intermediate representation** designed for program synthesis, symbolic execution, and constraint generation for SMT solvers using **bit-vector (BV) logic**.
 
@@ -178,7 +178,7 @@ fun @main() : i32 {
   let mut %d_plus:  i32 = 0;
   let mut %d_minus: i32 = 0;
 
-  // Intermediate indices (v0.1.0 doesn't allow nested indexing like %a.b[%c.d])
+  // Intermediate indices (SymIR doesn't allow nested indexing like %a.b[%c.d])
   let mut %idx_tmp: i32 = 0;
 
   // --- 3. Constants ---
@@ -422,7 +422,10 @@ Find more examples in [./examples](./examples/) and [./test/](./test/).
 
 ## 📚 Documentation
 
-- **[Language Specification (v0.1.0)](./docs/SPEC_v0.1.0.md)**
+- **[Language Specification (v0.2.0, current)](./docs/SPEC_v0.2.0.md)** — the current normative spec, including the v0.2.0 pointer additions (`ptr T`, `addr`, `load`, `store`, `null`).
+- **[Language Specification (v0.1.0, archived)](./docs/SPEC_v0.1.0.md)** — the pre-pointer baseline, kept for reference.
+- **[Undefined Behaviour reference](./docs/UB.md)**
+- **[Semantic Reification / `rysmith` design notes](./docs/reify.md)**
 - **[symiri User Guide](./docs/symiri.md)**
 - **[symirc User Guide](./docs/symirc.md)**
 - **[symirsolve User Guide](./docs/symirsolve.md)**

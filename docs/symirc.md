@@ -97,8 +97,9 @@ Examples:
 | `-h, --help`       | Print usage                                |
 
 
-## Limitations (v0.1.0)
+## Limitations (v0.2.0)
 
-* Only `i32` and `i64` are guaranteed to translate cleanly
-* No heap or pointer support
-* No optimization passes
+* `i1`, `i8`, `i16`, `i32`, `i64`, `f32`, `f64`, arrays, structs, and pointers (`ptr T`) lower to both C and WASM.
+* Heap allocation is still out of scope; pointers always refer to stack-resident `let mut` locals (see spec §2.8).
+* No optimization passes — the lowered C/WASM follows the source closely.
+* In WASM, pointers are 32-bit addresses into the linear memory; in C they are native C pointers. Pointer arithmetic and `ptr - ptr` (element distance) are both supported, but cross-object arithmetic remains UB per spec §7.5.
