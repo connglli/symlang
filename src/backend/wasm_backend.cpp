@@ -215,8 +215,30 @@ namespace symir {
             emitLValue(arg.rval, false);
             if (locals_.count(arg.rval.base.name)) {
               auto const &li = locals_.at(arg.rval.base.name);
-              std::uint32_t srcWidth = li.bitwidth;
-              if (std::holds_alternative<FloatType>(li.symirType->v)) {
+              // Walk accesses to determine the actual loaded type, not the base
+              // local's type (e.g. %s.tag where tag is i64 inside an aggregate %s).
+              TypePtr srcType = li.symirType;
+              for (const auto &acc: arg.rval.accesses) {
+                if (std::get_if<AccessIndex>(&acc)) {
+                  if (auto at = std::get_if<ArrayType>(&srcType->v))
+                    srcType = at->elem;
+                } else if (auto af = std::get_if<AccessField>(&acc)) {
+                  if (auto st = std::get_if<StructType>(&srcType->v)) {
+                    if (structLayouts_.count(st->name.name) &&
+                        structLayouts_.at(st->name.name).fields.count(af->field))
+                      srcType = structLayouts_.at(st->name.name).fields.at(af->field).type;
+                  }
+                }
+              }
+              std::uint32_t srcWidth = 32;
+              bool srcIsFloat = false;
+              if (auto bits = TypeUtils::getBitWidth(srcType)) {
+                srcWidth = *bits;
+              } else if (srcType && std::holds_alternative<FloatType>(srcType->v)) {
+                srcIsFloat = true;
+                srcWidth = (std::get<FloatType>(srcType->v).kind == FloatType::Kind::F32) ? 32 : 64;
+              }
+              if (srcIsFloat) {
                 if (srcWidth == 32 && targetWidth == 64) {
                   indent();
                   out_ << "f64.promote_f32\n";
@@ -415,11 +437,27 @@ namespace symir {
             // Push ptr twice — first copy stays for the actual load,
             // second copy is used for the null check.
             const std::string &pname = arg.rval.base.name;
+            // If pname was address-taken, it lives on the shadow stack rather
+            // than as a WASM local; fetch its value from there.
+            auto emitPushPtr = [&]() {
+              if (locals_.count(pname) && locals_.at(pname).isAggregate) {
+                const auto &pinfo = locals_.at(pname);
+                indent();
+                out_ << "local.get $__old_sp\n";
+                indent();
+                out_ << "i32.const " << pinfo.offset << "\n";
+                indent();
+                out_ << "i32.sub\n";
+                indent();
+                out_ << "i32.load\n";
+              } else {
+                indent();
+                out_ << "local.get " << mangleName(pname) << "\n";
+              }
+            };
             // Null check: push ptr for null test, then keep first for load
-            indent();
-            out_ << "local.get " << mangleName(pname) << "\n";
-            indent();
-            out_ << "local.get " << mangleName(pname) << "\n";
+            emitPushPtr();
+            emitPushPtr();
             indent();
             out_ << "i32.eqz\n";
             indent();
@@ -495,9 +533,29 @@ namespace symir {
                     emitLValue(src, false);
                     if (locals_.count(src.base.name)) {
                       auto const &li = locals_.at(src.base.name);
-                      srcWidth = li.bitwidth;
-                      if (std::holds_alternative<FloatType>(li.symirType->v))
+                      // Walk accesses so cast-from-field uses the field's
+                      // type, not the base local's (e.g. %s.tag where tag is i64).
+                      TypePtr at_type = li.symirType;
+                      for (const auto &acc: src.accesses) {
+                        if (std::get_if<AccessIndex>(&acc)) {
+                          if (auto at = std::get_if<ArrayType>(&at_type->v))
+                            at_type = at->elem;
+                        } else if (auto af = std::get_if<AccessField>(&acc)) {
+                          if (auto st = std::get_if<StructType>(&at_type->v)) {
+                            if (structLayouts_.count(st->name.name) &&
+                                structLayouts_.at(st->name.name).fields.count(af->field))
+                              at_type = structLayouts_.at(st->name.name).fields.at(af->field).type;
+                          }
+                        }
+                      }
+                      if (auto bits = TypeUtils::getBitWidth(at_type)) {
+                        srcWidth = *bits;
+                      } else if (at_type && std::holds_alternative<FloatType>(at_type->v)) {
                         srcIsFloat = true;
+                        srcWidth = (std::get<FloatType>(at_type->v).kind == FloatType::Kind::F32)
+                                       ? 32
+                                       : 64;
+                      }
                     }
                   }
                 },
