@@ -68,6 +68,9 @@ namespace symir {
     void emitExpr(const Expr &expr, std::uint32_t targetWidth, bool isFloat = false);
     // Emit a pointer-valued expression, scaling int offsets by pointee element size
     void emitPtrExpr(const Expr &expr, const TypePtr &ptrType);
+    // Recognise `ptr - ptr` (i64 element distance per spec §6.8.6).
+    bool isPtrDiff(const Expr &expr) const;
+    void emitPtrDiff(const Expr &expr);
     void emitAtom(const Atom &atom, std::uint32_t targetWidth, bool isFloat = false);
     void emitCond(const Cond &cond);
     void emitLValue(const LValue &lv, bool isStore);

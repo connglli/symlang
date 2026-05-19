@@ -983,6 +983,10 @@ namespace symir {
         } else if (type && std::holds_alternative<FloatType>(type->v)) {
           valIsFloat = true;
           width = (std::get<FloatType>(type->v).kind == FloatType::Kind::F32) ? 32 : 64;
+        } else if (type && std::holds_alternative<PtrType>(type->v)) {
+          // Pointers in WASM are 32-bit (one i32 cell). Without this branch
+          // getBitWidth returns nullopt and the store collapses to i32.store8.
+          width = 32;
         }
 
         indent();
@@ -1266,6 +1270,9 @@ namespace symir {
                         valIsFloat = true;
                         width = (std::get<FloatType>(curType->v).kind == FloatType::Kind::F32) ? 32
                                                                                                : 64;
+                      } else if (curType && std::holds_alternative<PtrType>(curType->v)) {
+                        // WASM pointers are 32-bit (one i32 cell).
+                        width = 32;
                       }
 
                       emitExpr(arg.rhs, width, valIsFloat);
@@ -1287,6 +1294,9 @@ namespace symir {
                       bool isPtr = std::holds_alternative<PtrType>(info.symirType->v);
                       if (isPtr) {
                         emitPtrExpr(arg.rhs, info.symirType);
+                      } else if (isPtrDiff(arg.rhs)) {
+                        // ptr - ptr → i64 element distance. Emit byte diff, then /sizeof.
+                        emitPtrDiff(arg.rhs);
                       } else {
                         emitExpr(arg.rhs, info.bitwidth, isFloat);
                       }
@@ -1479,6 +1489,47 @@ namespace symir {
       indent();
       out_ << (t.op == AddOp::Plus ? "i32.add\n" : "i32.sub\n");
     }
+  }
+
+  bool WasmBackend::isPtrDiff(const Expr &expr) const {
+    // Match `ptr_lvalue - ptr_lvalue` as the entire expression. Per spec §6.8.6
+    // this is the only mixed form that yields a non-pointer result (i64).
+    if (expr.rest.size() != 1)
+      return false;
+    if (expr.rest[0].op != AddOp::Minus)
+      return false;
+    auto firstRv = std::get_if<RValueAtom>(&expr.first.v);
+    auto secondRv = std::get_if<RValueAtom>(&expr.rest[0].atom.v);
+    if (!firstRv || !secondRv)
+      return false;
+    auto firstIt = locals_.find(firstRv->rval.base.name);
+    auto secondIt = locals_.find(secondRv->rval.base.name);
+    if (firstIt == locals_.end() || secondIt == locals_.end())
+      return false;
+    return std::holds_alternative<PtrType>(firstIt->second.symirType->v) &&
+           std::holds_alternative<PtrType>(secondIt->second.symirType->v);
+  }
+
+  void WasmBackend::emitPtrDiff(const Expr &expr) {
+    // (q - p) in bytes, then divide by sizeof(pointee) to yield element distance.
+    // Result is left on the stack as i64 (spec §6.8.6: ptr T - ptr T → i64).
+    auto firstRv = std::get<RValueAtom>(expr.first.v);
+    const auto &firstInfo = locals_.at(firstRv.rval.base.name);
+    const auto &pt = std::get<PtrType>(firstInfo.symirType->v);
+    uint32_t elemSize = getTypeSize(pt.pointee);
+
+    emitAtom(expr.first, 32, false);
+    emitAtom(expr.rest[0].atom, 32, false);
+    indent();
+    out_ << "i32.sub\n";
+    if (elemSize > 1) {
+      indent();
+      out_ << "i32.const " << elemSize << "\n";
+      indent();
+      out_ << "i32.div_s\n";
+    }
+    indent();
+    out_ << "i64.extend_i32_s\n";
   }
 
 } // namespace symir
