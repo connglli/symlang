@@ -377,6 +377,7 @@ namespace symir {
                 TypePtr pointeeType;
                 if (auto *rv = std::get_if<RValueAtom>(&arg.ptr.first.v)) {
                   const std::string baseName = rv->rval.base.name;
+                  // Look in lets and params for the ptr-typed binding.
                   for (const auto &l: currentFun_->lets) {
                     if (l.name.name == baseName) {
                       if (auto pt = std::get_if<PtrType>(&l.type->v))
@@ -384,11 +385,20 @@ namespace symir {
                       break;
                     }
                   }
+                  if (!pointeeType) {
+                    for (const auto &p: currentFun_->params) {
+                      if (p.name.name == baseName) {
+                        if (auto pt = std::get_if<PtrType>(&p.type->v))
+                          pointeeType = pt->pointee;
+                        break;
+                      }
+                    }
+                  }
                 }
                 if (!pointeeType)
                   throw std::runtime_error(
                       "store: cannot derive pointee type (only `store %p, ...` "
-                      "with a ptr-typed local %p is currently supported)"
+                      "with a ptr-typed local or parameter %p is currently supported)"
                   );
 
                 auto pointeeSort = getSort(pointeeType, solver);
