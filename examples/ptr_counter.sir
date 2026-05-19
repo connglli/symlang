@@ -1,0 +1,92 @@
+// EXPECT: PASS
+struct @Counter {
+  value: i32;
+  step: i32;
+  ticks: i32;
+}
+
+fun @main() : i32 {
+  // =========================================================================================
+  // SymIR Pointer Counter (v0.2.0)
+  //
+  // A counter abstraction encapsulated behind a `ptr i32`. The body of the loop never
+  // touches the counter field directly — every increment goes through:
+  //
+  //     %cur = load %vp;     // *vp
+  //     %cur = %cur + step;
+  //     store %vp, %cur;     // *vp = cur
+  //
+  // The increment step is a `coef` symbol; the solver must synthesise it so that the
+  // counter reaches a specified target after a fixed number of ticks. This exercises:
+  //   - `addr` of a `let mut` local
+  //   - `store`/`load` round-trip aliasing a single local across a loop
+  //   - Use of a pointer as an opaque interface to mutable state
+  //
+  // Interpret:
+  //   ./symiri --sym %?step=3 ./examples/ptr_counter.sir
+  //
+  // Compile:
+  //   ./symirc -o ptr_counter.c ./examples/ptr_counter.sir
+  //
+  // Solve:
+  //   ./symirsolve --path $(cat ./examples/ptr_counter_path.txt) ./examples/ptr_counter.sir
+  // =========================================================================================
+
+  // --- 0. Symbolic step size ---
+  sym %?step : coef i32 in [1, 8];
+
+  // --- 1. State ---
+  let mut %ctr: @Counter = { 0, 0, 0 };
+
+  // Backing scratch locals (so we can take their address).
+  let mut %val_slot: i32 = 0;
+  let mut %tick_slot: i32 = 0;
+
+  // Pointer aliases.
+  let mut %vp: ptr i32 = null;
+  let mut %tp: ptr i32 = null;
+
+  // Loop locals.
+  let mut %cur: i32 = 0;
+  let mut %t: i32 = 0;
+
+  // Constants
+  let %ONE: i32 = 1;
+  let %LIMIT: i32 = 5;
+  let %TARGET: i32 = 20;
+
+^entry:
+  %ctr.value = 0;
+  %ctr.step = %?step;
+  %ctr.ticks = 0;
+  %val_slot = %ctr.value;
+  %tick_slot = %ctr.ticks;
+  %vp = addr %val_slot;
+  %tp = addr %tick_slot;
+  br ^loop;
+
+^loop:
+  %t = load %tp;
+  br %t < %LIMIT, ^bump, ^exit;
+
+^bump:
+  // value += step
+  %cur = load %vp;
+  %cur = %cur + %?step;
+  store %vp, %cur;
+  // ticks += 1
+  %cur = load %tp;
+  %cur = %cur + %ONE;
+  store %tp, %cur;
+  br ^loop;
+
+^exit:
+  // Commit scratch back to struct fields.
+  %ctr.value = load %vp;
+  %ctr.ticks = load %tp;
+
+  // After 5 ticks of `+step`, value must equal 20 → step must be 4.
+  require %ctr.value == %TARGET, "value reaches target after 5 ticks";
+  require %ctr.ticks == %LIMIT,  "exactly 5 ticks executed";
+  ret %ctr.value;
+}

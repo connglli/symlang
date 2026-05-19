@@ -1,0 +1,115 @@
+// EXPECT: PASS
+struct @Bank {
+  reg_a: i32;   // accumulator A
+  reg_b: i32;   // accumulator B
+  pc: i32;      // program counter / selector tick
+}
+
+fun @main() : i32 {
+  // =========================================================================================
+  // SymIR Indirect Dispatch (v0.2.0)
+  //
+  // A minimal "two-register virtual machine" that uses a `ptr ptr i32` to redirect each
+  // step's write target. The control state alternates between two physical registers via
+  // a `ptr i32` named `%active`; an outer `ptr ptr i32` (`%active_ref`) lets us swap the
+  // active register without rewriting the inner loop.
+  //
+  // Each step:
+  //   1. Reads the currently active register through the indirect chain.
+  //   2. Adds a symbolic delta to it.
+  //   3. Writes the result back through the same chain.
+  //   4. Swaps the active register for the next step.
+  //
+  // The solver must synthesise `%?delta` so the final values match the requirement.
+  //
+  // Features exercised:
+  //   - `ptr i32` and `ptr ptr i32` declarations
+  //   - `addr` of two distinct mutable locals
+  //   - `load load %pp` (two-level dereference, staged through `%active`)
+  //   - `store %active, v` mutating the addressed local
+  //   - Pointer reassignment as control state
+  //
+  // Interpret:
+  //   ./symiri --sym %?delta=3 ./examples/ptr_indirect_dispatch.sir
+  //
+  // Compile:
+  //   ./symirc -o ptr_indirect_dispatch.c ./examples/ptr_indirect_dispatch.sir
+  //
+  // Solve:
+  //   ./symirsolve --path $(cat ./examples/ptr_indirect_dispatch_path.txt) \
+  //                ./examples/ptr_indirect_dispatch.sir
+  // =========================================================================================
+
+  // --- 0. Symbolic step delta ---
+  sym %?delta : coef i32 in [-8, 8];
+
+  // --- 1. State ---
+  let mut %bank: @Bank = { 0, 0, 0 };
+
+  // Backing locals for the two registers.
+  let mut %a_slot: i32 = 0;
+  let mut %b_slot: i32 = 0;
+
+  // Pointer chain.
+  let mut %active: ptr i32 = null;        // points at the active slot
+  let mut %active_ref: ptr ptr i32 = null; // indirect handle to the active pointer
+  let mut %inner: ptr i32 = null;          // result of `load %active_ref`
+
+  // Loop locals.
+  let mut %step: i32 = 0;
+  let mut %cur: i32 = 0;
+  let mut %parity: i32 = 0;
+  let mut %TWO: i32 = 2;
+
+  // Constants
+  let %ONE: i32 = 1;
+  let %STEPS: i32 = 4;
+
+^entry:
+  // Initial values come from the bank fields.
+  %a_slot = %bank.reg_a;
+  %b_slot = %bank.reg_b;
+
+  // %active starts pointing at slot A; %active_ref points at %active itself.
+  %active = addr %a_slot;
+  %active_ref = addr %active;
+  br ^loop;
+
+^loop:
+  br %step < %STEPS, ^body, ^commit;
+
+^body:
+  // Dereference twice to find the slot to update.
+  %inner = load %active_ref;
+  %cur = load %inner;
+  %cur = %cur + %?delta;
+  store %inner, %cur;
+
+  // Toggle: if %step is even (just completed a write to A), aim at B next; and vice versa.
+  %parity = %step % %TWO;
+  br %parity == 0, ^point_b, ^point_a;
+
+^point_b:
+  %active = addr %b_slot;
+  br ^advance;
+
+^point_a:
+  %active = addr %a_slot;
+  br ^advance;
+
+^advance:
+  %step = %step + %ONE;
+  br ^loop;
+
+^commit:
+  // Read final values back into struct fields.
+  %bank.reg_a = %a_slot;
+  %bank.reg_b = %b_slot;
+  %bank.pc = %step;
+
+  // After 4 steps (2 to A, 2 to B) with delta = 3, both registers must equal 6.
+  require %bank.reg_a == 6, "A receives 2 * delta";
+  require %bank.reg_b == 6, "B receives 2 * delta";
+  require %bank.pc == 4,    "exactly 4 dispatch steps";
+  ret %bank.reg_a;
+}

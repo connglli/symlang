@@ -1,0 +1,172 @@
+// EXPECT: PASS
+struct @ChainResult {
+  acc_low:  i32;
+  acc_mid:  i32;
+  acc_high: i32;
+  routed:   i32;   // number of routed inputs
+}
+
+fun @main() : i32 {
+  // =========================================================================================
+  // SymIR Pointer-Routed Accumulator Chain (v0.2.0)
+  //
+  // Three accumulators (`%acc_low`, `%acc_mid`, `%acc_high`) collect a fixed stream of
+  // signed integers (`%i0..%i3`). The classification routes each input into one of the
+  // three accumulators depending on a symbolic threshold pair `(%?lo_cut, %?hi_cut)`:
+  //
+  //     value < lo_cut          → low
+  //     lo_cut ≤ value < hi_cut → mid
+  //     value ≥ hi_cut          → high
+  //
+  // The dispatch to the chosen bucket happens through a `ptr i32` reassignment in one
+  // of three "route" blocks; the accumulation itself is a single `load`/`+`/`store`
+  // through the active pointer. The solver must find cuts so that the final histogram
+  // matches the target counts.
+  //
+  // Features exercised:
+  //   - Three independent `addr %local` pointers as alias-free accumulator handles
+  //   - Multiple route blocks reassigning a single `ptr i32`
+  //   - `load` / `store` round-trip per input, all through one pointer
+  //   - Pointer equality not used here; the dispatch is purely scalar-driven
+  //
+  // Interpret:
+  //   ./symiri --sym %?lo_cut=0 --sym %?hi_cut=5 ./examples/ptr_accumulator_chain.sir
+  //
+  // Compile:
+  //   ./symirc -o ptr_accumulator_chain.c ./examples/ptr_accumulator_chain.sir
+  //
+  // Solve:
+  //   ./symirsolve --path $(cat ./examples/ptr_accumulator_chain_path.txt) \
+  //                ./examples/ptr_accumulator_chain.sir
+  // =========================================================================================
+
+  // --- 0. Symbolic threshold cuts ---
+  sym %?lo_cut : value i32 in [-5, 5];
+  sym %?hi_cut : value i32 in [0, 10];
+
+  // --- 1. Accumulators ---
+  let mut %acc_low:  i32 = 0;
+  let mut %acc_mid:  i32 = 0;
+  let mut %acc_high: i32 = 0;
+
+  // --- 2. Inputs (fixed stream) ---
+  let mut %i0: i32 = -3;
+  let mut %i1: i32 = 2;
+  let mut %i2: i32 = 7;
+  let mut %i3: i32 = 4;
+
+  // Active pointer + scratch
+  let mut %dst: ptr i32 = null;
+  let mut %cur: i32 = 0;
+  let mut %tmp: i32 = 0;
+  let mut %routed: i32 = 0;
+
+  // Constants
+  let %ONE: i32 = 1;
+
+  let mut %res: @ChainResult = { 0, 0, 0, 0 };
+
+^entry:
+  br ^route0;
+
+// ---- Input 0 ----
+^route0:
+  %cur = %i0;
+  br %cur < %?lo_cut, ^route0_low, ^route0_not_low;
+^route0_low:
+  %dst = addr %acc_low;
+  br ^route0_apply;
+^route0_not_low:
+  br %cur < %?hi_cut, ^route0_mid, ^route0_high;
+^route0_mid:
+  %dst = addr %acc_mid;
+  br ^route0_apply;
+^route0_high:
+  %dst = addr %acc_high;
+  br ^route0_apply;
+^route0_apply:
+  %tmp = load %dst;
+  %tmp = %tmp + %cur;
+  store %dst, %tmp;
+  %routed = %routed + %ONE;
+  br ^route1;
+
+// ---- Input 1 ----
+^route1:
+  %cur = %i1;
+  br %cur < %?lo_cut, ^route1_low, ^route1_not_low;
+^route1_low:
+  %dst = addr %acc_low;
+  br ^route1_apply;
+^route1_not_low:
+  br %cur < %?hi_cut, ^route1_mid, ^route1_high;
+^route1_mid:
+  %dst = addr %acc_mid;
+  br ^route1_apply;
+^route1_high:
+  %dst = addr %acc_high;
+  br ^route1_apply;
+^route1_apply:
+  %tmp = load %dst;
+  %tmp = %tmp + %cur;
+  store %dst, %tmp;
+  %routed = %routed + %ONE;
+  br ^route2;
+
+// ---- Input 2 ----
+^route2:
+  %cur = %i2;
+  br %cur < %?lo_cut, ^route2_low, ^route2_not_low;
+^route2_low:
+  %dst = addr %acc_low;
+  br ^route2_apply;
+^route2_not_low:
+  br %cur < %?hi_cut, ^route2_mid, ^route2_high;
+^route2_mid:
+  %dst = addr %acc_mid;
+  br ^route2_apply;
+^route2_high:
+  %dst = addr %acc_high;
+  br ^route2_apply;
+^route2_apply:
+  %tmp = load %dst;
+  %tmp = %tmp + %cur;
+  store %dst, %tmp;
+  %routed = %routed + %ONE;
+  br ^route3;
+
+// ---- Input 3 ----
+^route3:
+  %cur = %i3;
+  br %cur < %?lo_cut, ^route3_low, ^route3_not_low;
+^route3_low:
+  %dst = addr %acc_low;
+  br ^route3_apply;
+^route3_not_low:
+  br %cur < %?hi_cut, ^route3_mid, ^route3_high;
+^route3_mid:
+  %dst = addr %acc_mid;
+  br ^route3_apply;
+^route3_high:
+  %dst = addr %acc_high;
+  br ^route3_apply;
+^route3_apply:
+  %tmp = load %dst;
+  %tmp = %tmp + %cur;
+  store %dst, %tmp;
+  %routed = %routed + %ONE;
+  br ^commit;
+
+^commit:
+  %res.acc_low  = %acc_low;
+  %res.acc_mid  = %acc_mid;
+  %res.acc_high = %acc_high;
+  %res.routed   = %routed;
+  // Target: low gets {-3} (sum -3), mid gets {2, 4} (sum 6), high gets {7} (sum 7).
+  // That requires lo_cut ∈ (-3, 2] and hi_cut ∈ (4, 7].
+  require %res.acc_low  == -3, "low bucket holds -3";
+  require %res.acc_mid  == 6,  "mid bucket holds 6";
+  require %res.acc_high == 7,  "high bucket holds 7";
+  require %res.routed   == 4,  "all four inputs routed";
+  ret %res.routed;
+}

@@ -1,0 +1,100 @@
+// EXPECT: PASS
+struct @SwapState {
+  a: i32;
+  b: i32;
+  tmp: i32;
+  done: i1;
+}
+
+fun @main() : i32 {
+  // =========================================================================================
+  // SymIR Pointer Swap (v0.2.0)
+  //
+  // Demonstrates the classic 3-step swap implemented through `ptr i32` aliases of two
+  // mutable locals. The loop iterates twice, swapping each pair (a,b) once per round,
+  // so after 2 rounds the values return to their original positions. Synthesis target:
+  // pick the symbolic seed values `%?a` and `%?b` so that the *final* state has
+  // a = 7 and b = 11 after the loop closes.
+  //
+  // This exercises:
+  //   - `let mut %p: ptr i32 = null;` declaration
+  //   - `%p = addr %x;` lvalue addressing
+  //   - `load %p` and `store %p, v` round-trips through stack memory
+  //   - Pointer aliasing: two pointers to two distinct locals, alternating roles
+  //   - Loop with back-edge driving the swap dispatch
+  //
+  // Interpret:
+  //   ./symiri --sym %?a=11 --sym %?b=7 ./examples/ptr_swap.sir
+  //
+  // Compile:
+  //   ./symirc -o ptr_swap.c ./examples/ptr_swap.sir
+  //
+  // Solve:
+  //   ./symirsolve --path $(cat ./examples/ptr_swap_path.txt) ./examples/ptr_swap.sir
+  // =========================================================================================
+
+  // --- 0. Symbolic seeds (initial values of a and b) ---
+  sym %?a : value i32 in [0, 50];
+  sym %?b : value i32 in [0, 50];
+
+  // --- 1. State ---
+  let mut %st: @SwapState = { 0, 0, 0, 0 };
+
+  // --- 2. Pointer aliases for the two slots ---
+  let mut %pa: ptr i32 = null;
+  let mut %pb: ptr i32 = null;
+  let mut %ptmp: ptr i32 = null;
+
+  // --- 3. Loop counter ---
+  let mut %a_field: i32 = 0;
+  let mut %b_field: i32 = 0;
+  let mut %tmp_field: i32 = 0;
+  let mut %round: i32 = 0;
+
+  // Constants
+  let %ONE: i32 = 1;
+  let %ROUNDS: i32 = 2;
+
+^entry:
+  // Initialize state from symbolic seeds.
+  %st.a = %?a;
+  %st.b = %?b;
+  %st.tmp = 0;
+  %st.done = 0;
+  br ^loop;
+
+^loop:
+  br %round < %ROUNDS, ^body, ^exit;
+
+^body:
+  // Read fields into scratch locals so we can addr them.
+  %a_field = %st.a;
+  %b_field = %st.b;
+  %tmp_field = %st.tmp;
+  %pa = addr %a_field;
+  %pb = addr %b_field;
+  %ptmp = addr %tmp_field;
+
+  // tmp = *pa
+  store %ptmp, load %pa;
+  // *pa = *pb
+  store %pa, load %pb;
+  // *pb = tmp
+  store %pb, load %ptmp;
+
+  // Commit scratch values back to the struct fields.
+  %st.a = %a_field;
+  %st.b = %b_field;
+  %st.tmp = %tmp_field;
+
+  // Advance loop.
+  %round = %round + %ONE;
+  br ^loop;
+
+^exit:
+  // After 2 swaps the values are back where they started, so we require the seeds
+  // to be (11, 7) — the solver will pick them accordingly.
+  require %st.a == 11, "Final a (after 2 swaps) is the original a";
+  require %st.b == 7,  "Final b (after 2 swaps) is the original b";
+  ret %st.a;
+}
