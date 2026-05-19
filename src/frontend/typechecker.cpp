@@ -146,6 +146,11 @@ namespace symir {
       vars[p.name.name] = VarInfo{p.type, false, true, p.span};
     }
     for (const auto &s: f.syms) {
+      // v0.2.0 §3.4.1: `sym` declarations of pointer type are not allowed.
+      // Pointer values must come from `addr` or parameters.
+      if (s.type && std::holds_alternative<PtrType>(s.type->v)) {
+        diags.error("sym of pointer type is not allowed in v0.2.0: " + s.name.name, s.span);
+      }
       syms[s.name.name] = SymInfo{s.type, s.kind, s.span};
     }
     for (const auto &l: f.lets) {
@@ -521,11 +526,13 @@ namespace symir {
             auto lvTy = typeOfLValue(arg.lv, vars, syms, diags);
             if (!lvTy)
               return Ty{std::monostate{}};
-            // Check that lv root is let mut
+            // v0.2.0 §3.4.2: only a `let mut` local may have its address taken.
+            // Parameters and immutable `let` locals are forbidden.
             auto it = vars.find(arg.lv.base.name);
-            if (it != vars.end() && !it->second.isMutable && !it->second.isParam) {
+            if (it != vars.end() && (it->second.isParam || !it->second.isMutable)) {
               diags.error(
-                  "'addr' requires a 'let mut' local; '" + arg.lv.base.name + "' is not mutable",
+                  "'addr' requires a 'let mut' local; '" + arg.lv.base.name + "' is " +
+                      (it->second.isParam ? "a parameter" : "immutable"),
                   arg.span
               );
             }
