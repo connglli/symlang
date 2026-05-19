@@ -295,9 +295,9 @@ int main(int argc, char **argv) {
                           cxxopts::value<uint32_t>())
     // Domains
     ("coef-domain",       "Domain for coef symbols",
-                          cxxopts::value<std::string>()->default_value("[-8, 8]"))
+                          cxxopts::value<std::string>()->default_value("[-2147483647, 2147483647]"))
     ("value-domain",      "Domain for value/constant symbols",
-                          cxxopts::value<std::string>()->default_value("[-128, 127]"))
+                          cxxopts::value<std::string>()->default_value("[-2147483647, 2147483647]"))
     ("index-domain",      "Domain for index symbols",
                           cxxopts::value<std::string>()->default_value("[1, 30]"))
     // Retry/inits

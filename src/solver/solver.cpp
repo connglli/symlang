@@ -286,14 +286,37 @@ namespace symir {
             [&](auto &&d) {
               using T = std::decay_t<decltype(d)>;
               if constexpr (std::is_same_v<T, DomainInterval>) {
-                // Use make_bv_value_int64 to correctly handle negative bounds
-                // (mk_bv_value with base 10 may not support negative decimal strings)
                 auto loSort = getSort(s.type, solver);
-                auto hiSort = loSort;
-                auto lo = solver.make_bv_value_int64(loSort, d.lo);
-                auto hi = solver.make_bv_value_int64(hiSort, d.hi);
-                pathConstraints.push_back(solver.make_term(smt::Kind::BV_SLE, {lo, sv.term}));
-                pathConstraints.push_back(solver.make_term(smt::Kind::BV_SLE, {sv.term, hi}));
+                // Clamp [lo, hi] to the type's actual signed range so a wide domain
+                // (e.g. full-i32) applied to a narrow type (i8, i16) doesn't produce
+                // an unsatisfiable constraint after BV truncation.
+                uint32_t bits = 64;
+                if (auto *it = std::get_if<IntType>(&s.type->v)) {
+                  switch (it->kind) {
+                    case IntType::Kind::I32:
+                      bits = 32;
+                      break;
+                    case IntType::Kind::I64:
+                      bits = 64;
+                      break;
+                    case IntType::Kind::ICustom:
+                      bits = it->bits.value_or(32);
+                      break;
+                  }
+                }
+                int64_t effLo = d.lo, effHi = d.hi;
+                if (bits < 64) {
+                  int64_t typeLo = -(1LL << (bits - 1));
+                  int64_t typeHi = (1LL << (bits - 1)) - 1;
+                  effLo = std::max(effLo, typeLo);
+                  effHi = std::min(effHi, typeHi);
+                }
+                if (effLo <= effHi) {
+                  auto lo = solver.make_bv_value_int64(loSort, effLo);
+                  auto hi = solver.make_bv_value_int64(loSort, effHi);
+                  pathConstraints.push_back(solver.make_term(smt::Kind::BV_SLE, {lo, sv.term}));
+                  pathConstraints.push_back(solver.make_term(smt::Kind::BV_SLE, {sv.term, hi}));
+                }
               } else if constexpr (std::is_same_v<T, DomainSet>) {
                 std::vector<smt::Term> or_terms;
                 for (auto v: d.values) {
