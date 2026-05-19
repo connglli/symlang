@@ -385,7 +385,12 @@ namespace symir {
 
     for (const auto &s: f.syms) {
       auto it = symBindings.find(s.name.name);
-      if (it != symBindings.end()) {
+      if (it == symBindings.end()) {
+        throw std::runtime_error(
+            "Symbol " + s.name.name + " has no binding (provide --sym " + s.name.name + "=<value>)"
+        );
+      }
+      {
         RuntimeValue v;
         std::visit(
             [&](auto &&val) {
