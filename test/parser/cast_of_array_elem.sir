@@ -1,0 +1,11 @@
+// EXPECT: PASS
+// Regression: parsing `<lvalue-with-accesses> as <type>` must consume the
+// accesses before looking for `as`. Previously the parser only saw the bare
+// LocalId, so `%a[0] as i64` failed with "Expected ';', got 'as'".
+fun @main() : i32 {
+  let mut %a: [3] i32 = {10, 20, 30};
+  let mut %x: i64 = 0;
+^entry:
+  %x = %a[0] as i64;
+  ret 0;
+}

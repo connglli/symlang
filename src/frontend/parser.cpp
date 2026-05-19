@@ -651,6 +651,26 @@ namespace symir {
       }
 
       // Try 'as'
+      // For a LocalId coef, the coef parser only consumed the bare identifier —
+      // any array/field accesses remain in the token stream. Re-parse as a full
+      // LValue first so that `%a0[0] as i32` is handled correctly.
+      if (auto lsid = std::get_if<LocalOrSymId>(&c)) {
+        if (std::holds_alternative<LocalId>(*lsid)) {
+          // Re-parse as full LValue (consumes accesses), then look for 'as'
+          idx_ = save;
+          LValue lv = parseLValue();
+          if (tryConsume(TokenKind::KwAs)) {
+            TypePtr dst = parseType();
+            CastAtom ca;
+            ca.src = std::move(lv);
+            ca.dstType = std::move(dst);
+            ca.span = SourceSpan{b, prevEnd()};
+            return Atom{std::move(ca), ca.span};
+          }
+          // No 'as' — not a cast; reset and fall through to leaf atom
+          idx_ = save;
+        }
+      }
       if (tryConsume(TokenKind::KwAs)) {
         TypePtr dst = parseType();
         CastAtom ca;
@@ -666,11 +686,9 @@ namespace symir {
           if (auto sid = std::get_if<SymId>(&lsid)) {
             ca.src = *sid;
           } else {
-            // LocalId -> must re-parse as LValue to allow accesses
-            idx_ = save;
-            ca.src = parseLValue();
-            consume(TokenKind::KwAs, "'as'");
-            parseType(); // skip
+            // Simple LocalId (no accesses) — use as-is
+            auto &lid = std::get<LocalId>(lsid);
+            ca.src = LValue{lid, {}, {}};
           }
         }
         ca.dstType = std::move(dst);

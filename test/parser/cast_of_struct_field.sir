@@ -1,0 +1,11 @@
+// EXPECT: PASS
+// Regression: `%s.f as Type` requires the parser to consume the field access
+// before checking for `as`. Same root cause as cast_of_array_elem.sir.
+struct @Pair { a: i32; b: i32; }
+fun @main() : i32 {
+  let mut %s: @Pair = {7, 11};
+  let mut %x: i64 = 0;
+^entry:
+  %x = %s.a as i64;
+  ret 0;
+}
