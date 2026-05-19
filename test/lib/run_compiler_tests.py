@@ -226,6 +226,11 @@ def run_symirc_test(symirc_path, target="c"):
             sk = strip_sigil(k)
             t = sir_info["syms"].get(sk, "i32")
 
+            # WASM only has i32/i64/f32/f64 — map narrow ints to i32 to match
+            # what the WASM backend emits for narrow-int symbol imports.
+            if t in ("i1", "i8", "i16"):
+              t = "i32"
+
             val_str = v
             if (t == "f32" or t == "f64") and "." not in v and "e" not in v.lower():
               val_str = v + ".0"
