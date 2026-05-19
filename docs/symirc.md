@@ -94,6 +94,7 @@ Examples:
 | `--dump-ast`       | Dump the AST to stdout and exit            |
 | `-w`               | Inhibit all warning messages               |
 | `--Werror`         | Make all warnings into errors              |
+| `--no-require`     | Omit `require` checks from emitted code (useful for compiler testing) |
 | `-h, --help`       | Print usage                                |
 
 

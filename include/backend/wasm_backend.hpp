@@ -23,11 +23,14 @@ namespace symir {
 
     void setNoModuleTags(bool val) { noModuleTags_ = val; }
 
+    void setNoRequire(bool val) { noRequire_ = val; }
+
   private:
     std::ostream &out_;
     int indent_level_ = 0;
     std::string curFuncName_;
     bool noModuleTags_ = false;
+    bool noRequire_ = false;
 
     // Maps local/param names to their WASM local index or info
     struct LocalInfo {

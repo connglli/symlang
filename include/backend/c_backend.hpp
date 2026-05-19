@@ -21,9 +21,12 @@ namespace symir {
      */
     void emit(const Program &prog);
 
+    void setNoRequire(bool val) { noRequire_ = val; }
+
   private:
     std::ostream &out_;
     int indent_level_ = 0;
+    bool noRequire_ = false;
     std::string curFuncName_;
     std::unordered_map<std::string, std::uint32_t> varWidths_;
     std::unordered_map<std::string, bool> varIsFloat_; // true if f32 or f64

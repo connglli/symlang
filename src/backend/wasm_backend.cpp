@@ -1305,17 +1305,19 @@ namespace symir {
                     }
                   }
                 } else if constexpr (std::is_same_v<T, RequireInstr>) {
-                  emitCond(arg.cond);
-                  indent();
-                  out_ << "i32.eqz\n";
-                  indent();
-                  out_ << "if\n";
-                  indent_level_++;
-                  indent();
-                  out_ << "unreachable\n";
-                  indent_level_--;
-                  indent();
-                  out_ << "end\n";
+                  if (!noRequire_) {
+                    emitCond(arg.cond);
+                    indent();
+                    out_ << "i32.eqz\n";
+                    indent();
+                    out_ << "if\n";
+                    indent_level_++;
+                    indent();
+                    out_ << "unreachable\n";
+                    indent_level_--;
+                    indent();
+                    out_ << "end\n";
+                  }
                 } else if constexpr (std::is_same_v<T, StoreInstr>) {
                   // *ptr = val — with null-pointer trap
                   // Determine pointee type from the pointer expression

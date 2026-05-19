@@ -31,6 +31,7 @@ int main(int argc, char **argv) {
     ("w", "Inhibit all warning messages", cxxopts::value<bool>()->default_value("false"))
     ("Werror", "Make all warnings into errors", cxxopts::value<bool>()->default_value("false"))
     ("no-module-tags", "Omit (module ...) tags in WASM output", cxxopts::value<bool>()->default_value("false"))
+    ("no-require", "Omit require checks from emitted code (useful for compiler testing)", cxxopts::value<bool>()->default_value("false"))
     ("h,help", "Print usage");
   options.parse_positional({"input"});
   // clang-format on
@@ -117,14 +118,17 @@ int main(int argc, char **argv) {
       outStream = &ofs;
     }
 
+    bool noRequire = result["no-require"].as<bool>();
     if (target == "c") {
       CBackend cb(*outStream);
+      cb.setNoRequire(noRequire);
       cb.emit(prog);
     } else if (target == "wasm") {
       WasmBackend wb(*outStream);
       if (result.count("no-module-tags")) {
         wb.setNoModuleTags(result["no-module-tags"].as<bool>());
       }
+      wb.setNoRequire(noRequire);
       wb.emit(prog);
     } else {
       std::cerr << "Error: Unsupported target: " << target << "\n";

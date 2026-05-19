@@ -86,7 +86,9 @@ namespace symir {
     out_ << "#include <stddef.h>\n";
     out_ << "#include <stdbool.h>\n";
     out_ << "#include <math.h>\n";
-    out_ << "#include <assert.h>\n\n";
+    if (!noRequire_)
+      out_ << "#include <assert.h>\n";
+    out_ << "\n";
 
     // 1. Forward decls for structs
     for (const auto &s: prog.structs) {
@@ -274,11 +276,13 @@ namespace symir {
                   emitCond(arg.cond);
                   out_ << "\n";
                 } else if constexpr (std::is_same_v<T, RequireInstr>) {
-                  out_ << "assert(";
-                  emitCond(arg.cond);
-                  if (arg.message)
-                    out_ << " && \"" << *arg.message << "\"";
-                  out_ << ");\n";
+                  if (!noRequire_) {
+                    out_ << "assert(";
+                    emitCond(arg.cond);
+                    if (arg.message)
+                      out_ << " && \"" << *arg.message << "\"";
+                    out_ << ");\n";
+                  }
                 } else if constexpr (std::is_same_v<T, StoreInstr>) {
                   out_ << "*";
                   emitExpr(arg.ptr);
