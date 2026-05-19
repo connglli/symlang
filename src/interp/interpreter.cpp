@@ -1030,6 +1030,76 @@ namespace symir {
       val.intVal = canonicalize(val.intVal, val.bits);
     }
     *cur = val;
+
+    // Spec §9.4.7 / interp Store↔Heap consistency: when an addr-taken local
+    // is updated via a direct assignment, the heap-side mirror must reflect
+    // the new value so subsequent loads through `load <ptr>` see it.
+    auto ait = addrMap_.find(lv.base.name);
+    if (ait == addrMap_.end())
+      return;
+    uint64_t base = ait->second;
+    const RuntimeValue &top = store.at(lv.base.name);
+    if (lv.accesses.empty()) {
+      heap_[base] = top;
+      return;
+    }
+    // For nested accesses, recompute the offset relative to base.
+    uint64_t addr = base;
+    const RuntimeValue *walk = &top;
+    auto typeIt = typeMap_.find(lv.base.name);
+    TypePtr curType = (typeIt != typeMap_.end()) ? typeIt->second : nullptr;
+    for (const auto &acc: lv.accesses) {
+      if (auto ai = std::get_if<AccessIndex>(&acc)) {
+        if (walk->kind != RuntimeValue::Kind::Array)
+          return;
+        int64_t idx = 0;
+        if (std::holds_alternative<IntLit>(ai->index))
+          idx = std::get<IntLit>(ai->index).value;
+        else {
+          const auto &id = std::get<LocalOrSymId>(ai->index);
+          idx = std::visit([&](auto &&v) { return store.at(v.name).intVal; }, id);
+        }
+        if (idx < 0 || (size_t) idx >= walk->arrayVal.size())
+          return;
+        uint64_t elemSize = 0;
+        if (curType) {
+          if (auto at = std::get_if<ArrayType>(&curType->v)) {
+            auto bw = TypeUtils::getBitWidth(at->elem);
+            elemSize = bw ? (*bw + 7) / 8
+                       : std::holds_alternative<FloatType>(at->elem->v)
+                           ? (std::get<FloatType>(at->elem->v).kind == FloatType::Kind::F32 ? 4 : 8)
+                           : 8;
+            curType = at->elem;
+          }
+        }
+        if (elemSize == 0)
+          return; // no type info — give up syncing nested case
+        addr += idx * elemSize;
+        walk = &walk->arrayVal[idx];
+      } else if (auto af = std::get_if<AccessField>(&acc)) {
+        if (walk->kind != RuntimeValue::Kind::Struct)
+          return;
+        if (!curType)
+          return;
+        auto st = std::get_if<StructType>(&curType->v);
+        if (!st)
+          return;
+        auto sit = structs_.find(st->name.name);
+        if (sit == structs_.end())
+          return;
+        addr += fieldOffset(*sit->second, af->field);
+        for (const auto &f: sit->second->fields)
+          if (f.name == af->field) {
+            curType = f.type;
+            break;
+          }
+        auto sfit = walk->structVal.find(af->field);
+        if (sfit == walk->structVal.end())
+          return;
+        walk = &sfit->second;
+      }
+    }
+    heap_[addr] = *walk;
   }
 
   bool Interpreter::evalCond(const Cond &c, const Store &store) {
