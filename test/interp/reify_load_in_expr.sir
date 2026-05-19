@@ -1,0 +1,17 @@
+// EXPECT: PASS
+// load %p used as the first atom of a binary expression.
+// Exercises: load %p + literal, load %p64 - literal, load in sum.
+fun @main(): i32 {
+  let mut %v: i32 = 11;
+  let mut %v64: i64 = 5;
+  let mut %p: ptr i32 = undef;
+  let mut %p64: ptr i64 = undef;
+  let mut %r: i32 = 0;
+  let mut %r64: i64 = 0;
+^entry:
+  %p = addr %v;
+  %p64 = addr %v64;
+  %r = load %p + 4;
+  %r64 = load %p64 - 3;
+  ret %r + %r64 as i32;
+}

@@ -101,11 +101,10 @@ namespace symir::reify {
 
     std::uniform_real_distribution<double> prob(0.0, 1.0);
 
-    // Helper: create a struct declaration for a struct-typed var
+    // Helper: create a struct declaration. Fields are independently drawn —
+    // ~30% chance of an array field ([N] scalar) to produce struct-of-arrays.
     auto makeStructDecl = [&](const TypePtr &) -> std::string {
       std::string sname = "@RY_S" + std::to_string(structIdx++);
-      // Generate fields: 1..maxAggElems fields, each an independently drawn
-      // scalar type (no nested structs to keep the depth simple)
       std::uniform_int_distribution<int> nfd(1, std::max(1, tcfg.maxAggElems));
       int nf = nfd(rng);
       StructDecl sd;
@@ -113,7 +112,17 @@ namespace symir::reify {
       for (int fi = 0; fi < nf; fi++) {
         FieldDecl fd;
         fd.name = "f" + std::to_string(fi);
-        fd.type = genScalarType(rng, tcfg.enableFp);
+        // ~30% chance of an array field (struct-of-arrays)
+        if (prob(rng) < 0.30 && tcfg.maxAggElems >= 1) {
+          std::uniform_int_distribution<int> szd(1, std::max(1, tcfg.maxAggElems));
+          uint64_t sz = (uint64_t) szd(rng);
+          ArrayType at;
+          at.size = sz;
+          at.elem = genScalarType(rng, tcfg.enableFp);
+          fd.type = std::make_shared<Type>(Type{at, {}});
+        } else {
+          fd.type = genScalarType(rng, tcfg.enableFp);
+        }
         sd.fields.push_back(std::move(fd));
       }
       cat.structDecls.push_back(std::move(sd));
@@ -122,8 +131,6 @@ namespace symir::reify {
 
     // Phase 1: generate up to nVars non-pointer vars
     // Allocation: ~60% non-ptr budget for phase 1, ~20% for ptr, ~20% for ptr-ptr
-    // But we keep it simple: generate nVars types and separate them by category.
-    // We'll generate at most nVars entries in total across all phases.
     int nNonPtr = std::max(1, (int) (cfg.nVars * 0.65));
     int nPtr1 = std::max(0, (int) (cfg.nVars * 0.20));
     int nPtr2 = cfg.nVars - nNonPtr - nPtr1;
@@ -147,15 +154,17 @@ namespace symir::reify {
       if (isScalarType(t)) {
         v.name = "%v" + std::to_string(scalarIdx++);
       } else if (std::holds_alternative<ArrayType>(t->v)) {
-        // If the element type is a pending struct placeholder, replace it with a
-        // scalar to avoid unresolved struct names in generated code. Array-of-struct
-        // support is not implemented in the expr generator.
-        const auto &at = std::get<ArrayType>(t->v);
+        auto at = std::get<ArrayType>(t->v);
+        // If element is a struct placeholder, resolve it to a real struct decl
+        // (array-of-struct) rather than replacing with a scalar.
         if (std::holds_alternative<StructType>(at.elem->v)) {
-          ArrayType fixedAt;
-          fixedAt.size = at.size;
-          fixedAt.elem = genScalarType(rng, tcfg.enableFp);
-          v.type = std::make_shared<Type>(Type{fixedAt, {}});
+          std::string elemSname = makeStructDecl(at.elem);
+          StructType st;
+          st.name = GlobalId{elemSname, {}};
+          at.elem = std::make_shared<Type>(Type{st, {}});
+          v.type = std::make_shared<Type>(Type{at, {}});
+          // Store elem struct name for expr/checksum lookups
+          v.structTypeName = elemSname;
         }
         v.name = "%a" + std::to_string(arrayIdx++);
       } else if (std::holds_alternative<StructType>(t->v)) {

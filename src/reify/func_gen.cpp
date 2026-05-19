@@ -23,13 +23,6 @@ namespace symir::reify {
     return lv;
   }
 
-  static LValue structLV(const std::string &name, const std::string &field) {
-    LValue lv;
-    lv.base = LocalId{name, {}};
-    lv.accesses.push_back(AccessField{field, {}});
-    return lv;
-  }
-
   static Atom coefAtom(Coef c) { return Atom{CoefAtom{std::move(c), {}}, {}}; }
 
   static Atom rvalAtom(RValue rv) { return Atom{RValueAtom{std::move(rv), {}}, {}}; }
@@ -37,73 +30,59 @@ namespace symir::reify {
   static Expr simpleExpr(Atom a) { return Expr{std::move(a), {}, {}}; }
 
   // ---------------------------------------------------------------------------
-  // InitVal builders per type
+  // Unified recursive initializer
   // ---------------------------------------------------------------------------
 
-  // Build InitVal for a scalar variable using a matching input symbol
-  static InitVal makeScalarInitVal(const TypePtr &t, const std::string &inputSymName) {
-    InitVal iv;
+  static InitVal makeInitVal(const TypePtr &t, const std::vector<StructDecl> &structDecls) {
     if (isIntType(t)) {
-      // Use the input sym directly if it's i32; otherwise use concrete 1
-      // To avoid type mismatch, check bitwidth
-      // For non-i32 types, we use concrete literal 1 and rely on entry block assignment
+      InitVal iv;
       iv.kind = InitVal::Kind::Int;
       iv.value = IntLit{1, {}};
-      (void) inputSymName;
-    } else if (isFpType(t)) {
+      return iv;
+    }
+    if (isFpType(t)) {
+      InitVal iv;
       iv.kind = InitVal::Kind::Float;
       iv.value = FloatLit{1.0, {}};
-      (void) inputSymName;
-    } else {
-      iv.kind = InitVal::Kind::Int;
-      iv.value = IntLit{0, {}};
-      (void) inputSymName;
+      return iv;
     }
-    return iv;
-  }
-
-  static InitVal makeArrayInitVal(const ArrayType &at) {
-    std::vector<InitValPtr> children;
-    for (uint64_t i = 0; i < at.size; i++) {
-      auto child = std::make_shared<InitVal>();
-      if (isIntType(at.elem)) {
-        child->kind = InitVal::Kind::Int;
-        child->value = IntLit{1, {}};
-      } else if (isFpType(at.elem)) {
-        child->kind = InitVal::Kind::Float;
-        child->value = FloatLit{1.0, {}};
-      } else {
-        // Nested array or struct element — use 0
-        child->kind = InitVal::Kind::Int;
-        child->value = IntLit{0, {}};
+    if (isPtrType(t)) {
+      InitVal iv;
+      iv.kind = InitVal::Kind::Undef;
+      return iv;
+    }
+    if (std::holds_alternative<ArrayType>(t->v)) {
+      const auto &at = std::get<ArrayType>(t->v);
+      std::vector<InitValPtr> children;
+      for (uint64_t i = 0; i < at.size; i++) {
+        children.push_back(std::make_shared<InitVal>(makeInitVal(at.elem, structDecls)));
       }
-      children.push_back(child);
+      InitVal iv;
+      iv.kind = InitVal::Kind::Aggregate;
+      iv.value = std::move(children);
+      return iv;
+    }
+    if (std::holds_alternative<StructType>(t->v)) {
+      const std::string &sname = std::get<StructType>(t->v).name.name;
+      const StructDecl *sd = nullptr;
+      for (const auto &decl: structDecls)
+        if (decl.name.name == sname) {
+          sd = &decl;
+          break;
+        }
+      if (sd) {
+        std::vector<InitValPtr> children;
+        for (const auto &field: sd->fields) {
+          children.push_back(std::make_shared<InitVal>(makeInitVal(field.type, structDecls)));
+        }
+        InitVal iv;
+        iv.kind = InitVal::Kind::Aggregate;
+        iv.value = std::move(children);
+        return iv;
+      }
     }
     InitVal iv;
-    iv.kind = InitVal::Kind::Aggregate;
-    iv.value = std::move(children);
-    return iv;
-  }
-
-  static InitVal makeStructInitVal(const StructDecl &sd) {
-    std::vector<InitValPtr> children;
-    for (const auto &field: sd.fields) {
-      auto child = std::make_shared<InitVal>();
-      if (isIntType(field.type)) {
-        child->kind = InitVal::Kind::Int;
-        child->value = IntLit{1, {}};
-      } else if (isFpType(field.type)) {
-        child->kind = InitVal::Kind::Float;
-        child->value = FloatLit{1.0, {}};
-      } else {
-        child->kind = InitVal::Kind::Int;
-        child->value = IntLit{0, {}};
-      }
-      children.push_back(child);
-    }
-    InitVal iv;
-    iv.kind = InitVal::Kind::Aggregate;
-    iv.value = std::move(children);
+    iv.kind = InitVal::Kind::Undef;
     return iv;
   }
 
@@ -121,58 +100,71 @@ namespace symir::reify {
       instrs.push_back(Instr{AssignInstr{localLV("%_chk"), std::move(zero), {}}});
     }
 
-    // For each var, accumulate into %_chk
-    // Helper: emit `%_chk = %_chk + <atom>` or `%_chk = <castAtom> + %_chk`.
-    //
-    // The SIR printer renders CastAtom as `<lval> as <type>`. Due to parser grammar
-    // constraints, a CastAtom can only appear as the FIRST atom of an expression —
-    // `lval as type` in tail position (after +/-) is not parseable. So for non-i32
-    // values we emit the cast first and add %_chk as the tail, while for plain i32
-    // RValues we can keep the conventional `%_chk + <rval>` form.
+    // Emit `%_chk = cast_atom + %_chk` (cast first) or `%_chk = %_chk + rval`.
+    // CastAtom must be the FIRST atom — it cannot appear in tail position.
     auto emitChkAccum = [&](Atom valueAtom, bool isCast) {
       Expr rhs;
       if (isCast) {
-        // CastAtom first: %_chk = <cast_atom> + %_chk
         rhs.first = std::move(valueAtom);
         rhs.rest.push_back({AddOp::Plus, rvalAtom(localLV("%_chk")), {}});
       } else {
-        // Plain i32 RValue: %_chk = %_chk + <rval>
         rhs.first = rvalAtom(localLV("%_chk"));
         rhs.rest.push_back({AddOp::Plus, std::move(valueAtom), {}});
       }
       instrs.push_back(Instr{AssignInstr{localLV("%_chk"), std::move(rhs), {}}});
     };
 
-    for (const auto &v: vars.vars) {
-      if (isPtrType(v.type)) {
-        // Skip pointer vars (non-deterministic addresses)
-        continue;
+    // Emit a scalar LValue into the checksum, casting to i32 when needed.
+    auto emitScalarLV = [&](LValue lv, const TypePtr &t) {
+      if (isIntType(t) && intBitWidth(t) == 32) {
+        emitChkAccum(rvalAtom(std::move(lv)), /*isCast=*/false);
+      } else if (isScalarType(t)) {
+        CastAtom ca;
+        ca.src = std::move(lv);
+        ca.dstType = i32;
+        emitChkAccum(Atom{std::move(ca), {}}, /*isCast=*/true);
       }
+    };
+
+    for (const auto &v: vars.vars) {
+      if (isPtrType(v.type))
+        continue;
+
       if (isScalarType(v.type)) {
-        if (isIntType(v.type) && intBitWidth(v.type) == 32) {
-          emitChkAccum(rvalAtom(localLV(v.name)), /*isCast=*/false);
-        } else {
-          // Non-i32 scalar: cast to i32
-          CastAtom ca;
-          ca.src = LValue{LocalId{v.name, {}}, {}, {}};
-          ca.dstType = i32;
-          emitChkAccum(Atom{std::move(ca), {}}, /*isCast=*/true);
-        }
+        emitScalarLV(localLV(v.name), v.type);
+
       } else if (std::holds_alternative<ArrayType>(v.type->v)) {
         const auto &at = std::get<ArrayType>(v.type->v);
-        for (uint64_t i = 0; i < at.size; i++) {
-          if (isIntType(at.elem) && intBitWidth(at.elem) == 32) {
-            emitChkAccum(rvalAtom(arrayLV(v.name, (int64_t) i)), /*isCast=*/false);
-          } else if (isIntType(at.elem) || isFpType(at.elem)) {
-            CastAtom ca;
-            ca.src = arrayLV(v.name, (int64_t) i);
-            ca.dstType = i32;
-            emitChkAccum(Atom{std::move(ca), {}}, /*isCast=*/true);
+        if (isScalarType(at.elem)) {
+          // Plain array: %a[i]
+          for (uint64_t i = 0; i < at.size; i++) {
+            emitScalarLV(arrayLV(v.name, (int64_t) i), at.elem);
           }
-          // else: nested agg element, skip
+        } else if (std::holds_alternative<StructType>(at.elem->v)) {
+          // Array-of-struct: %a[i].f for each scalar field f
+          const std::string &ename = std::get<StructType>(at.elem->v).name.name;
+          const StructDecl *sd = nullptr;
+          for (const auto &decl: vars.structDecls)
+            if (decl.name.name == ename) {
+              sd = &decl;
+              break;
+            }
+          if (!sd)
+            continue;
+          for (uint64_t i = 0; i < at.size; i++) {
+            for (const auto &f: sd->fields) {
+              if (!isScalarType(f.type))
+                continue;
+              LValue flv;
+              flv.base = LocalId{v.name, {}};
+              flv.accesses.push_back(AccessIndex{Index{IntLit{(int64_t) i, {}}}, {}});
+              flv.accesses.push_back(AccessField{f.name, {}});
+              emitScalarLV(std::move(flv), f.type);
+            }
+          }
         }
+
       } else if (std::holds_alternative<StructType>(v.type->v)) {
-        // Find the struct decl
         const std::string &sname = v.structTypeName;
         const StructDecl *sd = nullptr;
         for (const auto &decl: vars.structDecls)
@@ -183,18 +175,24 @@ namespace symir::reify {
         if (!sd)
           continue;
         for (const auto &f: sd->fields) {
-          if (!isScalarType(f.type))
-            continue; // skip ptr/agg fields
-          LValue flv;
-          flv.base = LocalId{v.name, {}};
-          flv.accesses.push_back(AccessField{f.name, {}});
-          if (isIntType(f.type) && intBitWidth(f.type) == 32) {
-            emitChkAccum(rvalAtom(std::move(flv)), /*isCast=*/false);
-          } else {
-            CastAtom ca;
-            ca.src = std::move(flv);
-            ca.dstType = i32;
-            emitChkAccum(Atom{std::move(ca), {}}, /*isCast=*/true);
+          if (isScalarType(f.type)) {
+            // Struct scalar field: %t.f
+            LValue flv;
+            flv.base = LocalId{v.name, {}};
+            flv.accesses.push_back(AccessField{f.name, {}});
+            emitScalarLV(std::move(flv), f.type);
+          } else if (std::holds_alternative<ArrayType>(f.type->v)) {
+            // Struct array field: %t.f[i]
+            const auto &fat = std::get<ArrayType>(f.type->v);
+            if (!isScalarType(fat.elem))
+              continue;
+            for (uint64_t i = 0; i < fat.size; i++) {
+              LValue flv;
+              flv.base = LocalId{v.name, {}};
+              flv.accesses.push_back(AccessField{f.name, {}});
+              flv.accesses.push_back(AccessIndex{Index{IntLit{(int64_t) i, {}}}, {}});
+              emitScalarLV(std::move(flv), fat.elem);
+            }
           }
         }
       }
@@ -345,33 +343,12 @@ namespace symir::reify {
       let.type = v.type;
 
       if (isPtrType(v.type)) {
-        // Ptr vars initialized to undef (assigned in entry block)
+        // Ptr vars assigned in entry block via addr; declare as undef.
         InitVal iv;
         iv.kind = InitVal::Kind::Undef;
         let.init = std::move(iv);
-      } else if (isScalarType(v.type)) {
-        let.init = makeScalarInitVal(v.type, inputSym);
-      } else if (std::holds_alternative<ArrayType>(v.type->v)) {
-        let.init = makeArrayInitVal(std::get<ArrayType>(v.type->v));
-      } else if (std::holds_alternative<StructType>(v.type->v)) {
-        const std::string &sname = v.structTypeName;
-        const StructDecl *sd = nullptr;
-        for (const auto &decl: vars.structDecls)
-          if (decl.name.name == sname) {
-            sd = &decl;
-            break;
-          }
-        if (sd) {
-          let.init = makeStructInitVal(*sd);
-        } else {
-          InitVal iv;
-          iv.kind = InitVal::Kind::Undef;
-          let.init = std::move(iv);
-        }
       } else {
-        InitVal iv;
-        iv.kind = InitVal::Kind::Undef;
-        let.init = std::move(iv);
+        let.init = makeInitVal(v.type, vars.structDecls);
       }
 
       fun.lets.push_back(std::move(let));

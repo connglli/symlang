@@ -1,0 +1,15 @@
+// EXPECT: PASS
+// Array-of-struct element field assignment: %a[i].f = expr
+// This is the pattern reify's genBlockStmts will generate for AoS vars.
+struct @Point { x: i32; y: i32; }
+fun @main(): i32 {
+  let mut %a: [3] @Point = { {1, 2}, {3, 4}, {5, 6} };
+  let mut %v: i32 = 10;
+  let mut %chk: i32 = 0;
+^entry:
+  %a[0].x = %v + 5;
+  %a[1].y = %a[0].x - 2;
+  %a[2].x = 2 * %a[1].y;
+  %chk = %a[0].x + %a[1].y + %a[2].x;
+  ret %chk;
+}

@@ -1,0 +1,17 @@
+// EXPECT: PASS
+// Load through ptr ptr T: load %pp gives ptr T, which can be re-stored or
+// used in a ptr assignment. Exercises the genPtrAtom LoadAtom path for %pp vars.
+fun @main(): i32 {
+  let mut %v: i32 = 5;
+  let mut %p: ptr i32 = undef;
+  let mut %pp: ptr ptr i32 = undef;
+  let mut %q: ptr i32 = undef;
+  let mut %r: i32 = 0;
+^entry:
+  %p = addr %v;
+  %pp = addr %p;
+  %q = load %pp;
+  store %q, 42;
+  %r = load %p;
+  ret %r;
+}

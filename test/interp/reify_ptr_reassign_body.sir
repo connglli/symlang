@@ -1,0 +1,17 @@
+// EXPECT: PASS
+// Pointer variable is reassigned in a non-entry block, then used.
+// reify will reassign %p in body blocks via genPtrAtom.
+fun @main(): i32 {
+  let mut %a: i32 = 10;
+  let mut %b: i32 = 20;
+  let mut %p: ptr i32 = undef;
+  let mut %r: i32 = 0;
+^entry:
+  %p = addr %a;
+  br ^body;
+^body:
+  %p = addr %b;
+  store %p, 99;
+  %r = load %p;
+  ret %r;
+}

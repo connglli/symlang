@@ -1,0 +1,15 @@
+// EXPECT: PASS
+// Struct-of-arrays field element assignment: %t.f[i] = expr
+// This is the pattern reify's genBlockStmts will generate for SoA vars.
+struct @Buf { data: [4] i32; tag: i64; }
+fun @main(): i32 {
+  let mut %s: @Buf = { {0, 0, 0, 0}, 0 };
+  let mut %v: i32 = 7;
+  let mut %chk: i32 = 0;
+^entry:
+  %s.data[0] = %v + 1;
+  %s.data[2] = %s.data[0] + 3;
+  %s.tag = %s.data[2] as i64 + 100;
+  %chk = %s.data[0] + %s.data[2] + %s.tag as i32;
+  ret %chk;
+}

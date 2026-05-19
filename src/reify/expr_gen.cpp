@@ -303,6 +303,14 @@ namespace symir::reify {
       extraRequires.push_back(Instr{std::move(req)});
       return opAtom(op, symCoef(symName), localLV(rv->name));
     }
+    if (s < 95) {
+      // Load from a ptr T var if any exist
+      auto ptrs = vars.ptrsOf(targetType);
+      if (!ptrs.empty()) {
+        auto *pv = pickOne(rng, ptrs);
+        return Atom{LoadAtom{localLV(pv->name), {}}, {}};
+      }
+    }
     // Fallback: standalone sym
     return coefAtom(symCoef(sym.nextCoef(targetType)));
   }
@@ -363,6 +371,14 @@ namespace symir::reify {
       auto *v = pickOne(rng, scalarsOfT);
       return rvalAtom(localLV(v->name));
     }
+    if (s < 85) {
+      // Load from a ptr T var if available
+      auto ptrs = vars.ptrsOf(targetType);
+      if (!ptrs.empty()) {
+        auto *pv = pickOne(rng, ptrs);
+        return Atom{LoadAtom{localLV(pv->name), {}}, {}};
+      }
+    }
     return genConcreteIntAtom(rng, targetType);
   }
 
@@ -406,25 +422,35 @@ namespace symir::reify {
   // Generate a float atom (off-path: concrete literals only)
   static Atom genFloatAtomOffPath(std::mt19937 &rng) { return genConcreteFloatAtom(rng); }
 
-  // Generate a ptr-type atom
+  // Generate a ptr-type atom. Collects all candidate atoms uniformly so each
+  // option (addr, copy, load-from-ptr-ptr) appears with equal probability.
   static Atom genPtrAtom(std::mt19937 &rng, const VarCatalogue &vars, const TypePtr &targetType) {
     assert(isPtrType(targetType));
     TypePtr ptee = pointeeType(targetType);
 
-    // Option 1: AddrAtom of a var of pointee type
-    auto *addrTarget = vars.findAddressableOfType(ptee, rng);
-    if (addrTarget) {
-      return Atom{AddrAtom{localLV(addrTarget->name), {}}, {}};
+    std::vector<Atom> options;
+
+    // addr of any addressable var whose type equals the pointee
+    for (auto *v: vars.allAddressable()) {
+      if (typeEquals(v->type, ptee)) {
+        options.push_back(Atom{AddrAtom{localLV(v->name), {}}, {}});
+      }
     }
 
-    // Option 2: RValueAtom of an existing ptr T var
-    auto ptrs = vars.ptrsOf(ptee);
-    if (!ptrs.empty()) {
-      auto *v = pickOne(rng, ptrs);
-      return rvalAtom(localLV(v->name));
+    // copy from an existing ptr T var (same type)
+    for (auto *pv: vars.ptrsOf(ptee)) {
+      options.push_back(rvalAtom(localLV(pv->name)));
     }
 
-    // Fallback: null ptr
+    // load from a ptr ptr T var to materialise a ptr T value
+    for (auto *ppv: vars.ptrsOf(targetType)) {
+      options.push_back(Atom{LoadAtom{localLV(ppv->name), {}}, {}});
+    }
+
+    if (!options.empty()) {
+      std::uniform_int_distribution<int> d(0, (int) options.size() - 1);
+      return std::move(options[d(rng)]);
+    }
     return coefAtom(NullLit{{}});
   }
 
@@ -724,19 +750,6 @@ namespace symir::reify {
         continue;
       auto *lhsVar = pickOne(rng, allVars);
 
-      // Skip ptr vars as LHS in assignments (they're initialized in entry block)
-      // unless there are no non-ptr vars
-      if (isPtrType(lhsVar->type)) {
-        // Try to find a non-ptr var
-        std::vector<const VarEntry *> nonPtrVars;
-        for (auto *v: allVars)
-          if (!isPtrType(v->type))
-            nonPtrVars.push_back(v);
-        if (!nonPtrVars.empty()) {
-          lhsVar = pickOne(rng, nonPtrVars);
-        }
-      }
-
       // Build LHS based on var type
       LValue lhs;
       TypePtr assignType;
@@ -746,16 +759,36 @@ namespace symir::reify {
         assignType = lhsVar->type;
       } else if (std::holds_alternative<ArrayType>(lhsVar->type->v)) {
         const auto &at = std::get<ArrayType>(lhsVar->type->v);
-        // Only generate indexed assignments when the element is a scalar type.
-        // Nested arrays (e.g. [1] [3] i32) and struct elements are not directly
-        // assignable via a simple indexed LValue.
-        if (!isScalarType(at.elem))
-          continue;
         std::uniform_int_distribution<int64_t> idxd(0, (int64_t) at.size - 1);
-        lhs = arrayLV(lhsVar->name, idxd(rng));
-        assignType = at.elem;
+        int64_t idx = idxd(rng);
+        if (isScalarType(at.elem)) {
+          lhs = arrayLV(lhsVar->name, idx);
+          assignType = at.elem;
+        } else if (std::holds_alternative<StructType>(at.elem->v)) {
+          // Array-of-struct: pick a scalar field, generate %a[i].f = expr
+          const std::string &ename = std::get<StructType>(at.elem->v).name.name;
+          const StructDecl *sd = nullptr;
+          for (const auto &decl: vars.structDecls)
+            if (decl.name.name == ename) {
+              sd = &decl;
+              break;
+            }
+          if (!sd || sd->fields.empty())
+            continue;
+          std::vector<const FieldDecl *> scalarFields;
+          for (const auto &f: sd->fields)
+            if (isScalarType(f.type))
+              scalarFields.push_back(&f);
+          if (scalarFields.empty())
+            continue;
+          const FieldDecl *f = pickOne(rng, scalarFields);
+          lhs = arrayLV(lhsVar->name, idx);
+          lhs.accesses.push_back(AccessField{f->name, {}});
+          assignType = f->type;
+        } else {
+          continue; // nested array or other, skip
+        }
       } else if (std::holds_alternative<StructType>(lhsVar->type->v)) {
-        // Find the struct decl
         const std::string &sname = lhsVar->structTypeName;
         const StructDecl *sd = nullptr;
         for (const auto &decl: vars.structDecls)
@@ -774,15 +807,25 @@ namespace symir::reify {
         } else {
           std::uniform_int_distribution<int> fpick(0, (int) sd->fields.size() - 1);
           const auto &f = sd->fields[fpick(rng)];
-          lhs = structLV(lhsVar->name, f.name);
-          assignType = f.type;
+          if (isScalarType(f.type)) {
+            lhs = structLV(lhsVar->name, f.name);
+            assignType = f.type;
+          } else if (std::holds_alternative<ArrayType>(f.type->v)) {
+            // Struct-of-array field: pick an element, generate %t.f[i] = expr
+            const auto &fat = std::get<ArrayType>(f.type->v);
+            if (!isScalarType(fat.elem))
+              continue;
+            std::uniform_int_distribution<int64_t> idxd2(0, (int64_t) fat.size - 1);
+            lhs = structLV(lhsVar->name, f.name);
+            lhs.accesses.push_back(AccessIndex{Index{IntLit{idxd2(rng), {}}}, {}});
+            assignType = fat.elem;
+          } else {
+            continue; // ptr field or other, skip
+          }
         }
       } else if (isPtrType(lhsVar->type)) {
-        // Ptr reassignment — use addr expression
-        TypePtr ptee = pointeeType(lhsVar->type);
+        // Ptr reassignment: redirect to another target
         lhs = localLV(lhsVar->name);
-        assignType = lhsVar->type;
-        // Generate ptr expr
         Expr rhs = simpleExpr(genPtrAtom(rng, vars, lhsVar->type));
         result.push_back(Instr{AssignInstr{std::move(lhs), std::move(rhs), {}}});
         continue;
