@@ -900,12 +900,16 @@ namespace symir {
               }
             } else if (arg.dstType && std::holds_alternative<FloatType>(arg.dstType->v)) {
               res.kind = RuntimeValue::Kind::Float;
-              res.bits =
-                  (std::get<FloatType>(arg.dstType->v).kind == FloatType::Kind::F32) ? 32 : 64;
-              if (v.kind == RuntimeValue::Kind::Int)
-                res.floatVal = static_cast<double>(v.intVal); // Int to Float
-              else
-                res.floatVal = v.floatVal; // Float to Float (resize)
+              bool isF32 = std::get<FloatType>(arg.dstType->v).kind == FloatType::Kind::F32;
+              res.bits = isF32 ? 32 : 64;
+              double raw =
+                  (v.kind == RuntimeValue::Kind::Int) ? static_cast<double>(v.intVal) : v.floatVal;
+              // For f32 destination, round to f32 precision so the stored
+              // value matches what C/WASM lowering would compute. Without
+              // this, e.g. `268435457 as f32` would stay as 268435457.0 in
+              // double precision instead of being rounded to 268435456.0f
+              // (round-to-nearest-even at the f32 boundary).
+              res.floatVal = isF32 ? static_cast<double>(static_cast<float>(raw)) : raw;
             }
             return res;
           }
