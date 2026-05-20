@@ -124,7 +124,7 @@ clean:
 	find . -name "*.gcda" -delete
 	find . -name "*.gcov" -delete
 
-test: $(TARGET_INTERP) $(TARGET_COMPILER) $(TARGET_SOLVER)
+test: $(TARGET_INTERP) $(TARGET_COMPILER) $(TARGET_SOLVER) $(TARGET_RYSMITH)
 	$(PY) -m test.lib.run_interp_tests test/lexer ./$(TARGET_INTERP) --check
 	$(PY) -m test.lib.run_interp_tests test/parser ./$(TARGET_INTERP) --check
 	$(PY) -m test.lib.run_interp_tests test/cfgbuilder ./$(TARGET_INTERP) --check
@@ -137,3 +137,4 @@ test: $(TARGET_INTERP) $(TARGET_COMPILER) $(TARGET_SOLVER)
 	$(PY) -m test.lib.run_solver_tests test/solver ./$(TARGET_SOLVER) ./$(TARGET_INTERP)
 	$(PY) -m test.lib.run_solver_tests test/sample ./$(TARGET_SOLVER) ./$(TARGET_INTERP)
 	$(PY) -m test.lib.run_example_tests examples ./$(TARGET_SOLVER) ./$(TARGET_INTERP)
+	$(PY) -m test.lib.run_reify_diff_tests --rysmith ./$(TARGET_RYSMITH) --symiri ./$(TARGET_INTERP) --symirc ./$(TARGET_COMPILER) --n 100 --seed 1234
