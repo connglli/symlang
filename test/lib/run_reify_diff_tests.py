@@ -75,13 +75,18 @@ def run(rysmith, symiri, symirc, n, seed, out_dir, gcc, verbose):
     out_dir,
   ]
   if verbose:
-    print(bold(f"Generating {n} programs: {' '.join(gen_cmd)}"))
+    print(bold(f"reify function generation: {' '.join(gen_cmd)}"))
   gen = subprocess.run(
     gen_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
   )
-  if gen.returncode != 0:
-    print(yellow(f"rysmith failed (exit {gen.returncode}):"))
-    print(gen.stderr)
+  sirs = sorted(p for p in os.listdir(out_dir) if p.endswith(".sir"))
+  total = len(sirs)
+
+  if verbose:
+    num_failed = (gen.stderr or "").strip().count("[FAIL]")
+    print(f"  {green('succeeded')}:   {n - num_failed}")
+    print(f"  {red('failed')}:      {num_failed}")
+    print(f"  {'generated'}:   {total}")
 
   # 2. For each (sir, c) pair, compare symiri's Result to the compiled-C Result.
   passed = 0
@@ -94,7 +99,6 @@ def run(rysmith, symiri, symirc, n, seed, out_dir, gcc, verbose):
   main_c = os.path.join(out_dir, "_main.c")
   exe = os.path.join(out_dir, "_test")
 
-  sirs = sorted(p for p in os.listdir(out_dir) if p.endswith(".sir"))
   for sir_name in sirs:
     sir_path = os.path.join(out_dir, sir_name)
     c_path = sir_path[:-4] + ".c"
@@ -171,7 +175,6 @@ def run(rysmith, symiri, symirc, n, seed, out_dir, gcc, verbose):
       mismatch.append(f"{sir_name}: symiri={sir_val} c={c_val}")
 
   # 3. Report.
-  total = len(sirs)
   print()
   print(bold(f"reify differential test (n={total}, seed={seed}):"))
   print(f"  {green('passed')}:        {passed}")
