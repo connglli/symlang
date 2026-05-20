@@ -189,6 +189,58 @@ namespace symir::reify {
     return coefAtom(floatCoef(vals[d(rng)]));
   }
 
+  // Build a SelectVal of targetType: either a same-typed scalar local or a
+  // literal/sym Coef. For off-path (sym == nullptr), only locals and literals.
+  static SelectVal pickSelectVal(
+      std::mt19937 &rng, SymCounter *sym, const VarCatalogue &vars, const TypePtr &targetType
+  ) {
+    auto scalars = vars.scalarsOf(targetType);
+    std::uniform_int_distribution<int> kind(0, 2);
+    int k = kind(rng);
+    if (k == 0 && !scalars.empty()) {
+      auto *v = pickOne(rng, scalars);
+      return SelectVal{LValue{LocalId{v->name, {}}, {}, {}}};
+    }
+    if (k == 1 && sym != nullptr) {
+      return SelectVal{symCoef(sym->nextValue())};
+    }
+    // Literal of the right kind
+    if (isFpType(targetType))
+      return SelectVal{floatCoef(1.0)};
+    return SelectVal{intCoef(1)};
+  }
+
+  // Generate a SelectAtom of the given target type. Cond compares a scalar
+  // local to a literal (defensive: same-type) so the typechecker is happy.
+  static Atom genSelectAtom(
+      std::mt19937 &rng, SymCounter *sym, const VarCatalogue &vars, const TypePtr &targetType
+  ) {
+    Cond cond;
+    auto allScalars = vars.allScalars();
+    if (!allScalars.empty()) {
+      auto *vL = pickOne(rng, allScalars);
+      cond.lhs = simpleExpr(rvalAtom(localLV(vL->name)));
+      // RHS: a 0-literal of the same int width, or 0.0 for fp — keeps types compatible.
+      if (isFpType(vL->type))
+        cond.rhs = simpleExpr(coefAtom(floatCoef(0.0)));
+      else
+        cond.rhs = simpleExpr(coefAtom(intCoef(0)));
+    } else {
+      cond.lhs = simpleExpr(coefAtom(intCoef(0)));
+      cond.rhs = simpleExpr(coefAtom(intCoef(0)));
+    }
+    static const RelOp relops[] = {RelOp::EQ, RelOp::NE, RelOp::LT,
+                                   RelOp::LE, RelOp::GT, RelOp::GE};
+    std::uniform_int_distribution<int> ro(0, 5);
+    cond.op = relops[ro(rng)];
+
+    SelectAtom sa;
+    sa.cond = std::make_unique<Cond>(std::move(cond));
+    sa.vtrue = pickSelectVal(rng, sym, vars, targetType);
+    sa.vfalse = pickSelectVal(rng, sym, vars, targetType);
+    return Atom{std::move(sa), {}};
+  }
+
   // Generate a single Atom of the given integer type (on-path, uses sym)
   static Atom genIntAtomOnPath(
       std::mt19937 &rng, SymCounter &sym, const VarCatalogue &vars, const TypePtr &targetType,
@@ -311,6 +363,9 @@ namespace symir::reify {
         return Atom{LoadAtom{localLV(pv->name), {}}, {}};
       }
     }
+    if (s < 99 && cfg.enableSelect) {
+      return genSelectAtom(rng, &sym, vars, targetType);
+    }
     // Fallback: standalone sym
     return coefAtom(symCoef(sym.nextCoef(targetType)));
   }
@@ -379,12 +434,16 @@ namespace symir::reify {
         return Atom{LoadAtom{localLV(pv->name), {}}, {}};
       }
     }
+    if (s < 95 && cfg.enableSelect) {
+      return genSelectAtom(rng, /*sym=*/nullptr, vars, targetType);
+    }
     return genConcreteIntAtom(rng, targetType);
   }
 
   // Generate a float atom (on-path: cast from i32 sym or concrete float)
   static Atom genFloatAtomOnPath(
-      std::mt19937 &rng, SymCounter &sym, const VarCatalogue &vars, const TypePtr &targetType
+      std::mt19937 &rng, SymCounter &sym, const VarCatalogue &vars, const TypePtr &targetType,
+      const ExprGenConfig &cfg
   ) {
     auto fpVars = vars.scalarsOf(targetType);
     auto i32scalars = vars.scalarsOf(makeI32());
@@ -414,6 +473,9 @@ namespace symir::reify {
       ca.src = LValue{LocalId{v->name, {}}, {}, {}};
       ca.dstType = targetType;
       return Atom{std::move(ca), {}};
+    }
+    if (s < 95 && cfg.enableSelect) {
+      return genSelectAtom(rng, &sym, vars, targetType);
     }
     // Concrete float literal
     return genConcreteFloatAtom(rng);
@@ -491,7 +553,7 @@ namespace symir::reify {
         }
       } else if (isFpType(targetType)) {
         if (onPath && sym) {
-          a = genFloatAtomOnPath(rng, *sym, vars, targetType);
+          a = genFloatAtomOnPath(rng, *sym, vars, targetType, cfg);
         } else {
           a = genFloatAtomOffPath(rng);
         }
@@ -631,7 +693,7 @@ namespace symir::reify {
         }
       } else if (isFpType(targetType)) {
         if (onPath && sym) {
-          a = genFloatAtomOnPath(rng, *sym, vars, targetType);
+          a = genFloatAtomOnPath(rng, *sym, vars, targetType, cfg);
         } else {
           a = genFloatAtomOffPath(rng);
         }
