@@ -1,0 +1,9 @@
+// EXPECT: PASS
+// EXPECT_RC: 42
+// Trivial baseline: interp and compiled C must agree on integer return.
+fun @main() : i32 {
+  let mut %a: i32 = 40;
+^entry:
+  %a = %a + 2;
+  ret %a;
+}

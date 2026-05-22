@@ -1,0 +1,12 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1p+0
+// Chained f32 1/3 * 3 doesn't fully recover (RNE)
+fun @main() : f32 {
+  let mut %three: f32 = 3.0;
+  let mut %one: f32 = 1.0;
+  let mut %r: f32 = 0.0;
+^entry:
+  %r = %one / %three;
+  %r = %r * %three;
+  ret %r;
+}

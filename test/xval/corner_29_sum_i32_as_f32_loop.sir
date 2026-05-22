@@ -1,0 +1,17 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.3ecp+10
+// Sum k = 1..50 then cast to f32 at end
+fun @main() : f32 {
+  let mut %i: i32 = 1;
+  let mut %sum: i32 = 0;
+^entry:
+  br ^check;
+^check:
+  br %i < 51, ^body, ^done;
+^body:
+  %sum = %sum + %i;
+  %i = %i + 1;
+  br ^check;
+^done:
+  ret %sum as f32;
+}

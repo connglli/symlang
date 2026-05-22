@@ -1,0 +1,10 @@
+// EXPECT: PASS
+// EXPECT_RC: -0x0p+0
+// Signed zeros are distinguishable. -0.0 vs +0.0 have different bit
+// patterns even though they compare equal. printf %a renders them as
+// "-0x0p+0" vs "0x0p+0". Interp and compiled C must preserve the sign.
+fun @main() : f64 {
+  let mut %a: f64 = -0.0;
+^entry:
+  ret %a;
+}

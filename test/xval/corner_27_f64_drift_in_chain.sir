@@ -1,0 +1,13 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1p-54
+// Chained f64 ops accumulate predictable drift
+fun @main() : f64 {
+  let mut %a: f64 = 0.1;
+  let mut %b: f64 = 0.2;
+  let mut %c: f64 = 0.3;
+  let mut %r: f64 = 0.0;
+^entry:
+  %r = %a + %b;
+  %r = %r - %c;
+  ret %r;
+}

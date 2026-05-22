@@ -1,0 +1,10 @@
+// EXPECT: PASS
+// EXPECT_RC: 2147483647
+// f64 -> i32 at INT32_MAX (no UB)
+fun @main() : i32 {
+  let mut %a: f64 = 2147483647.0;
+  let mut %r: i32 = 0;
+^entry:
+  %r = %a as i32;
+  ret %r;
+}

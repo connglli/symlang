@@ -1,6 +1,7 @@
 #include "interp/interpreter.hpp"
 #include <cfenv>
 #include <cmath>
+#include <cstdio>
 #include <iostream>
 #include <stdexcept>
 #include "analysis/cfg.hpp"
@@ -558,9 +559,16 @@ namespace symir {
                   throw UndefinedBehaviorError("UB: Reading undef in ret");
                 if (res.kind == RuntimeValue::Kind::Int)
                   std::cout << "Result: " << res.intVal << "\n";
-                else if (res.kind == RuntimeValue::Kind::Float)
-                  std::cout << "Result: " << res.floatVal << "\n";
-                else if (res.kind == RuntimeValue::Kind::Ptr)
+                else if (res.kind == RuntimeValue::Kind::Float) {
+                  // Print floats as IEEE 754 hex (printf %a) so the output is
+                  // bit-exact: round-trips losslessly, distinguishes +0/-0,
+                  // and handles subnormals correctly. This is the format used
+                  // for interp ⇄ compiled-C cross-validation in the xval
+                  // tests; decimal would silently lose bits at the boundary.
+                  char buf[64];
+                  std::snprintf(buf, sizeof(buf), "%a", res.floatVal);
+                  std::cout << "Result: " << buf << "\n";
+                } else if (res.kind == RuntimeValue::Kind::Ptr)
                   std::cout << "Result: ptr(0x" << std::hex << res.ptrVal << std::dec << ")\n";
               } else {
                 std::cout << "Result: void\n";

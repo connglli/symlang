@@ -1,0 +1,11 @@
+// EXPECT: PASS
+// EXPECT_RC: 125
+// i8 -> i16 widening, no UB
+fun @main() : i32 {
+  let mut %a: i8 = 120;
+  let mut %r: i16 = 0;
+^entry:
+  %r = %a as i16;
+  %r = %r + 5 as i16;
+  ret %r as i32;
+}

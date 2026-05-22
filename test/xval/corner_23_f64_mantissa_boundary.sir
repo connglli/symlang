@@ -1,0 +1,10 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1p+53
+// f64 = 2^53 still exactly representable
+fun @main() : f64 {
+  let mut %a: f64 = 9007199254740992.0;
+  let mut %r: f64 = 0.0;
+^entry:
+  %r = %a + 0.0;
+  ret %r;
+}

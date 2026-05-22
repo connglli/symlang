@@ -1,0 +1,9 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.8p+0
+// f32 = 1.5 returns as the exact IEEE 754 hex pattern.
+// 1.5 = 0x1.8p+0 (exponent 0, mantissa 0.5).
+fun @main() : f32 {
+  let mut %a: f32 = 1.5;
+^entry:
+  ret %a;
+}

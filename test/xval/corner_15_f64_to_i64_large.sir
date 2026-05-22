@@ -1,0 +1,10 @@
+// EXPECT: PASS
+// EXPECT_RC: 1099511627776
+// f64 -> i64 truncates a value near 2^40
+fun @main() : i64 {
+  let mut %a: f64 = 1099511627776.5;
+  let mut %r: i64 = 0;
+^entry:
+  %r = %a as i64;
+  ret %r;
+}

@@ -1,0 +1,21 @@
+// EXPECT: PASS
+// EXPECT_RC: -28
+// Widen i32 negative to i64, sign-extend in loop
+fun @main() : i64 {
+  let mut %i: i32 = 1;
+  let mut %sum: i64 = 0;
+  let mut %wide: i64 = 0;
+  let mut %neg: i32 = 0;
+^entry:
+  br ^check;
+^check:
+  br %i < 8, ^body, ^done;
+^body:
+  %neg = 0 - %i;
+  %wide = %neg as i64;
+  %sum = %sum + %wide;
+  %i = %i + 1;
+  br ^check;
+^done:
+  ret %sum;
+}

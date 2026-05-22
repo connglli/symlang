@@ -1,0 +1,10 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.921fb54442d18p+1
+// π to f64 precision = 3.141592653589793. The hex form uniquely identifies
+// the binary64 representation. Any decimal-only output format would lose
+// the last few bits.
+fun @main() : f64 {
+  let mut %a: f64 = 3.141592653589793;
+^entry:
+  ret %a;
+}

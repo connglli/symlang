@@ -1,0 +1,33 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.0da30d298e314p+3
+// Newton-Raphson sqrt iteration on f64. Runs a fixed-iteration loop:
+//   x_{n+1} = 0.5 * (x_n + a / x_n)
+// for a = 71.0 (chosen so the result has a non-trivial mantissa). After 6
+// iterations from x_0 = 1.0 the value has fully converged to sqrt(71) =
+// 8.4261497731763584. Every iteration involves f64 div/mul/add and an
+// explicit loop counter (i32) decremented each pass — this exercises int
+// arithmetic, fp arithmetic, the int comparison driving the back-edge, and
+// the implicit bit-exact agreement between interp and compiled C.
+//
+// CFG: 7 blocks (entry, loop_check, loop_body, loop_end, ret_block, plus
+// exit and the structural ^entry pseudo-block).
+fun @main() : f64 {
+  let mut %a: f64 = 71.0;
+  let mut %x: f64 = 1.0;
+  let mut %i: i32 = 6;
+  let mut %q: f64 = 0.0;
+  let mut %s: f64 = 0.0;
+^entry:
+  br ^check;
+^check:
+  br %i > 0, ^body, ^done;
+^body:
+  // x = 0.5 * (x + a / x)
+  %q = %a / %x;
+  %s = %x + %q;
+  %x = 0.5 * %s;
+  %i = %i - 1;
+  br ^check;
+^done:
+  ret %x;
+}

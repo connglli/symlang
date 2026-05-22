@@ -1,0 +1,31 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.18p+7
+// Loop branches on int parity, accumulates f64 differently
+fun @main() : f64 {
+  let mut %i: i32 = 0;
+  let mut %acc: f64 = 0.0;
+  let mut %add: f64 = 0.0;
+  let mut %two: i32 = 2;
+  let mut %rem: i32 = 0;
+^entry:
+  br ^check;
+^check:
+  br %i < 20, ^body, ^done;
+^body:
+  %rem = %i % %two;
+  br %rem == 0, ^even, ^odd;
+^even:
+  %add = %i as f64;
+  %acc = %acc + %add;
+  br ^next;
+^odd:
+  %add = %i as f64;
+  %add = 0.5 * %add;
+  %acc = %acc + %add;
+  br ^next;
+^next:
+  %i = %i + 1;
+  br ^check;
+^done:
+  ret %acc;
+}

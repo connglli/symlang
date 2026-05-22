@@ -1,0 +1,10 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1p+24
+// f64 -> f32 ties to even at the f32 mantissa edge
+fun @main() : f32 {
+  let mut %a: f64 = 16777217.0;
+  let mut %r: f32 = 0.0;
+^entry:
+  %r = %a as f32;
+  ret %r;
+}

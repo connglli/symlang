@@ -1,0 +1,10 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1p+24
+// Largest exact integer in f32 = 2^24
+fun @main() : f32 {
+  let mut %a: f32 = 16777216.0;
+  let mut %r: f32 = 0.0;
+^entry:
+  %r = %a + 0.0;
+  ret %r;
+}

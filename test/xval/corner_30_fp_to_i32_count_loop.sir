@@ -1,0 +1,29 @@
+// EXPECT: PASS
+// EXPECT_RC: 10
+// Loop counts how many k in [0,16) satisfy (k*k) as f32 / 7.0 >= 5
+fun @main() : i32 {
+  let mut %i: i32 = 0;
+  let mut %count: i32 = 0;
+  let mut %f: f32 = 0.0;
+  let mut %sq: i32 = 0;
+  let mut %seven: f32 = 7.0;
+^entry:
+  br ^check;
+^check:
+  br %i < 16, ^body, ^done;
+^body:
+  %sq = %i * %i;
+  %f = %sq as f32;
+  %f = %f / %seven;
+  br %f >= 5.0, ^take, ^skip;
+^take:
+  %count = %count + 1;
+  br ^next;
+^skip:
+  br ^next;
+^next:
+  %i = %i + 1;
+  br ^check;
+^done:
+  ret %count;
+}

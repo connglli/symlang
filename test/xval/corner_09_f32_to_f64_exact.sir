@@ -1,0 +1,10 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.8p+0
+// f32 -> f64 exact widening
+fun @main() : f64 {
+  let mut %a: f32 = 1.5;
+  let mut %r: f64 = 0.0;
+^entry:
+  %r = %a as f64;
+  ret %r;
+}

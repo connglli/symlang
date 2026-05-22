@@ -1,0 +1,10 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.fffffffcp+30
+// i32 -> f64 always exact (f64 holds all 32-bit ints)
+fun @main() : f64 {
+  let mut %a: i32 = 2147483647;
+  let mut %r: f64 = 0.0;
+^entry:
+  %r = %a as f64;
+  ret %r;
+}

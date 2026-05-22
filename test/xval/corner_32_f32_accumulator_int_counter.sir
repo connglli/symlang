@@ -1,0 +1,21 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.8p+4
+// f32 accumulator driven by an i32 counter (16 iters)
+fun @main() : f32 {
+  let mut %i: i32 = 0;
+  let mut %acc: f32 = 0.0;
+  let mut %step: f32 = 0.0;
+  let mut %five: f32 = 5.0;
+^entry:
+  br ^check;
+^check:
+  br %i < 16, ^body, ^done;
+^body:
+  %step = %i as f32;
+  %step = %step / %five;
+  %acc = %acc + %step;
+  %i = %i + 1;
+  br ^check;
+^done:
+  ret %acc;
+}

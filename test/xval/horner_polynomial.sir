@@ -1,0 +1,32 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.53f6a0dbad3a6p+5
+// Horner evaluation of a 6-degree polynomial at x = 1.2:
+//   p(x) = (((((1*x + 2)*x + 3)*x + 4)*x + 5)*x + 6)*x + 7
+// Computed left-to-right with bit-exact RNE rounding. Each Horner step is a
+// f64 mul + add — six iterations driven by an i32 loop counter that also
+// indexes a coefficient array. Exercises:
+//   - i32 array indexing in a loop
+//   - i32 -> f64 cast every iteration (the coef is read as f64 array elem)
+//   - f64 mul + add in the running accumulator
+//   - back-edge in the CFG
+//
+// CFG: ^entry, ^check, ^body, ^done, plus implicit exit and entry — 6 blocks.
+fun @main() : f64 {
+  let mut %coefs: [7] f64 = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
+  let mut %x: f64 = 1.2;
+  let mut %acc: f64 = 0.0;
+  let mut %i: i32 = 0;
+  let mut %tmp: f64 = 0.0;
+^entry:
+  br ^check;
+^check:
+  br %i < 7, ^body, ^done;
+^body:
+  %tmp = %coefs[%i];
+  %acc = %acc * %x;
+  %acc = %acc + %tmp;
+  %i = %i + 1;
+  br ^check;
+^done:
+  ret %acc;
+}

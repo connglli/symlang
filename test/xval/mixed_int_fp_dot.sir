@@ -1,0 +1,43 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.15p+8
+// Dot product of an i32 vector and an f32 vector with explicit per-element
+// cast: r += (i32)a[k] as f32 * b[k]. Stresses int->fp cast inside the loop
+// body plus f32 fmadd-equivalent (two separate roundings under
+// FP_CONTRACT OFF). Result type is f32; bit-exact agreement requires the
+// cast and the chained fp arithmetic to match between interp and C.
+//
+// Manual computation:
+//   k=0: r = 0 + 3.0 * 0.5    = 1.5
+//   k=1: r = 1.5 + (-2.0)*1.25 = -1.0
+//   k=2: r = -1.0 + 4.0*2.0   = 7.0
+//   k=3: r = 7.0  + 5.0*4.0   = 27.0
+//   k=4: r = 27.0 + 10.0*8.0  = 107.0
+//   k=5: r = 107.0 + 20.0*8.5 = 277.0  (= 0x1.150p+8)
+// Wait — actual run determines the bit-exact value; the EXPECT was set after
+// the first cross-validated run (the test discovers the value, then pins it).
+//
+// CFG: ^entry, ^check, ^body, ^done — 4 blocks plus loop back-edge.
+fun @main() : f32 {
+  let mut %a: [6] i32 = {3, -2, 4, 5, 10, 20};
+  let mut %b: [6] f32 = {0.5, 1.25, 2.0, 4.0, 8.0, 8.5};
+  let mut %i: i32 = 0;
+  let mut %r: f32 = 0.0;
+  let mut %ai: i32 = 0;
+  let mut %af: f32 = 0.0;
+  let mut %bi: f32 = 0.0;
+  let mut %prod: f32 = 0.0;
+^entry:
+  br ^check;
+^check:
+  br %i < 6, ^body, ^done;
+^body:
+  %ai = %a[%i];
+  %af = %ai as f32;
+  %bi = %b[%i];
+  %prod = %af * %bi;
+  %r = %r + %prod;
+  %i = %i + 1;
+  br ^check;
+^done:
+  ret %r;
+}

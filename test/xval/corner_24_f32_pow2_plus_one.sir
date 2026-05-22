@@ -1,0 +1,10 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.000002p+23
+// f32 2^23 + 1 is exactly representable
+fun @main() : f32 {
+  let mut %a: f32 = 8388609.0;
+  let mut %r: f32 = 0.0;
+^entry:
+  %r = %a + 0.0;
+  ret %r;
+}

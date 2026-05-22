@@ -1,0 +1,10 @@
+// EXPECT: PASS
+// EXPECT_RC: -3
+// f32 -> i32 truncates toward zero (negative)
+fun @main() : i32 {
+  let mut %a: f32 = -3.7;
+  let mut %r: i32 = 0;
+^entry:
+  %r = %a as i32;
+  ret %r;
+}

@@ -1,0 +1,12 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1p+24
+// f64 -> f32 -> f64 round-trip loses precision predictably
+fun @main() : f64 {
+  let mut %a: f64 = 16777217.0;
+  let mut %mid: f32 = 0.0;
+  let mut %r: f64 = 0.0;
+^entry:
+  %mid = %a as f32;
+  %r = %mid as f64;
+  ret %r;
+}

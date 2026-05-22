@@ -1,0 +1,10 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1p+24
+// 16777217 isn't representable in f32 (between 2^24 and 2^24+2, equidistant
+// from both). RNE rounds to even mantissa → 16777216 = 2^24. Both interp
+// and compiled C must agree on the exact bit pattern (0x1p+24).
+fun @main() : f32 {
+  let mut %a: f32 = 16777217.0;
+^entry:
+  ret %a;
+}

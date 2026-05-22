@@ -1,0 +1,10 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1p+24
+// i32 -> f32 rounds at the mantissa boundary (RNE)
+fun @main() : f32 {
+  let mut %a: i32 = 16777217;
+  let mut %r: f32 = 0.0;
+^entry:
+  %r = %a as f32;
+  ret %r;
+}

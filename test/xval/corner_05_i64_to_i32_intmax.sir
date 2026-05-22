@@ -1,0 +1,10 @@
+// EXPECT: PASS
+// EXPECT_RC: 2147483647
+// i64 -> i32 INT32_MAX (boundary, no UB)
+fun @main() : i32 {
+  let mut %a: i64 = 2147483647;
+  let mut %r: i32 = 0;
+^entry:
+  %r = %a as i32;
+  ret %r;
+}
