@@ -14,9 +14,9 @@ It provides a robust foundation for building tools that need to reason about pro
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
   - [Building](#building)
-  - [Running Tests](#running-tests)
+  - [Usage](#usage)
   - [Switching SMT Backends](#switching-smt-backends)
-- [Typical Workflows](#typical-workflows)
+- [SymLang Example](#symlang-example)
 - [Project Structure](#project-structure)
 - [Documentation](#documentation)
 
@@ -35,6 +35,7 @@ It provides a robust foundation for building tools that need to reason about pro
 | `symiri` | **Interpreter**: Execute `.sir` programs directly with concrete values or symbol bindings. |
 | `symirc` | **Compiler**: Translate `.sir` programs into optimized C or WebAssembly (WASM). |
 | `symirsolve` | **Solver**: Concretize symbolic programs by solving path constraints via SMT. |
+| `rysmith` | **Semantic Reifier**: Generate random SymLang programs for compiler testing. |
 
 ## 🚀 Getting Started
 
@@ -45,7 +46,7 @@ It provides a robust foundation for building tools that need to reason about pro
   - Install: https://github.com/bitwuzla/bitwuzla
 - **Z3** (Optional)
   - Install: https://github.com/Z3Prover/z3
-- **Python 3** (for running the test suite)
+- **Python 3** (for Usage the test suite)
 - **WASM runtime** (Optional, for running WASM backend tests such as Wasmtime, Wasmer, or Node.js)
 
 ### Building
@@ -94,6 +95,11 @@ Automatically find values for symbols that satisfy any execution path within 100
 Automatically find values for symbols that satisfy a specific execution path:
 ```bash
 ./symirsolve template.sir --path '^entry,^b1,^exit' -o concrete.sir
+```
+
+#### Generate Random Programs with `rysmith`
+```bash
+./rysmith -n 100
 ```
 
 ### Switching SMT Backends
@@ -413,7 +419,8 @@ Find more examples in [./examples](./examples/) and [./test/](./test/).
 │   ├── frontend/     # Lexer, Parser, TypeChecker
 │   ├── analysis/     # CFG, Dataflow, Pass Manager
 │   ├── backend/      # C and WASM backends
-│   └── solver/       # SMT integration
+│   ├── solver/       # SMT integration
+│   └── solver/       # Reify generator
 ├── src/              # Implementation files
 ├── docs/             # Tool and language documentation
 ├── test/             # Test suite and regression tests
