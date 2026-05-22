@@ -59,6 +59,8 @@ def run(symirc):
     failures = []
     if "__STDC_IEC_559__" not in src:
       failures.append("missing __STDC_IEC_559__ conformance check")
+    if "FLT_EVAL_METHOD" not in src:
+      failures.append("missing FLT_EVAL_METHOD check for extended precision")
     if "FP_CONTRACT" not in src or "OFF" not in src:
       failures.append("missing #pragma STDC FP_CONTRACT OFF")
     if "#error" not in src and "# error" not in src:

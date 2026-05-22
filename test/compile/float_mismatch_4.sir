@@ -1,0 +1,11 @@
+// EXPECT: PASS
+// Intention: Float literal in float expression must be evaluated with float precision
+// Purpose: Test halfway float rounding with multiplication context.
+fun @main() : i32 {
+  let mut %x: f32 = 536870976.0;
+  let mut %y: f32 = 0.0;
+^entry:
+  %y = 1610612864.0 + -3.0 * %x;
+  require %y == -128.0, "evaluated with float precision";
+  ret 0;
+}

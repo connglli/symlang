@@ -121,10 +121,10 @@ def run_test_suite(test_dir, test_func):
     print(f", {yellow(str(skipped_count) + ' skipped')}", end="")
   if failed_count > 0:
     print(f", {red(str(failed_count) + ' failed')}", end="")
-  print(".")
+  print(".\n")
 
   if failures:
-    print("\n" + bold("Failures Details:"))
+    print(bold("Failures Details:"))
     for path, msg in failures:
       print(f"--- {red(path)} ---")
       print(msg)

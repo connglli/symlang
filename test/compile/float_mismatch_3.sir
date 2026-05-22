@@ -1,0 +1,11 @@
+// EXPECT: PASS
+// Intention: Float literal in float expression must be evaluated with float precision
+// Purpose: Test -16777216.0f - 1.0f rounding in single precision.
+fun @main() : i32 {
+  let mut %x: f32 = -16777216.0;
+  let mut %y: f32 = 0.0;
+^entry:
+  %y = %x - 1.0 + 16777216.0;
+  require %y == 0.0, "evaluated with float precision";
+  ret 0;
+}

@@ -27,6 +27,25 @@ namespace symir {
     return s;
   }
 
+  static bool isOrContainsF64(const TypePtr &t) {
+    if (!t)
+      return false;
+    return std::visit(
+        [](auto &&arg) -> bool {
+          using T = std::decay_t<decltype(arg)>;
+          if constexpr (std::is_same_v<T, FloatType>) {
+            return arg.kind == FloatType::Kind::F64;
+          } else if constexpr (std::is_same_v<T, ArrayType>) {
+            return isOrContainsF64(arg.elem);
+          } else if constexpr (std::is_same_v<T, PtrType>) {
+            return isOrContainsF64(arg.pointee);
+          }
+          return false;
+        },
+        t->v
+    );
+  }
+
   void CBackend::indent() {
     for (int i = 0; i < indent_level_; ++i)
       out_ << "  ";
@@ -107,6 +126,7 @@ namespace symir {
     out_ << "#include <stdint.h>\n";
     out_ << "#include <stddef.h>\n";
     out_ << "#include <stdbool.h>\n";
+    out_ << "#include <float.h>\n";
     out_ << "#include <math.h>\n";
     if (!noRequire_)
       out_ << "#include <assert.h>\n";
@@ -124,8 +144,27 @@ namespace symir {
     out_ << "# error \"SymIR-lowered C requires an IEC 60559 / IEEE 754 conforming \"\\\n";
     out_ << "          \"implementation (compiler must predefine __STDC_IEC_559__ to 1)\"\n";
     out_ << "#endif\n";
+    out_ << "#if !defined(FLT_EVAL_METHOD) || FLT_EVAL_METHOD != 0\n";
+    out_
+        << "# error \"SymIR-lowered C requires an implementation with FLT_EVAL_METHOD == 0, \"\\\n";
+    out_ << "          \"i.e., do not promote float into double or long double for evaluation\"\n";
+    out_ << "#endif\n";
     out_ << "#pragma STDC FP_CONTRACT OFF\n";
     out_ << "\n";
+
+    // 0. Populate struct fields map
+    structFields_.clear();
+    structFieldTypesOrder_.clear();
+    for (const auto &s: prog.structs) {
+      std::unordered_map<std::string, TypePtr> fields;
+      std::vector<TypePtr> fieldTypes;
+      for (const auto &f: s.fields) {
+        fields[f.name] = f.type;
+        fieldTypes.push_back(f.type);
+      }
+      structFields_[s.name.name] = std::move(fields);
+      structFieldTypesOrder_[s.name.name] = std::move(fieldTypes);
+    }
 
     // 1. Forward decls for structs
     for (const auto &s: prog.structs) {
@@ -173,10 +212,15 @@ namespace symir {
     // 3. Functions
     for (const auto &f: prog.funs) {
       curFuncName_ = f.name.name;
+      curFuncRetType_ = f.retType;
       varWidths_.clear();
       varIsFloat_.clear();
       varIsF32_.clear();
+      varTypes_.clear();
       auto recordFloatKind = [&](const std::string &name, const TypePtr &t) {
+        if (!t)
+          return;
+        varTypes_[name] = t;
         if (auto ft = std::get_if<FloatType>(&t->v)) {
           varIsFloat_[name] = true;
           varIsF32_[name] = (ft->kind == FloatType::Kind::F32);
@@ -231,6 +275,9 @@ namespace symir {
 
       // 3c. Locals and their initializations
       for (const auto &l: f.lets) {
+        bool saved = isDoubleCtx_;
+        isDoubleCtx_ = isOrContainsF64(l.type);
+
         indent();
         TypePtr cur = l.type;
         std::vector<uint64_t> dims;
@@ -245,7 +292,7 @@ namespace symir {
 
         if (l.init && l.init->kind == InitVal::Kind::Aggregate) {
           out_ << " = ";
-          emitInitVal(*l.init);
+          emitInitVal(*l.init, l.type);
           out_ << ";\n";
         } else if (l.init) {
           // Broadcast init
@@ -264,7 +311,7 @@ namespace symir {
                   if (dim == dims.size()) {
                     indent();
                     out_ << mangleName(l.name.name) << access << " = ";
-                    emitInitVal(*l.init);
+                    emitInitVal(*l.init, cur);
                     out_ << ";\n";
                     return;
                   }
@@ -286,12 +333,13 @@ namespace symir {
           } else {
             // Scalar broadcast
             out_ << " = ";
-            emitInitVal(*l.init);
+            emitInitVal(*l.init, l.type);
             out_ << ";\n";
           }
         } else {
           out_ << ";\n";
         }
+        isDoubleCtx_ = saved;
       }
 
       // 3d. Blocks
@@ -304,10 +352,13 @@ namespace symir {
               [this](auto &&arg) {
                 using T = std::decay_t<decltype(arg)>;
                 if constexpr (std::is_same_v<T, AssignInstr>) {
+                  bool saved = isDoubleCtx_;
+                  isDoubleCtx_ = isOrContainsF64(getLValueType(arg.lhs));
                   emitLValue(arg.lhs);
                   out_ << " = ";
                   emitExpr(arg.rhs);
                   out_ << ";\n";
+                  isDoubleCtx_ = saved;
                 } else if constexpr (std::is_same_v<T, AssumeInstr>) {
                   out_ << "// assume ";
                   emitCond(arg.cond);
@@ -321,11 +372,21 @@ namespace symir {
                     out_ << ");\n";
                   }
                 } else if constexpr (std::is_same_v<T, StoreInstr>) {
+                  bool saved = isDoubleCtx_;
+                  auto ptrTy = getExprType(arg.ptr);
+                  TypePtr pointeeTy = nullptr;
+                  if (ptrTy) {
+                    if (auto pt = std::get_if<PtrType>(&ptrTy->v)) {
+                      pointeeTy = pt->pointee;
+                    }
+                  }
+                  isDoubleCtx_ = isOrContainsF64(pointeeTy);
                   out_ << "*";
                   emitExpr(arg.ptr);
                   out_ << " = ";
                   emitExpr(arg.val);
                   out_ << ";\n";
+                  isDoubleCtx_ = saved;
                 }
               },
               ins
@@ -348,8 +409,11 @@ namespace symir {
               } else if constexpr (std::is_same_v<T, RetTerm>) {
                 out_ << "return";
                 if (arg.value) {
+                  bool saved = isDoubleCtx_;
+                  isDoubleCtx_ = isOrContainsF64(curFuncRetType_);
                   out_ << " ";
                   emitExpr(*arg.value);
+                  isDoubleCtx_ = saved;
                 }
                 out_ << ";\n";
               } else if constexpr (std::is_same_v<T, UnreachableTerm>) {
@@ -509,7 +573,12 @@ namespace symir {
                   if constexpr (std::is_same_v<S, IntLit>) {
                     out_ << src.value;
                   } else if constexpr (std::is_same_v<S, FloatLit>) {
+                    bool saved = isDoubleCtx_;
+                    isDoubleCtx_ = isOrContainsF64(arg.dstType);
                     out_ << formatFloatLit(src.value);
+                    if (!isDoubleCtx_)
+                      out_ << "f";
+                    isDoubleCtx_ = saved;
                   } else if constexpr (std::is_same_v<S, SymId>) {
                     out_ << getMangledSymbolName(curFuncName_, src.name) << "()";
                   } else {
@@ -527,6 +596,10 @@ namespace symir {
   }
 
   void CBackend::emitCond(const Cond &cond) {
+    bool saved = isDoubleCtx_;
+    auto lhsTy = getExprType(cond.lhs);
+    auto rhsTy = getExprType(cond.rhs);
+    isDoubleCtx_ = isOrContainsF64(lhsTy) || isOrContainsF64(rhsTy);
     emitExpr(cond.lhs);
     switch (cond.op) {
       case RelOp::EQ:
@@ -549,6 +622,7 @@ namespace symir {
         break;
     }
     emitExpr(cond.rhs);
+    isDoubleCtx_ = saved;
   }
 
   void CBackend::emitLValue(const LValue &lv) {
@@ -572,6 +646,8 @@ namespace symir {
             out_ << arg.value;
           } else if constexpr (std::is_same_v<T, FloatLit>) {
             out_ << formatFloatLit(arg.value);
+            if (!isDoubleCtx_)
+              out_ << "f";
           } else if constexpr (std::is_same_v<T, NullLit>) {
             out_ << "NULL";
           } else {
@@ -621,13 +697,19 @@ namespace symir {
     );
   }
 
-  void CBackend::emitInitVal(const InitVal &iv) {
+  void CBackend::emitInitVal(const InitVal &iv, TypePtr expectedType) {
+    bool saved = isDoubleCtx_;
+    if (expectedType) {
+      isDoubleCtx_ = isOrContainsF64(expectedType);
+    }
     switch (iv.kind) {
       case InitVal::Kind::Int:
         out_ << std::get<IntLit>(iv.value).value;
         break;
       case InitVal::Kind::Float:
         out_ << formatFloatLit(std::get<FloatLit>(iv.value).value);
+        if (!isDoubleCtx_)
+          out_ << "f";
         break;
       case InitVal::Kind::Sym:
         out_ << getMangledSymbolName(curFuncName_, std::get<SymId>(iv.value).name) << "()";
@@ -645,7 +727,18 @@ namespace symir {
         out_ << "{";
         const auto &elements = std::get<std::vector<InitValPtr>>(iv.value);
         for (size_t i = 0; i < elements.size(); ++i) {
-          emitInitVal(*elements[i]);
+          TypePtr elemType = nullptr;
+          if (expectedType) {
+            if (auto at = std::get_if<ArrayType>(&expectedType->v)) {
+              elemType = at->elem;
+            } else if (auto st = std::get_if<StructType>(&expectedType->v)) {
+              auto sit = structFieldTypesOrder_.find(st->name.name);
+              if (sit != structFieldTypesOrder_.end() && i < sit->second.size()) {
+                elemType = sit->second[i];
+              }
+            }
+          }
+          emitInitVal(*elements[i], elemType);
           if (i + 1 < elements.size())
             out_ << ", ";
         }
@@ -653,6 +746,120 @@ namespace symir {
         break;
       }
     }
+    isDoubleCtx_ = saved;
   }
+
+  TypePtr CBackend::getLValueType(const LValue &lv) {
+    auto it = varTypes_.find(lv.base.name);
+    if (it == varTypes_.end()) {
+      return nullptr;
+    }
+    TypePtr cur = it->second;
+    for (const auto &acc: lv.accesses) {
+      if (!cur) {
+        return nullptr;
+      }
+      if (std::holds_alternative<AccessIndex>(acc)) {
+        if (auto at = std::get_if<ArrayType>(&cur->v)) {
+          cur = at->elem;
+        } else if (auto pt = std::get_if<PtrType>(&cur->v)) {
+          cur = pt->pointee;
+        } else {
+          return nullptr;
+        }
+      } else if (auto af = std::get_if<AccessField>(&acc)) {
+        if (auto st = std::get_if<StructType>(&cur->v)) {
+          auto sit = structFields_.find(st->name.name);
+          if (sit != structFields_.end()) {
+            auto fit = sit->second.find(af->field);
+            if (fit != sit->second.end()) {
+              cur = fit->second;
+            } else {
+              return nullptr;
+            }
+          } else {
+            return nullptr;
+          }
+        } else {
+          return nullptr;
+        }
+      }
+    }
+    return cur;
+  }
+
+  TypePtr CBackend::getCoefType(const Coef &coef) {
+    return std::visit(
+        [this](auto &&arg) -> TypePtr {
+          using T = std::decay_t<decltype(arg)>;
+          if constexpr (std::is_same_v<T, IntLit>) {
+            auto t = std::make_shared<Type>();
+            t->v = IntType{IntType::Kind::I64, {}, {}};
+            return t;
+          } else if constexpr (std::is_same_v<T, FloatLit>) {
+            auto t = std::make_shared<Type>();
+            t->v = FloatType{isDoubleCtx_ ? FloatType::Kind::F64 : FloatType::Kind::F32, {}};
+            return t;
+          } else if constexpr (std::is_same_v<T, NullLit>) {
+            auto t = std::make_shared<Type>();
+            t->v = PtrType{nullptr, {}};
+            return t;
+          } else {
+            return std::visit(
+                [this](auto &&id) -> TypePtr {
+                  auto it = varTypes_.find(id.name);
+                  if (it != varTypes_.end()) {
+                    return it->second;
+                  }
+                  return nullptr;
+                },
+                arg
+            );
+          }
+        },
+        coef
+    );
+  }
+
+  TypePtr CBackend::getAtomType(const Atom &atom) {
+    return std::visit(
+        [this](auto &&arg) -> TypePtr {
+          using T = std::decay_t<decltype(arg)>;
+          if constexpr (std::is_same_v<T, OpAtom>) {
+            return getLValueType(arg.rval);
+          } else if constexpr (std::is_same_v<T, UnaryAtom>) {
+            return getLValueType(arg.rval);
+          } else if constexpr (std::is_same_v<T, SelectAtom>) {
+            if (std::holds_alternative<RValue>(arg.vtrue)) {
+              return getLValueType(std::get<RValue>(arg.vtrue));
+            } else {
+              return getCoefType(std::get<Coef>(arg.vtrue));
+            }
+          } else if constexpr (std::is_same_v<T, CoefAtom>) {
+            return getCoefType(arg.coef);
+          } else if constexpr (std::is_same_v<T, RValueAtom>) {
+            return getLValueType(arg.rval);
+          } else if constexpr (std::is_same_v<T, CastAtom>) {
+            return arg.dstType;
+          } else if constexpr (std::is_same_v<T, AddrAtom>) {
+            auto t = std::make_shared<Type>();
+            t->v = PtrType{getLValueType(arg.lv), {}};
+            return t;
+          } else if constexpr (std::is_same_v<T, LoadAtom>) {
+            auto pt = getLValueType(arg.rval);
+            if (pt) {
+              if (auto ptr = std::get_if<PtrType>(&pt->v)) {
+                return ptr->pointee;
+              }
+            }
+            return nullptr;
+          }
+          return nullptr;
+        },
+        atom.v
+    );
+  }
+
+  TypePtr CBackend::getExprType(const Expr &expr) { return getAtomType(expr.first); }
 
 } // namespace symir
