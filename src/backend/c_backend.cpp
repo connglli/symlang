@@ -112,6 +112,21 @@ namespace symir {
       out_ << "#include <assert.h>\n";
     out_ << "\n";
 
+    // SPEC §2.9 conformance. C doesn't mandate IEEE 754 — the implementation
+    // declares conformance by predefining __STDC_IEC_559__ (C99 §F.1). We
+    // cannot define it ourselves; we MUST refuse to compile on a platform
+    // that doesn't conform, because SymIR's FP semantics (RNE rounding,
+    // finite-only domain, deterministic NaN/inf handling) all rest on
+    // IEC 60559 / IEEE 754. Also disable FP contraction — without this,
+    // GCC may fuse `a*b + c` into a single-rounding `fma`, which violates
+    // §2.9 "no contraction" and would diverge from the interpreter and WASM.
+    out_ << "#if !defined(__STDC_IEC_559__) || __STDC_IEC_559__ != 1\n";
+    out_ << "# error \"SymIR-lowered C requires an IEC 60559 / IEEE 754 conforming \"\\\n";
+    out_ << "          \"implementation (compiler must predefine __STDC_IEC_559__ to 1)\"\n";
+    out_ << "#endif\n";
+    out_ << "#pragma STDC FP_CONTRACT OFF\n";
+    out_ << "\n";
+
     // 1. Forward decls for structs
     for (const auto &s: prog.structs) {
       out_ << "struct " << mangleName(s.name.name) << ";\n";
