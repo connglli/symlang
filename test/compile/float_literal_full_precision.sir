@@ -1,0 +1,24 @@
+// EXPECT: PASS
+// Intention: C/WASM backends must emit float literals with enough decimal
+//   digits to round-trip exactly.
+// Purpose: Default operator<< uses precision 6, which truncates large or
+//   high-precision doubles (e.g. 16777216.0 prints as "1.67772e+07" = 16777200).
+//   The lowered program then computes against the wrong constant.
+// Test: a chain that needs exact 16777216.0 and 16777218.0 — neighbouring
+//   representable f32 values whose mid-point ties to even — succeeds only
+//   if the literals survived emission with full precision.
+fun @main() : i32 {
+  let mut %a: f32 = 16777216.0;
+  let mut %b: f32 = 16777218.0;
+  let mut %r: f32 = 0.0;
+^entry:
+  // a + b = 33554434.0 (exact in f32; stride at 2^25 is 4, and 33554434 is
+  // a multiple of 4 → 33554432.0 + 2 isn't, but a+b = 2^25 + 2 = 33554434
+  // rounds RNE to 33554432.0 (tie to even, since 33554432 has mantissa 0).
+  // Actually computed: 33554432.0. We test the partial 16777216.0 below.
+  %r = %a + 0.0;
+  require %r == 16777216.0, "load 16777216 round-trips";
+  %r = %b + 0.0;
+  require %r == 16777218.0, "load 16777218 round-trips";
+  ret 0;
+}

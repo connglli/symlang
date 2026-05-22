@@ -1,9 +1,31 @@
 #include "backend/c_backend.hpp"
 #include <algorithm>
+#include <cmath>
 #include <functional>
+#include <iomanip>
 #include <iostream>
+#include <limits>
+#include <sstream>
 
 namespace symir {
+
+  // Format a double literal with enough precision to round-trip exactly,
+  // i.e. `static_cast<double>(parseDouble(emitFloat(v))) == v` for every
+  // finite v. The default `operator<<` uses 6 decimal digits which is far
+  // short of double's ~17 needed for exactness — it would silently turn
+  // `16777216.0` into `1.67772e+07` (= 16777200), changing the program's
+  // observable behavior.
+  static std::string formatFloatLit(double v) {
+    std::ostringstream os;
+    os << std::setprecision(std::numeric_limits<double>::max_digits10) << v;
+    std::string s = os.str();
+    // Ensure the literal parses as a floating-point constant in C — append
+    // ".0" if no decimal/exponent character is present (so an integer-valued
+    // double doesn't pick up integer type).
+    if (s.find_first_of(".eEnN") == std::string::npos)
+      s += ".0";
+    return s;
+  }
 
   void CBackend::indent() {
     for (int i = 0; i < indent_level_; ++i)
@@ -472,7 +494,7 @@ namespace symir {
                   if constexpr (std::is_same_v<S, IntLit>) {
                     out_ << src.value;
                   } else if constexpr (std::is_same_v<S, FloatLit>) {
-                    out_ << src.value;
+                    out_ << formatFloatLit(src.value);
                   } else if constexpr (std::is_same_v<S, SymId>) {
                     out_ << getMangledSymbolName(curFuncName_, src.name) << "()";
                   } else {
@@ -534,7 +556,7 @@ namespace symir {
           if constexpr (std::is_same_v<T, IntLit>) {
             out_ << arg.value;
           } else if constexpr (std::is_same_v<T, FloatLit>) {
-            out_ << arg.value;
+            out_ << formatFloatLit(arg.value);
           } else if constexpr (std::is_same_v<T, NullLit>) {
             out_ << "NULL";
           } else {
@@ -590,7 +612,7 @@ namespace symir {
         out_ << std::get<IntLit>(iv.value).value;
         break;
       case InitVal::Kind::Float:
-        out_ << std::get<FloatLit>(iv.value).value;
+        out_ << formatFloatLit(std::get<FloatLit>(iv.value).value);
         break;
       case InitVal::Kind::Sym:
         out_ << getMangledSymbolName(curFuncName_, std::get<SymId>(iv.value).name) << "()";

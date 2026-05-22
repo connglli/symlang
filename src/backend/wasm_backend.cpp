@@ -1,9 +1,25 @@
 #include "backend/wasm_backend.hpp"
 #include <algorithm>
 #include <iomanip>
+#include <limits>
+#include <sstream>
 #include "analysis/type_utils.hpp"
 
 namespace symir {
+
+  // Format a double literal with enough precision to round-trip exactly.
+  // Default operator<< uses 6 digits which silently truncates large floats
+  // (e.g. 16777216 → "1.67772e+07" = 16777200). 17 digits is sufficient
+  // for double per IEEE-754; the WAT parser accepts both fixed and
+  // exponent forms.
+  static std::string formatFloatLit(double v) {
+    std::ostringstream os;
+    os << std::setprecision(std::numeric_limits<double>::max_digits10) << v;
+    std::string s = os.str();
+    if (s.find_first_of(".eEnN") == std::string::npos)
+      s += ".0";
+    return s;
+  }
 
   void WasmBackend::indent() {
     for (int i = 0; i < indent_level_; ++i)
@@ -513,7 +529,7 @@ namespace symir {
                     srcWidth = 64;
                     srcIsFloat = true;
                     indent();
-                    out_ << "f64.const " << src.value << "\n";
+                    out_ << "f64.const " << formatFloatLit(src.value) << "\n";
                   } else if constexpr (std::is_same_v<S, SymId>) {
                     indent();
                     out_ << "call " << mangleName(getMangledSymbolName(curFuncName_, src.name))
@@ -841,7 +857,8 @@ namespace symir {
             }
           } else if constexpr (std::is_same_v<T, FloatLit>) {
             indent();
-            out_ << (wasmWidth == 32 ? "f32.const " : "f64.const ") << arg.value << "\n";
+            out_ << (wasmWidth == 32 ? "f32.const " : "f64.const ") << formatFloatLit(arg.value)
+                 << "\n";
           } else if constexpr (std::is_same_v<T, NullLit>) {
             // null pointer = 0 as i32 (WASM pointers are 32-bit)
             indent();
@@ -1010,7 +1027,7 @@ namespace symir {
         } else if (iv.kind == InitVal::Kind::Float) {
           indent();
           out_ << (getIntWidth(type) <= 32 ? "f32.const " : "f64.const ")
-               << std::get<FloatLit>(iv.value).value << "\n";
+               << formatFloatLit(std::get<FloatLit>(iv.value).value) << "\n";
         } else {
           // Symbol
           const auto &sid = std::get<SymId>(iv.value);
@@ -1221,7 +1238,7 @@ namespace symir {
           } else if (l.init->kind == InitVal::Kind::Float) {
             indent();
             out_ << (locals_[l.name.name].wasmType == "f32" ? "f32.const " : "f64.const ")
-                 << std::get<FloatLit>(l.init->value).value << "\n";
+                 << formatFloatLit(std::get<FloatLit>(l.init->value).value) << "\n";
             indent();
             out_ << "local.set " << mangleName(l.name.name) << "\n";
           } else if (l.init->kind == InitVal::Kind::Null) {
