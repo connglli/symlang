@@ -1,0 +1,104 @@
+// EXPECT: PASS
+// EXPECT_RC: -11
+// Big xval test 21 — Find the overall minimum of a 3x5 i16 matrix and
+// return its f64 value rounded down to i64. Tracks per-row min in nested
+// struct {per_row:[3]i32, overall:i32}. Block 3 casts:
+//   i16 -> i32 -> i64 -> f32.
+struct @Mins21 {
+  per_row: [3] i32;
+  overall: i32;
+}
+
+fun @main() : i64 {
+  let mut %m: [3] [5] i16 = {{12, -3, 25, 8, 17}, {-9, 22, 5, 14, 30}, {7, -2, 18, 4, -11}};
+  let mut %mins: @Mins21 = {{0, 0, 0}, 99999};
+  let mut %running_min: i32 = 99999;
+  let mut %p_min: ptr i32 = undef;
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %vi16: i16 = 0;
+  let mut %vi32: i32 = 0;
+  let mut %row_min: i32 = 99999;
+  let mut %tmp_i64: i64 = 0;
+  let mut %tmp_f32: f32 = 0.0;
+^entry:
+  %running_min = 99999;
+  %p_min = addr %running_min;
+  %i = 0;
+  %j = 0;
+  store %p_min, %running_min;
+  %row_min = 99999;
+  br ^pre1;
+^pre1:
+  %vi16 = 100;
+  %vi32 = %vi16 as i32;
+  %tmp_i64 = %vi32 as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %row_min = 99999;
+  %vi16 = 0;
+  br ^pre2;
+^pre2:
+  %vi16 = -5;
+  %vi32 = %vi16 as i32;
+  %tmp_i64 = %vi32 as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %row_min = 99999;
+  %vi16 = 0;
+  br ^head;
+^head:
+  %row_min = 99999;
+  %j = 0;
+  %vi16 = 0;
+  %vi32 = 0;
+  %tmp_i64 = %i as i64;
+  %tmp_f32 = %i as f32;
+  br %i < 3, ^inner_head, ^post;
+^inner_head:
+  %vi16 = 0;
+  %vi32 = 0;
+  %tmp_i64 = %j as i64;
+  %tmp_f32 = %j as f32;
+  %row_min = %row_min + 0;
+  %vi16 = 0;
+  br %j < 5, ^inner_body, ^outer_step;
+^inner_body:
+  %vi16 = %m[%i][%j];
+  %vi32 = %vi16 as i32;
+  %row_min = select %vi32 < %row_min, %vi32, %row_min;
+  %tmp_i64 = %vi32 as i64;
+  %tmp_f32 = %vi32 as f32;
+  %vi16 = 0;
+  br ^inner_step;
+^inner_step:
+  %j = %j + 1;
+  %tmp_i64 = %j as i64;
+  %tmp_f32 = %j as f32;
+  %vi16 = 0;
+  %vi32 = 0;
+  %row_min = %row_min + 0;
+  br ^inner_head;
+^outer_step:
+  %mins.per_row[%i] = %row_min;
+  %running_min = select %row_min < %running_min, %row_min, %running_min;
+  store %p_min, %running_min;
+  %i = %i + 1;
+  %tmp_i64 = %running_min as i64;
+  %tmp_f32 = %running_min as f32;
+  br ^head;
+^post:
+  %running_min = load %p_min;
+  %mins.overall = %running_min + 0;
+  %tmp_i64 = %running_min as i64;
+  %tmp_f32 = %running_min as f32;
+  %vi32 = %running_min + 0;
+  %vi16 = 0;
+  br ^exit;
+^exit:
+  %tmp_i64 = %mins.overall as i64;
+  %tmp_f32 = %mins.overall as f32;
+  %vi32 = %mins.per_row[0];
+  %vi16 = %m[2][4];
+  %running_min = 0;
+  %row_min = 0;
+  ret %tmp_i64;
+}

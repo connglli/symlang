@@ -1,0 +1,106 @@
+// EXPECT: PASS
+// EXPECT_RC: 0
+// Big xval test 18 — Apply per-row Caesar shift to a 3x5 i8 grid. Nested
+// struct holds {shifts:[3]i32, hit_count:i32}. Returns total number of
+// shifted cells equal to a target as i64. Block 3 casts:
+//   i32 -> i8 -> i16 -> i32.
+struct @Cipher18 {
+  shifts: [3] i32;
+  hit_count: i32;
+}
+
+fun @main() : i64 {
+  let mut %grid: [3] [5] i8 = {{5,10,15,20,25},{1,2,3,4,5},{12,8,4,16,20}};
+  let mut %cipher: @Cipher18 = {{2, 5, 1}, 0};
+  let mut %hits: i32 = 0;
+  let mut %p_hits: ptr i32 = undef;
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %vi: i8 = 0;
+  let mut %shifted: i8 = 0;
+  let mut %target: i8 = 25;
+  let mut %tmp_i8: i8 = 0;
+  let mut %tmp_i16: i16 = 0;
+  let mut %tmp_i32: i32 = 0;
+  let mut %row_shift: i32 = 0;
+^entry:
+  %hits = 0;
+  %p_hits = addr %hits;
+  %i = 0;
+  %j = 0;
+  store %p_hits, %hits;
+  %target = 25;
+  br ^pre1;
+^pre1:
+  %tmp_i32 = 100;
+  %tmp_i8 = %tmp_i32 as i8;
+  %tmp_i16 = %tmp_i8 as i16;
+  %row_shift = %tmp_i16 as i32;
+  %row_shift = 0;
+  %shifted = 0;
+  br ^pre2;
+^pre2:
+  %tmp_i32 = 7;
+  %tmp_i8 = %tmp_i32 as i8;
+  %tmp_i16 = %tmp_i8 as i16;
+  %row_shift = %tmp_i16 as i32;
+  %row_shift = 0;
+  %shifted = 0;
+  br ^head;
+^head:
+  %row_shift = 0;
+  %j = 0;
+  %tmp_i32 = %i + 0;
+  %tmp_i8 = %i as i8;
+  %tmp_i16 = %i as i16;
+  %vi = 0;
+  br %i < 3, ^inner_head, ^post;
+^inner_head:
+  %row_shift = %cipher.shifts[%i];
+  %vi = 0;
+  %shifted = 0;
+  %tmp_i32 = %j + 0;
+  %tmp_i8 = %j as i8;
+  %tmp_i16 = %j as i16;
+  br %j < 5, ^inner_body, ^outer_step;
+^inner_body:
+  %vi = %grid[%i][%j];
+  %tmp_i32 = %row_shift + 0;
+  %tmp_i8 = %tmp_i32 as i8;
+  %shifted = %vi + %tmp_i8;
+  %tmp_i16 = %shifted as i16;
+  %tmp_i32 = select %shifted == %target, 1, 0;
+  br ^inner_step;
+^inner_step:
+  %hits = %hits + %tmp_i32;
+  store %p_hits, %hits;
+  %j = %j + 1;
+  %tmp_i8 = %j as i8;
+  %tmp_i16 = %j as i16;
+  %tmp_i32 = %hits + 0;
+  br ^inner_head;
+^outer_step:
+  %i = %i + 1;
+  %tmp_i32 = load %p_hits;
+  %hits = %tmp_i32 + 0;
+  %tmp_i8 = %i as i8;
+  %tmp_i16 = %i as i16;
+  %row_shift = 0;
+  br ^head;
+^post:
+  %tmp_i32 = load %p_hits;
+  %cipher.hit_count = %tmp_i32 + 0;
+  %tmp_i8 = %tmp_i32 as i8;
+  %tmp_i16 = %tmp_i8 as i16;
+  %row_shift = %tmp_i16 as i32;
+  %hits = %tmp_i32 + 0;
+  br ^exit;
+^exit:
+  %tmp_i32 = %cipher.hit_count + 0;
+  %tmp_i8 = %tmp_i32 as i8;
+  %tmp_i16 = %tmp_i8 as i16;
+  %row_shift = %cipher.shifts[0];
+  %vi = %grid[0][0];
+  %shifted = 0;
+  ret %tmp_i32 as i64;
+}

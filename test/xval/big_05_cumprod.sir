@@ -1,0 +1,105 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.9508p+10
+// Big xval test 05 — Cumulative product of an i16 array, accumulated in
+// f32 to avoid overflow. Each step optionally squares the running product
+// based on a bool flag from a struct array. Block 3 casts:
+//   i16 -> i32 -> f64 -> f32.
+struct @Pair05 {
+  v: i16;
+  do_sq: i8;
+}
+
+fun @main() : f32 {
+  let mut %a: [5] @Pair05 = {{2, 0}, {3, 1}, {2, 0}, {5, 0}, {3, 1}};
+  let mut %acc: f32 = 1.0;
+  let mut %p_acc: ptr f32 = undef;
+  let mut %i: i32 = 0;
+  let mut %vi: i16 = 0;
+  let mut %vf: f32 = 0.0;
+  let mut %flag: i8 = 0;
+  let mut %tmp_i32: i32 = 0;
+  let mut %tmp_f64: f64 = 0.0;
+  let mut %tmp_f32: f32 = 0.0;
+  let mut %scale: f32 = 1.0;
+  let mut %iter_count: i32 = 0;
+  let mut %offset: i64 = 0;
+^entry:
+  %acc = 1.0;
+  %p_acc = addr %acc;
+  %i = 0;
+  %scale = 1.0;
+  %iter_count = 0;
+  %offset = 0;
+  br ^pre1;
+^pre1:
+  %tmp_i32 = %iter_count + 1;
+  %iter_count = %tmp_i32 + 0;
+  %tmp_f64 = %scale as f64;
+  %scale = %tmp_f64 as f32;
+  store %p_acc, %acc;
+  %offset = %iter_count as i64;
+  br ^pre2;
+^pre2:
+  %vi = 7;
+  %tmp_i32 = %vi as i32;
+  %tmp_f64 = %tmp_i32 as f64;
+  %tmp_f32 = %tmp_f64 as f32;
+  %vf = %tmp_f32 + 0.0;
+  %scale = %scale + 0.0;
+  br ^head;
+^head:
+  %tmp_i32 = %i + 0;
+  %vi = 0;
+  %flag = 0;
+  %vf = 0.0;
+  %tmp_f32 = %acc + 0.0;
+  %offset = %i as i64;
+  br %i < 5, ^body_a, ^post;
+^body_a:
+  %vi = %a[%i].v;
+  %flag = %a[%i].do_sq;
+  %tmp_i32 = %vi as i32;
+  %tmp_f64 = %tmp_i32 as f64;
+  %vf = %tmp_f64 as f32;
+  %tmp_f32 = %acc + 0.0;
+  br %flag != 0, ^body_b, ^body_c;
+^body_b:
+  %tmp_f32 = %vf * %vf;
+  %acc = %acc * %tmp_f32;
+  %scale = %scale + 0.0;
+  %iter_count = %iter_count + 1;
+  %offset = %iter_count as i64;
+  %vf = %vf + 0.0;
+  br ^body_d;
+^body_c:
+  %acc = %acc * %vf;
+  %scale = 0.5 * %scale;
+  %iter_count = %iter_count + 1;
+  %offset = %iter_count as i64;
+  %tmp_f32 = %acc + 0.0;
+  br ^body_d;
+^body_d:
+  %i = %i + 1;
+  store %p_acc, %acc;
+  %tmp_f32 = load %p_acc;
+  %acc = %tmp_f32 + 0.0;
+  %scale = %scale + 0.0;
+  %offset = %offset + 0;
+  br ^head;
+^post:
+  %tmp_f32 = load %p_acc;
+  %acc = %tmp_f32 + 0.0;
+  %tmp_f64 = %scale as f64;
+  %tmp_f32 = %tmp_f64 as f32;
+  %offset = %iter_count as i64;
+  %tmp_i32 = %iter_count + 0;
+  br ^exit;
+^exit:
+  %tmp_f32 = %acc + 0.0;
+  %tmp_f32 = %tmp_f32 + %scale;
+  %tmp_f64 = %tmp_f32 as f64;
+  %vf = %tmp_f64 as f32;
+  %offset = %offset + 0;
+  %iter_count = %iter_count + 0;
+  ret %tmp_f32;
+}

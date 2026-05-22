@@ -1,0 +1,96 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.4p+3
+// Big xval test 26 — Sum the lower-triangular entries (i >= j) of a 4x4
+// f64 matrix, then divide by count to get mean (returned f64). Nested
+// struct {row_sum:[4]f64, count:i32}. Block 3 casts:
+//   f64 -> i32 -> i64 -> f32.
+struct @Tri26 {
+  row_sum: [4] f64;
+  count: i32;
+}
+
+fun @main() : f64 {
+  let mut %m: [4] [4] f64 = {{1.0, 2.0, 3.0, 4.0}, {5.0, 6.0, 7.0, 8.0}, {9.0, 10.0, 11.0, 12.0}, {13.0, 14.0, 15.0, 16.0}};
+  let mut %st: @Tri26 = {{0.0, 0.0, 0.0, 0.0}, 0};
+  let mut %total: f64 = 0.0;
+  let mut %p_tot: ptr f64 = undef;
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %v: f64 = 0.0;
+  let mut %row_acc: f64 = 0.0;
+  let mut %cnt: i32 = 0;
+  let mut %tmp_i32: i32 = 0;
+  let mut %tmp_i64: i64 = 0;
+  let mut %tmp_f32: f32 = 0.0;
+  let mut %mean: f64 = 0.0;
+  let mut %add_val: f64 = 0.0;
+  let mut %add_cnt: i32 = 0;
+^entry:
+  %total = 0.0;
+  %p_tot = addr %total;
+  %i = 0;
+  %j = 0;
+  %cnt = 0;
+  store %p_tot, %total;
+  br ^pre1;
+^pre1:
+  %v = 2.5;
+  %tmp_i32 = %v as i32;
+  %tmp_i64 = %tmp_i32 as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %row_acc = 0.0;
+  br ^pre2;
+^pre2:
+  %v = 7.5;
+  %tmp_i32 = %v as i32;
+  %tmp_i64 = %tmp_i32 as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %row_acc = 0.0;
+  br ^head;
+^head:
+  %j = 0;
+  %row_acc = 0.0;
+  %v = 0.0;
+  %tmp_i32 = %i + 0;
+  %tmp_i64 = %i as i64;
+  br %i < 4, ^inner_head, ^post;
+^inner_head:
+  %v = 0.0;
+  %tmp_i32 = %j + 0;
+  %tmp_i64 = %j as i64;
+  %tmp_f32 = %j as f32;
+  br %j < 4, ^inner_body, ^outer_step;
+^inner_body:
+  %v = %m[%i][%j];
+  %add_val = select %j <= %i, %v, 0.0;
+  %row_acc = %row_acc + %add_val;
+  %add_cnt = select %j <= %i, 1, 0;
+  %cnt = %cnt + %add_cnt;
+  br ^inner_step;
+^inner_step:
+  %j = %j + 1;
+  %tmp_i32 = %j + 0;
+  %tmp_i64 = %j as i64;
+  %tmp_f32 = %j as f32;
+  br ^inner_head;
+^outer_step:
+  %st.row_sum[%i] = %row_acc;
+  %total = %total + %row_acc;
+  store %p_tot, %total;
+  %i = %i + 1;
+  %tmp_i32 = %i + 0;
+  br ^head;
+^post:
+  %total = load %p_tot;
+  %st.count = %cnt + 0;
+  %v = %cnt as f64;
+  %mean = %total / %v;
+  %tmp_i32 = %mean as i32;
+  br ^exit;
+^exit:
+  %v = %st.row_sum[3];
+  %tmp_i32 = %st.count + 0;
+  %tmp_i64 = %tmp_i32 as i64;
+  %tmp_f32 = %mean as f32;
+  ret %mean;
+}

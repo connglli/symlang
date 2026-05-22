@@ -1,0 +1,109 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.8012f6p+3
+// Big xval test 02 — Newton iteration for cube root of an i64 input,
+// returned as f32. Different from Horner: ascending loop (no array index),
+// pointer is used to mutate the running estimate, struct holds (iter,
+// estimate) snapshot updated every iteration. Block 3 casts:
+//   i64 -> f64 -> f32 -> i32.
+struct @State02 {
+  iter: i32;
+  est: f64;
+}
+
+fun @main() : f32 {
+  let mut %a: i64 = 1729;
+  let mut %x: f64 = 12.0;
+  let mut %p_x: ptr f64 = undef;
+  let mut %snap: [8] @State02 = {{0, 0.0}, {0, 0.0}, {0, 0.0}, {0, 0.0}, {0, 0.0}, {0, 0.0}, {0, 0.0}, {0, 0.0}};
+  let mut %k: i32 = 0;
+  let mut %three: f64 = 3.0;
+  let mut %a_f: f64 = 0.0;
+  let mut %x_sq: f64 = 0.0;
+  let mut %numerator: f64 = 0.0;
+  let mut %denom: f64 = 0.0;
+  let mut %step: f64 = 0.0;
+  let mut %tmp_f32: f32 = 0.0;
+  let mut %tmp_i32: i32 = 0;
+  let mut %tmp_f64: f64 = 0.0;
+  let mut %half: i32 = 0;
+  let mut %parity: i32 = 0;
+  let mut %adj: f64 = 0.0;
+^entry:
+  %p_x = addr %x;
+  %x = 12.0;
+  %k = 0;
+  %a_f = %a as f64;
+  store %p_x, %x;
+  %three = 3.0;
+  br ^pre1;
+^pre1:
+  %step = 0.5;
+  %adj = %step + 0.0;
+  %denom = %three + 0.0;
+  %half = 2;
+  %tmp_i32 = %half + 1;
+  %parity = 0;
+  br ^pre2;
+^pre2:
+  %tmp_f64 = %a as f64;
+  %tmp_f32 = %tmp_f64 as f32;
+  %tmp_i32 = %tmp_f32 as i32;
+  %a_f = %tmp_f64 + 0.0;
+  %x = %x + 0.0;
+  %adj = %adj + 0.0;
+  br ^head;
+^head:
+  %parity = %k % %half;
+  %x_sq = %x * %x;
+  %numerator = %x_sq * %x;
+  %tmp_i32 = %k + 0;
+  %adj = 0.5 * %adj;
+  br %k < 6, ^body_a, ^post;
+^body_a:
+  %tmp_f64 = %x_sq * %three;
+  %denom = %tmp_f64 + 0.0;
+  %numerator = %a_f - %numerator;
+  %step = %numerator / %denom;
+  %tmp_f32 = %x as f32;
+  br %parity == 0, ^body_b, ^body_c;
+^body_b:
+  %x = %x + %step;
+  %snap[%k].iter = %k;
+  %snap[%k].est = %x;
+  store %p_x, %x;
+  %tmp_i32 = %k as i32;
+  %adj = %adj + 0.0;
+  br ^body_d;
+^body_c:
+  %tmp_f64 = 0.5 * %step;
+  %x = %x + %tmp_f64;
+  %snap[%k].iter = %k;
+  %snap[%k].est = %x;
+  store %p_x, %x;
+  %parity = 0;
+  br ^body_d;
+^body_d:
+  %k = %k + 1;
+  %tmp_f64 = load %p_x;
+  %x = %tmp_f64 + 0.0;
+  %tmp_f32 = %adj as f32;
+  %adj = %tmp_f32 as f64;
+  %parity = %parity + 0;
+  br ^head;
+^post:
+  %tmp_f64 = load %p_x;
+  %x = %tmp_f64 + 0.0;
+  %tmp_f32 = %x as f32;
+  %tmp_f64 = %tmp_f32 as f64;
+  %x = %tmp_f64 + 0.0;
+  %adj = %adj + 0.0;
+  br ^exit;
+^exit:
+  %tmp_f32 = %x as f32;
+  %tmp_f64 = %snap[0].est + 0.0;
+  %tmp_f32 = %tmp_f32 + 0.0;
+  %tmp_i32 = %k as i32;
+  %adj = %tmp_i32 as f64;
+  %tmp_f32 = %tmp_f32 + 0.0;
+  ret %tmp_f32;
+}

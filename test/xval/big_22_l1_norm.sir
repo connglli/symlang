@@ -1,0 +1,106 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.6cp+4
+// Big xval test 22 — L1 norm (sum of absolute values) over a 3x4 f64
+// matrix, with abs implemented via select on sign. Result accumulated in
+// f32 via narrowing cast. Nested struct {row_abs:[3]f64, total:f32}.
+// Block 3 casts:  f64 -> i32 -> f32 -> i64.
+struct @Norm22 {
+  row_abs: [3] f64;
+  total: f32;
+}
+
+fun @main() : f32 {
+  let mut %m: [3] [4] f64 = {{-1.5, 2.5, -3.0, 0.5}, {4.0, -1.0, 2.0, -0.25}, {-0.75, 1.25, -2.5, 3.5}};
+  let mut %st: @Norm22 = {{0.0, 0.0, 0.0}, 0.0};
+  let mut %total_f64: f64 = 0.0;
+  let mut %p_total: ptr f64 = undef;
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %vd: f64 = 0.0;
+  let mut %abs_d: f64 = 0.0;
+  let mut %row_sum: f64 = 0.0;
+  let mut %tmp_i32: i32 = 0;
+  let mut %tmp_f32: f32 = 0.0;
+  let mut %tmp_i64: i64 = 0;
+  let mut %tmp_f64: f64 = 0.0;
+^entry:
+  %total_f64 = 0.0;
+  %p_total = addr %total_f64;
+  %i = 0;
+  %j = 0;
+  store %p_total, %total_f64;
+  %row_sum = 0.0;
+  br ^pre1;
+^pre1:
+  %vd = 1.5;
+  %tmp_i32 = %vd as i32;
+  %tmp_f32 = %tmp_i32 as f32;
+  %tmp_i64 = %tmp_f32 as i64;
+  %row_sum = 0.0;
+  %abs_d = 0.0;
+  br ^pre2;
+^pre2:
+  %vd = 0.25;
+  %tmp_i32 = %vd as i32;
+  %tmp_f32 = %tmp_i32 as f32;
+  %tmp_i64 = %tmp_f32 as i64;
+  %abs_d = %tmp_f32 as f64;
+  %row_sum = 0.0;
+  br ^head;
+^head:
+  %row_sum = 0.0;
+  %j = 0;
+  %vd = 0.0;
+  %tmp_i32 = %i + 0;
+  %tmp_i64 = %i as i64;
+  %tmp_f32 = %i as f32;
+  br %i < 3, ^inner_head, ^post;
+^inner_head:
+  %vd = 0.0;
+  %abs_d = 0.0;
+  %tmp_i32 = %j + 0;
+  %tmp_i64 = %j as i64;
+  %tmp_f32 = %j as f32;
+  %row_sum = %row_sum + 0.0;
+  br %j < 4, ^inner_body, ^outer_step;
+^inner_body:
+  %vd = %m[%i][%j];
+  %tmp_f64 = -1.0 * %vd;
+  %abs_d = select %vd < 0.0, %tmp_f64, %vd;
+  %row_sum = %row_sum + %abs_d;
+  %total_f64 = %total_f64 + %abs_d;
+  store %p_total, %total_f64;
+  br ^inner_step;
+^inner_step:
+  %j = %j + 1;
+  %tmp_f64 = load %p_total;
+  %total_f64 = %tmp_f64 + 0.0;
+  %tmp_i32 = %j + 0;
+  %tmp_i64 = %j as i64;
+  %tmp_f32 = %j as f32;
+  br ^inner_head;
+^outer_step:
+  %st.row_abs[%i] = %row_sum;
+  %i = %i + 1;
+  %tmp_f64 = load %p_total;
+  %total_f64 = %tmp_f64 + 0.0;
+  %tmp_f32 = %total_f64 as f32;
+  %tmp_i64 = %total_f64 as i64;
+  br ^head;
+^post:
+  %tmp_f64 = load %p_total;
+  %total_f64 = %tmp_f64 + 0.0;
+  %st.total = %total_f64 as f32;
+  %tmp_f32 = %st.total + 0.0;
+  %tmp_i32 = %st.total as i32;
+  %tmp_i64 = %tmp_i32 as i64;
+  br ^exit;
+^exit:
+  %tmp_f32 = %st.total + 0.0;
+  %tmp_f64 = %st.total as f64;
+  %tmp_i32 = %tmp_f32 as i32;
+  %tmp_i64 = %tmp_i32 as i64;
+  %vd = %st.row_abs[0];
+  %row_sum = %st.row_abs[2];
+  ret %tmp_f32;
+}

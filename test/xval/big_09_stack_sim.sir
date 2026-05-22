@@ -1,0 +1,107 @@
+// EXPECT: PASS
+// EXPECT_RC: 90
+// Big xval test 09 — Simulate a fixed-capacity stack of i32 backed by an
+// array. Each iteration either pushes or pops based on the parity of a
+// running counter; the loop tracks max depth and sum-on-pop. Returns the
+// sum of all popped values as i32. Block 3 casts:
+//   i32 -> i64 -> f32 -> i32.
+struct @StackHdr09 {
+  top: i32;
+  cap: i32;
+}
+
+fun @main() : i32 {
+  let mut %buf: [16] i32 = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+  let mut %hdr: @StackHdr09 = {0, 16};
+  let mut %p_top: ptr i32 = undef;
+  let mut %i: i32 = 0;
+  let mut %step: i32 = 0;
+  let mut %popped: i32 = 0;
+  let mut %sum_pop: i32 = 0;
+  let mut %max_depth: i32 = 0;
+  let mut %tmp_i32: i32 = 0;
+  let mut %tmp_i64: i64 = 0;
+  let mut %tmp_f32: f32 = 0.0;
+  let mut %parity: i32 = 0;
+  let mut %two: i32 = 2;
+^entry:
+  %p_top = addr %hdr.top;
+  %i = 0;
+  %sum_pop = 0;
+  %max_depth = 0;
+  %step = 1;
+  %two = 2;
+  br ^pre1;
+^pre1:
+  %tmp_i32 = %hdr.cap + 0;
+  %tmp_i64 = %tmp_i32 as i64;
+  store %p_top, %hdr.top;
+  %parity = 0;
+  %popped = 0;
+  %tmp_f32 = 0.0;
+  br ^pre2;
+^pre2:
+  %tmp_i32 = %hdr.top + 0;
+  %tmp_i64 = %tmp_i32 as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %tmp_i32 = %tmp_f32 as i32;
+  %step = %tmp_i32 + 1;
+  %parity = 0;
+  br ^head;
+^head:
+  %parity = %i % %two;
+  %tmp_i32 = %i + 1;
+  %step = %tmp_i32 + 0;
+  %tmp_i64 = %i as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %popped = 0;
+  br %i < 12, ^body_a, ^post;
+^body_a:
+  %tmp_i32 = %hdr.top + 0;
+  %tmp_i64 = %step as i64;
+  %popped = 0;
+  %tmp_f32 = %tmp_i64 as f32;
+  %parity = %i % %two;
+  %step = 3 * %i;
+  br %parity == 0, ^body_b, ^body_c;
+^body_b:
+  %tmp_i32 = %hdr.top + 0;
+  %buf[%tmp_i32] = %step;
+  %hdr.top = %hdr.top + 1;
+  store %p_top, %hdr.top;
+  %popped = 0;
+  %tmp_f32 = %hdr.top as f32;
+  br ^body_d;
+^body_c:
+  %hdr.top = %hdr.top - 1;
+  %tmp_i32 = %hdr.top + 0;
+  %popped = %buf[%tmp_i32];
+  %sum_pop = %sum_pop + %popped;
+  store %p_top, %hdr.top;
+  %tmp_f32 = %popped as f32;
+  br ^body_d;
+^body_d:
+  %i = %i + 1;
+  %tmp_i32 = load %p_top;
+  %hdr.top = %tmp_i32 + 0;
+  %tmp_i64 = %hdr.top as i64;
+  %parity = 0;
+  %popped = 0;
+  br ^head;
+^post:
+  %tmp_i32 = load %p_top;
+  %hdr.top = %tmp_i32 + 0;
+  %tmp_i64 = %hdr.top as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %max_depth = %tmp_i32 + 0;
+  %parity = 0;
+  br ^exit;
+^exit:
+  %tmp_i32 = %sum_pop + 0;
+  %tmp_i64 = %tmp_i32 as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %max_depth = %hdr.top + 0;
+  %popped = %max_depth + 0;
+  %step = 0;
+  ret %tmp_i32;
+}

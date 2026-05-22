@@ -1,0 +1,108 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.853d3p+7
+// Big xval test 10 — Power via repeated squaring on f64 base, with i32
+// exponent extracted bit-by-bit. Loop iterates over the bits of the
+// exponent (5 iterations for exp=20). Each iter conditionally multiplies
+// the running result by the current base-power. Block 3 casts:
+//   f64 -> f32 -> i32 -> f64.
+struct @State10 {
+  bit_idx: i32;
+  base_pow: f64;
+}
+
+fun @main() : f64 {
+  let mut %states: [6] @State10 = {{0,1.0},{0,1.0},{0,1.0},{0,1.0},{0,1.0},{0,1.0}};
+  let mut %base: f64 = 1.5;
+  let mut %exp: i32 = 13;
+  let mut %result: f64 = 1.0;
+  let mut %p_result: ptr f64 = undef;
+  let mut %cur_pow: f64 = 0.0;
+  let mut %i: i32 = 0;
+  let mut %bit: i32 = 0;
+  let mut %tmp_i32: i32 = 0;
+  let mut %tmp_f32: f32 = 0.0;
+  let mut %tmp_f64: f64 = 0.0;
+  let mut %two: i32 = 2;
+  let mut %prev_exp: i32 = 0;
+  let mut %used_iters: i32 = 0;
+^entry:
+  %result = 1.0;
+  %p_result = addr %result;
+  %i = 0;
+  %two = 2;
+  %cur_pow = %base + 0.0;
+  %used_iters = 0;
+  br ^pre1;
+^pre1:
+  %prev_exp = %exp + 0;
+  %tmp_i32 = %prev_exp + 0;
+  %tmp_f32 = %base as f32;
+  store %p_result, %result;
+  %bit = 0;
+  %tmp_f64 = %tmp_f32 as f64;
+  br ^pre2;
+^pre2:
+  %tmp_f64 = %base + 0.0;
+  %tmp_f32 = %tmp_f64 as f32;
+  %tmp_i32 = %tmp_f32 as i32;
+  %tmp_f64 = %tmp_i32 as f64;
+  %cur_pow = %base + 0.0;
+  %prev_exp = %exp + 0;
+  br ^head;
+^head:
+  %bit = %exp % %two;
+  %tmp_i32 = %i + 0;
+  %tmp_f64 = %cur_pow + 0.0;
+  %tmp_f32 = %cur_pow as f32;
+  %prev_exp = %exp + 0;
+  %used_iters = %i + 0;
+  br %exp > 0, ^body_a, ^post;
+^body_a:
+  %states[%i].bit_idx = %bit;
+  %states[%i].base_pow = %cur_pow;
+  %tmp_f32 = %cur_pow as f32;
+  %tmp_f64 = %tmp_f32 as f64;
+  %tmp_i32 = %exp + 0;
+  %prev_exp = %tmp_i32 + 0;
+  br %bit == 1, ^body_b, ^body_c;
+^body_b:
+  %result = %result * %cur_pow;
+  store %p_result, %result;
+  %tmp_f64 = %result + 0.0;
+  %tmp_f32 = %tmp_f64 as f32;
+  %used_iters = %used_iters + 1;
+  %prev_exp = %exp + 0;
+  br ^body_d;
+^body_c:
+  %tmp_f64 = %result + 0.0;
+  %tmp_f32 = %tmp_f64 as f32;
+  %prev_exp = %exp + 0;
+  %used_iters = %used_iters + 0;
+  %bit = 0;
+  %tmp_i32 = %exp + 0;
+  br ^body_d;
+^body_d:
+  %cur_pow = %cur_pow * %cur_pow;
+  %exp = %exp / %two;
+  %i = %i + 1;
+  %tmp_f64 = load %p_result;
+  %result = %tmp_f64 + 0.0;
+  %tmp_i32 = %exp + 0;
+  br ^head;
+^post:
+  %tmp_f64 = load %p_result;
+  %result = %tmp_f64 + 0.0;
+  %tmp_f32 = %result as f32;
+  %tmp_i32 = %used_iters + 0;
+  %tmp_f64 = %tmp_i32 as f64;
+  %cur_pow = %cur_pow + 0.0;
+  br ^exit;
+^exit:
+  %tmp_f64 = %states[0].base_pow + 0.0;
+  %result = %result + 0.0;
+  %tmp_f32 = %result as f32;
+  %tmp_i32 = %used_iters + 0;
+  %prev_exp = %tmp_i32 + 0;
+  %bit = 0;
+  ret %result;
+}

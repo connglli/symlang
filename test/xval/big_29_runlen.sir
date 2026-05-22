@@ -1,0 +1,97 @@
+// EXPECT: PASS
+// EXPECT_RC: 8
+// Big xval test 29 — Run-length count: scan a 3x6 i32 matrix in
+// row-major order and count the number of value-change events.
+// Nested struct {row_runs:[3]i32, total_runs:i32}. Block 3 casts:
+//   i32 -> i64 -> f32 -> i16.
+struct @Runs29 {
+  row_runs: [3] i32;
+  total_runs: i32;
+}
+
+fun @main() : i32 {
+  let mut %m: [3] [6] i32 = {{1, 1, 2, 2, 2, 3}, {3, 3, 3, 4, 5, 5}, {5, 6, 6, 6, 7, 8}};
+  let mut %st: @Runs29 = {{0, 0, 0}, 0};
+  let mut %running: i32 = 0;
+  let mut %p_run: ptr i32 = undef;
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %prev: i32 = -2147483648;
+  let mut %cur: i32 = 0;
+  let mut %row_cnt: i32 = 0;
+  let mut %inc: i32 = 0;
+  let mut %tmp_i64: i64 = 0;
+  let mut %tmp_f32: f32 = 0.0;
+  let mut %tmp_i16: i16 = 0;
+^entry:
+  %running = 0;
+  %p_run = addr %running;
+  %i = 0;
+  %j = 0;
+  store %p_run, %running;
+  %prev = -2147483648;
+  br ^pre1;
+^pre1:
+  %cur = 10;
+  %tmp_i64 = %cur as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %tmp_i16 = %tmp_f32 as i16;
+  %inc = 0;
+  br ^pre2;
+^pre2:
+  %cur = -5;
+  %tmp_i64 = %cur as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %tmp_i16 = %tmp_f32 as i16;
+  %inc = 0;
+  br ^head;
+^head:
+  %j = 0;
+  %row_cnt = 0;
+  %cur = 0;
+  %inc = 0;
+  %tmp_i64 = %i as i64;
+  br %i < 3, ^inner_head, ^post;
+^inner_head:
+  %cur = 0;
+  %inc = 0;
+  %tmp_i64 = %j as i64;
+  %tmp_f32 = %j as f32;
+  %tmp_i16 = %j as i16;
+  br %j < 6, ^inner_body, ^outer_step;
+^inner_body:
+  %cur = %m[%i][%j];
+  %inc = select %cur != %prev, 1, 0;
+  %row_cnt = %row_cnt + %inc;
+  %running = %running + %inc;
+  %prev = %cur + 0;
+  store %p_run, %running;
+  br ^inner_step;
+^inner_step:
+  %j = %j + 1;
+  %tmp_i64 = %j as i64;
+  %tmp_f32 = %j as f32;
+  %tmp_i16 = %j as i16;
+  br ^inner_head;
+^outer_step:
+  %st.row_runs[%i] = %row_cnt;
+  %i = %i + 1;
+  %tmp_i64 = %i as i64;
+  %tmp_f32 = %row_cnt as f32;
+  br ^head;
+^post:
+  %running = load %p_run;
+  %st.total_runs = %running + 0;
+  %tmp_i64 = %running as i64;
+  %tmp_f32 = %running as f32;
+  %tmp_i16 = %tmp_f32 as i16;
+  br ^exit;
+^exit:
+  %running = %st.total_runs + 0;
+  %tmp_i64 = %running as i64;
+  %tmp_f32 = %running as f32;
+  %tmp_i16 = %tmp_f32 as i16;
+  %cur = %st.row_runs[2];
+  %prev = %m[2][5];
+  ret %running;
+}

@@ -1,0 +1,98 @@
+// EXPECT: PASS
+// EXPECT_RC: 63
+// Big xval test 31 — Walk a 4x3 i32 matrix in-place clamping each entry
+// to [0, 10] via select; accumulate sum of clamped values into i64.
+// Nested struct {clamped_sum:[4]i64, grand:i64}. Block 3 casts:
+//   i32 -> f64 -> f32 -> i64.
+struct @Clamp31 {
+  clamped_sum: [4] i64;
+  grand: i64;
+}
+
+fun @main() : i64 {
+  let mut %m: [4] [3] i32 = {{-5, 12, 3}, {15, -1, 7}, {0, 25, -100}, {4, 9, 11}};
+  let mut %st: @Clamp31 = {{0, 0, 0, 0}, 0};
+  let mut %grand: i64 = 0;
+  let mut %p_g: ptr i64 = undef;
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %v: i32 = 0;
+  let mut %clamped: i32 = 0;
+  let mut %step1: i32 = 0;
+  let mut %row_sum: i64 = 0;
+  let mut %tmp_f64: f64 = 0.0;
+  let mut %tmp_f32: f32 = 0.0;
+  let mut %tmp_i64: i64 = 0;
+^entry:
+  %grand = 0;
+  %p_g = addr %grand;
+  %i = 0;
+  %j = 0;
+  store %p_g, %grand;
+  %clamped = 0;
+  br ^pre1;
+^pre1:
+  %v = 99;
+  %tmp_f64 = %v as f64;
+  %tmp_f32 = %tmp_f64 as f32;
+  %tmp_i64 = %tmp_f32 as i64;
+  %step1 = 0;
+  br ^pre2;
+^pre2:
+  %v = -77;
+  %tmp_f64 = %v as f64;
+  %tmp_f32 = %tmp_f64 as f32;
+  %tmp_i64 = %tmp_f32 as i64;
+  %step1 = 0;
+  br ^head;
+^head:
+  %j = 0;
+  %row_sum = 0;
+  %v = 0;
+  %step1 = 0;
+  %clamped = 0;
+  %tmp_i64 = %i as i64;
+  br %i < 4, ^inner_head, ^post;
+^inner_head:
+  %v = 0;
+  %step1 = 0;
+  %clamped = 0;
+  %tmp_i64 = %j as i64;
+  %tmp_f64 = %j as f64;
+  br %j < 3, ^inner_body, ^outer_step;
+^inner_body:
+  %v = %m[%i][%j];
+  %step1 = select %v < 0, 0, %v;
+  %clamped = select %step1 > 10, 10, %step1;
+  %m[%i][%j] = %clamped;
+  %tmp_i64 = %clamped as i64;
+  %row_sum = %row_sum + %tmp_i64;
+  br ^inner_step;
+^inner_step:
+  %j = %j + 1;
+  %tmp_i64 = %j as i64;
+  %tmp_f64 = %j as f64;
+  %tmp_f32 = %j as f32;
+  br ^inner_head;
+^outer_step:
+  %st.clamped_sum[%i] = %row_sum;
+  %grand = %grand + %row_sum;
+  store %p_g, %grand;
+  %i = %i + 1;
+  %tmp_i64 = %i as i64;
+  br ^head;
+^post:
+  %grand = load %p_g;
+  %st.grand = %grand + 0;
+  %tmp_f64 = %grand as f64;
+  %tmp_f32 = %tmp_f64 as f32;
+  %v = %grand as i32;
+  br ^exit;
+^exit:
+  %grand = %st.grand + 0;
+  %tmp_f64 = %grand as f64;
+  %tmp_f32 = %tmp_f64 as f32;
+  %v = %m[2][2];
+  %clamped = %st.clamped_sum[0] as i32;
+  ret %grand;
+}

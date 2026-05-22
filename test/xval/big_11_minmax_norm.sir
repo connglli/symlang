@@ -1,0 +1,108 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.dp+4
+// Big xval test 11 — Min-max scan over an i32 array, accumulating
+// normalized f32 values into a struct-of-arrays. Returns the sum of
+// normalized values as f64. Block 3 casts:
+//   i64 -> f32 -> f64 -> i64.
+struct @MM11 {
+  lo: i32;
+  hi: i32;
+  span: i32;
+}
+
+fun @main() : f64 {
+  let mut %a: [6] i32 = {7, -3, 12, 5, -1, 9};
+  let mut %normd: [6] f32 = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  let mut %mm: @MM11 = {99999, -99999, 0};
+  let mut %p_lo: ptr i32 = undef;
+  let mut %sum: f64 = 0.0;
+  let mut %i: i32 = 0;
+  let mut %vi: i32 = 0;
+  let mut %vd: f64 = 0.0;
+  let mut %scale: f32 = 0.0;
+  let mut %tmp_i64: i64 = 0;
+  let mut %tmp_f32: f32 = 0.0;
+  let mut %tmp_f64: f64 = 0.0;
+  let mut %parity: i32 = 0;
+  let mut %two: i32 = 2;
+^entry:
+  %mm.lo = 99999;
+  %mm.hi = -99999;
+  %mm.span = 0;
+  %p_lo = addr %mm.lo;
+  %i = 0;
+  %two = 2;
+  br ^pre1;
+^pre1:
+  %sum = 0.0;
+  %tmp_i64 = %mm.lo as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %tmp_f64 = %tmp_f32 as f64;
+  %scale = %tmp_f32 + 0.0;
+  %parity = 0;
+  br ^pre2;
+^pre2:
+  %tmp_i64 = 123456789;
+  %tmp_f32 = %tmp_i64 as f32;
+  %tmp_f64 = %tmp_f32 as f64;
+  %tmp_i64 = %tmp_f64 as i64;
+  %parity = 0;
+  %scale = %scale + 0.0;
+  br ^head;
+^head:
+  %vi = 0;
+  %tmp_i64 = %i as i64;
+  %tmp_f32 = %scale + 0.0;
+  %tmp_f64 = %sum + 0.0;
+  %parity = %i % %two;
+  %vd = 0.0;
+  br %i < 6, ^body_a, ^post;
+^body_a:
+  %vi = %a[%i];
+  %tmp_i64 = %vi as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %tmp_f64 = %tmp_f32 as f64;
+  %vd = %tmp_f64 + 0.0;
+  %parity = %vi % %two;
+  br %vi < %mm.lo, ^body_b, ^body_c;
+^body_b:
+  store %p_lo, %vi;
+  %mm.lo = %vi + 0;
+  %tmp_i64 = %vi as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %tmp_f64 = %tmp_f32 as f64;
+  %sum = %sum + %tmp_f64;
+  br ^body_d;
+^body_c:
+  %tmp_i64 = %vi as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %tmp_f64 = %tmp_f32 as f64;
+  %sum = %sum + %tmp_f64;
+  %parity = 0;
+  %normd[%i] = %tmp_f32;
+  br ^body_d;
+^body_d:
+  %i = %i + 1;
+  %vi = load %p_lo; %tmp_i64 = %vi as i64;
+  %mm.lo = %tmp_i64 as i32;
+  %tmp_f32 = %sum as f32;
+  %parity = 0;
+  %tmp_f64 = %tmp_f32 as f64;
+  br ^head;
+^post:
+  %vi = load %p_lo; %tmp_i64 = %vi as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %tmp_f64 = %sum + 0.0;
+  %scale = %tmp_f32 + 0.0;
+  %parity = 0;
+  %vi = %mm.lo + 0;
+  br ^exit;
+^exit:
+  %tmp_f64 = %sum + 0.0;
+  %tmp_i64 = %sum as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %vd = %tmp_f64 + 0.0;
+  %scale = %scale + 0.0;
+  %parity = 0;
+  ret %tmp_f64;
+}

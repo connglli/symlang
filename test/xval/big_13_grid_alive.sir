@@ -1,0 +1,109 @@
+// EXPECT: PASS
+// EXPECT_RC: 9
+// Big xval test 13 — Count "alive" cells in a 4x4 i8 grid where alive means
+// the cell, cast to f32, exceeds a per-row threshold stored in a nested
+// struct {thresholds:[4]f32, total_alive:i64}. 5-block nested loop:
+//   head (outer i) -> inner_head (j) -> inner_body -> inner_step -> outer_step.
+// Block 3 casts: i8 -> i16 -> f32 -> i32.
+struct @Cfg13 {
+  thresholds: [4] f32;
+  total_alive: i64;
+}
+
+fun @main() : i64 {
+  let mut %grid: [4] [4] i8 = {{2,5,1,8},{3,7,6,2},{9,1,4,5},{0,8,3,6}};
+  let mut %cfg: @Cfg13 = {{3.0, 4.5, 2.0, 5.5}, 0};
+  let mut %running: i64 = 0;
+  let mut %p_running: ptr i64 = undef;
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %cell: i8 = 0;
+  let mut %cell_f32: f32 = 0.0;
+  let mut %thr: f32 = 0.0;
+  let mut %tmp_i16: i16 = 0;
+  let mut %tmp_i32: i32 = 0;
+  let mut %tmp_f32: f32 = 0.0;
+  let mut %tmp_i64: i64 = 0;
+^entry:
+  %running = 0;
+  %p_running = addr %running;
+  %i = 0;
+  %j = 0;
+  store %p_running, %running;
+  %tmp_f32 = 0.0;
+  br ^pre1;
+^pre1:
+  %tmp_i32 = %i + 0;
+  %tmp_i16 = %tmp_i32 as i16;
+  %tmp_f32 = %tmp_i16 as f32;
+  %thr = %tmp_f32 + 0.0;
+  %j = 0;
+  %tmp_i64 = %tmp_i32 as i64;
+  br ^pre2;
+^pre2:
+  %cell = 7;
+  %tmp_i16 = %cell as i16;
+  %tmp_f32 = %tmp_i16 as f32;
+  %tmp_i32 = %tmp_f32 as i32;
+  %thr = %tmp_f32 + 0.0;
+  %j = 0;
+  br ^head;
+^head:
+  %j = 0;
+  %tmp_i32 = %i + 0;
+  %tmp_i16 = %i as i16;
+  %tmp_f32 = %thr + 0.0;
+  %tmp_i64 = %running + 0;
+  %cell = 0;
+  br %i < 4, ^inner_head, ^post;
+^inner_head:
+  %thr = %cfg.thresholds[%i];
+  %cell = 0;
+  %cell_f32 = 0.0;
+  %tmp_i32 = %j + 0;
+  %tmp_i16 = %j as i16;
+  %tmp_f32 = %thr + 0.0;
+  br %j < 4, ^inner_body, ^outer_step;
+^inner_body:
+  %cell = %grid[%i][%j];
+  %tmp_i16 = %cell as i16;
+  %tmp_f32 = %tmp_i16 as f32;
+  %cell_f32 = %tmp_f32 + 0.0;
+  %tmp_i32 = select %cell_f32 > %thr, 1, 0;
+  %tmp_i64 = %tmp_i32 as i64;
+  %running = %running + %tmp_i64;
+  store %p_running, %running;
+  br ^inner_step;
+^inner_step:
+  %j = %j + 1;
+  %tmp_i64 = load %p_running;
+  %running = %tmp_i64 + 0;
+  %tmp_i32 = %j + 0;
+  %tmp_i16 = %j as i16;
+  %tmp_f32 = %tmp_i16 as f32;
+  br ^inner_head;
+^outer_step:
+  %i = %i + 1;
+  %tmp_i64 = load %p_running;
+  %running = %tmp_i64 + 0;
+  %tmp_i32 = %i + 0;
+  %tmp_i16 = %i as i16;
+  %tmp_f32 = %tmp_i16 as f32;
+  br ^head;
+^post:
+  %tmp_i64 = load %p_running;
+  %cfg.total_alive = %tmp_i64 + 0;
+  %tmp_i32 = %tmp_i64 as i32;
+  %tmp_i16 = %tmp_i32 as i16;
+  %tmp_f32 = %tmp_i16 as f32;
+  %thr = %tmp_f32 + 0.0;
+  br ^exit;
+^exit:
+  %tmp_i32 = %cfg.total_alive as i32;
+  %tmp_i16 = %tmp_i32 as i16;
+  %tmp_f32 = %tmp_i16 as f32;
+  %cell = %grid[0][0];
+  %thr = %cfg.thresholds[2];
+  %tmp_i64 = %cfg.total_alive + 0;
+  ret %cfg.total_alive;
+}

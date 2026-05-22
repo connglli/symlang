@@ -1,0 +1,102 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.edp+3
+// Big xval test 32 — Trapezoid integration: for each row of a 3x5 f64
+// matrix (interpreted as y-samples on x=[0,4] with h=1), compute the
+// trapezoidal integral; sum the three integrals as f64.
+// Nested struct {row_int:[3]f64, total:f64}. Block 3 casts:
+//   f64 -> f32 -> i32 -> i64.
+struct @Trap32 {
+  row_int: [3] f64;
+  total: f64;
+}
+
+fun @main() : f64 {
+  let mut %y: [3] [5] f64 = {{1.0, 2.0, 3.0, 4.0, 5.0}, {0.5, 0.5, 0.5, 0.5, 0.5}, {1.0, 0.5, 0.25, 0.125, 0.0625}};
+  let mut %st: @Trap32 = {{0.0, 0.0, 0.0}, 0.0};
+  let mut %total: f64 = 0.0;
+  let mut %p_tot: ptr f64 = undef;
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %a: f64 = 0.0;
+  let mut %b: f64 = 0.0;
+  let mut %row_acc: f64 = 0.0;
+  let mut %seg: f64 = 0.0;
+  let mut %tmp_f32: f32 = 0.0;
+  let mut %tmp_i32: i32 = 0;
+  let mut %tmp_i64: i64 = 0;
+  let mut %j1: i32 = 0;
+^entry:
+  %total = 0.0;
+  %p_tot = addr %total;
+  %i = 0;
+  %j = 0;
+  store %p_tot, %total;
+  %row_acc = 0.0;
+  br ^pre1;
+^pre1:
+  %a = 3.0;
+  %tmp_f32 = %a as f32;
+  %tmp_i32 = %tmp_f32 as i32;
+  %tmp_i64 = %tmp_i32 as i64;
+  %seg = 0.0;
+  br ^pre2;
+^pre2:
+  %a = -4.0;
+  %tmp_f32 = %a as f32;
+  %tmp_i32 = %tmp_f32 as i32;
+  %tmp_i64 = %tmp_i32 as i64;
+  %seg = 0.0;
+  br ^head;
+^head:
+  %j = 0;
+  %row_acc = 0.0;
+  %a = 0.0;
+  %b = 0.0;
+  %seg = 0.0;
+  %tmp_i32 = %i + 0;
+  br %i < 3, ^inner_head, ^post;
+^inner_head:
+  %a = 0.0;
+  %b = 0.0;
+  %seg = 0.0;
+  %j1 = %j + 1;
+  %tmp_i32 = %j + 0;
+  %tmp_i64 = %j as i64;
+  br %j < 4, ^inner_body, ^outer_step;
+^inner_body:
+  %a = %y[%i][%j];
+  %b = %y[%i][%j1];
+  %seg = %a + %b;
+  %seg = 0.5 * %seg;
+  %row_acc = %row_acc + %seg;
+  br ^inner_step;
+^inner_step:
+  %j = %j + 1;
+  %j1 = %j + 1;
+  %tmp_i32 = %j + 0;
+  %tmp_i64 = %j as i64;
+  %tmp_f32 = %j as f32;
+  br ^inner_head;
+^outer_step:
+  %st.row_int[%i] = %row_acc;
+  %total = %total + %row_acc;
+  store %p_tot, %total;
+  %i = %i + 1;
+  %tmp_i32 = %i + 0;
+  br ^head;
+^post:
+  %total = load %p_tot;
+  %st.total = %total + 0.0;
+  %tmp_f32 = %total as f32;
+  %tmp_i32 = %total as i32;
+  %tmp_i64 = %total as i64;
+  br ^exit;
+^exit:
+  %total = %st.total + 0.0;
+  %tmp_f32 = %total as f32;
+  %tmp_i32 = %total as i32;
+  %tmp_i64 = %total as i64;
+  %a = %st.row_int[2];
+  %b = %y[2][4];
+  ret %total;
+}

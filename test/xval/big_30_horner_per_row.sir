@@ -1,0 +1,95 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.b4p+4
+// Big xval test 30 — Evaluate a polynomial via Horner per row of a 3x4
+// f32 coefficient matrix at x=2.0; sum the row values into f64.
+// Nested struct {row_val:[3]f32, total:f64}. Block 3 casts:
+//   f32 -> i64 -> f64 -> i32.
+struct @Horn30 {
+  row_val: [3] f32;
+  total: f64;
+}
+
+fun @main() : f64 {
+  let mut %c: [3] [4] f32 = {{1.0, 2.0, 3.0, 4.0}, {0.5, 0.25, 0.125, 1.0}, {-1.0, 1.0, -1.0, 1.0}};
+  let mut %st: @Horn30 = {{0.0, 0.0, 0.0}, 0.0};
+  let mut %total: f64 = 0.0;
+  let mut %p_tot: ptr f64 = undef;
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %x: f32 = 2.0;
+  let mut %acc: f32 = 0.0;
+  let mut %coef: f32 = 0.0;
+  let mut %tmp_i64: i64 = 0;
+  let mut %tmp_f64: f64 = 0.0;
+  let mut %tmp_i32: i32 = 0;
+  let mut %prod: f32 = 0.0;
+^entry:
+  %total = 0.0;
+  %p_tot = addr %total;
+  %i = 0;
+  %j = 0;
+  store %p_tot, %total;
+  %acc = 0.0;
+  br ^pre1;
+^pre1:
+  %coef = 1.5;
+  %tmp_i64 = %coef as i64;
+  %tmp_f64 = %tmp_i64 as f64;
+  %tmp_i32 = %tmp_f64 as i32;
+  %acc = 0.0;
+  br ^pre2;
+^pre2:
+  %coef = -2.5;
+  %tmp_i64 = %coef as i64;
+  %tmp_f64 = %tmp_i64 as f64;
+  %tmp_i32 = %tmp_f64 as i32;
+  %acc = 0.0;
+  br ^head;
+^head:
+  %j = 0;
+  %acc = 0.0;
+  %coef = 0.0;
+  %prod = 0.0;
+  %tmp_i64 = %i as i64;
+  br %i < 3, ^inner_head, ^post;
+^inner_head:
+  %coef = 0.0;
+  %prod = 0.0;
+  %tmp_i64 = %j as i64;
+  %tmp_f64 = %j as f64;
+  %tmp_i32 = %j + 0;
+  br %j < 4, ^inner_body, ^outer_step;
+^inner_body:
+  %coef = %c[%i][%j];
+  %prod = %acc * %x;
+  %acc = %prod + %coef;
+  br ^inner_step;
+^inner_step:
+  %j = %j + 1;
+  %tmp_i64 = %j as i64;
+  %tmp_f64 = %j as f64;
+  %tmp_i32 = %j + 0;
+  br ^inner_head;
+^outer_step:
+  %st.row_val[%i] = %acc;
+  %tmp_f64 = %acc as f64;
+  %total = %total + %tmp_f64;
+  store %p_tot, %total;
+  %i = %i + 1;
+  %tmp_i64 = %i as i64;
+  br ^head;
+^post:
+  %total = load %p_tot;
+  %st.total = %total + 0.0;
+  %tmp_i64 = %total as i64;
+  %tmp_i32 = %total as i32;
+  %coef = %total as f32;
+  br ^exit;
+^exit:
+  %total = %st.total + 0.0;
+  %tmp_i64 = %total as i64;
+  %tmp_i32 = %total as i32;
+  %coef = %st.row_val[0];
+  %prod = %c[2][3];
+  ret %total;
+}

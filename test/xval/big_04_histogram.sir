@@ -1,0 +1,105 @@
+// EXPECT: PASS
+// EXPECT_RC: 404
+// Big xval test 04 — Two-way histogram of f32 samples vs threshold,
+// returning low-bucket * 100 + high-bucket as i64. Uses struct for the
+// two counters and a pointer to the high counter. Block 3 casts:
+//   f32 -> f64 -> i32 -> i64.
+struct @Buckets04 {
+  lo: i32;
+  hi: i32;
+}
+
+fun @main() : i64 {
+  let mut %samples: [8] f32 = {0.3, 1.7, 2.4, 0.9, 3.5, 0.2, 1.1, 2.8};
+  let mut %b: @Buckets04 = {0, 0};
+  let mut %p_hi: ptr i32 = undef;
+  let mut %i: i32 = 0;
+  let mut %s_f32: f32 = 0.0;
+  let mut %s_f64: f64 = 0.0;
+  let mut %s_int: i32 = 0;
+  let mut %tmp_i64: i64 = 0;
+  let mut %tmp_i8: i8 = 0;
+  let mut %threshold: f64 = 1.5;
+  let mut %hundred: i32 = 100;
+  let mut %running: i32 = 0;
+  let mut %parity: i32 = 0;
+^entry:
+  %p_hi = addr %b.hi;
+  %running = 0;
+  %i = 0;
+  %hundred = 100;
+  %threshold = 1.5;
+  %parity = 0;
+  br ^pre1;
+^pre1:
+  %s_f32 = 0.0;
+  %s_f64 = 0.0;
+  %s_int = 0;
+  %tmp_i64 = %hundred as i64;
+  %parity = %hundred - 1;
+  store %p_hi, %running;
+  br ^pre2;
+^pre2:
+  %s_f32 = 0.5;
+  %s_f64 = %s_f32 as f64;
+  %s_int = %s_f64 as i32;
+  %tmp_i64 = %s_int as i64;
+  %parity = %parity + 0;
+  %running = %running + 0;
+  br ^head;
+^head:
+  %s_f32 = 0.0;
+  %tmp_i64 = %i as i64;
+  %s_f64 = 0.0;
+  %tmp_i8 = %i as i8;
+  %parity = %i + 0;
+  %running = %running + 0;
+  br %i < 8, ^body_a, ^post;
+^body_a:
+  %s_f32 = %samples[%i];
+  %s_f64 = %s_f32 as f64;
+  %tmp_i64 = %i as i64;
+  %tmp_i8 = %parity as i8;
+  %s_int = %s_f64 as i32;
+  br %s_f64 < %threshold, ^body_b, ^body_c;
+^body_b:
+  %b.lo = %b.lo + 1;
+  %tmp_i64 = %b.lo as i64;
+  %s_int = %b.lo + 0;
+  %running = %s_int + 0;
+  %parity = 0;
+  %tmp_i8 = 0;
+  br ^body_d;
+^body_c:
+  %s_int = load %p_hi;
+  %s_int = %s_int + 1;
+  store %p_hi, %s_int;
+  %tmp_i64 = %s_int as i64;
+  %running = %s_int + 0;
+  %parity = 1;
+  br ^body_d;
+^body_d:
+  %i = %i + 1;
+  %tmp_i64 = %i as i64;
+  %running = load %p_hi;
+  %s_int = %running + 0;
+  %parity = 0;
+  %tmp_i8 = 0;
+  br ^head;
+^post:
+  %s_int = load %p_hi;
+  %tmp_i64 = %s_int as i64;
+  %running = %s_int + 0;
+  %parity = %s_int + 0;
+  %tmp_i8 = %s_int as i8;
+  %s_f64 = %tmp_i64 as f64;
+  br ^exit;
+^exit:
+  %tmp_i64 = %b.lo as i64;
+  %s_int = %hundred * %b.lo;
+  %s_int = %s_int + %b.hi;
+  %tmp_i64 = %s_int as i64;
+  %s_f64 = %tmp_i64 as f64;
+  %tmp_i8 = %running as i8;
+  ret %tmp_i64;
+}

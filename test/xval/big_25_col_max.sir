@@ -1,0 +1,91 @@
+// EXPECT: PASS
+// EXPECT_RC: 25
+// Big xval test 25 — Per-column max of a 4x3 i32 matrix; sum the three
+// column maxes. Nested struct {col_max:[3]i32, total:i64}. Block 3 casts:
+//   i32 -> i64 -> f32 -> f64.
+struct @Cols25 {
+  col_max: [3] i32;
+  total: i64;
+}
+
+fun @main() : i64 {
+  let mut %m: [4] [3] i32 = {{3, 9, 1}, {7, 2, 8}, {5, 6, 4}, {0, 10, 2}};
+  let mut %st: @Cols25 = {{0, 0, 0}, 0};
+  let mut %total_i64: i64 = 0;
+  let mut %p_tot: ptr i64 = undef;
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %v: i32 = 0;
+  let mut %cur: i32 = 0;
+  let mut %tmp_i64: i64 = 0;
+  let mut %tmp_f32: f32 = 0.0;
+  let mut %tmp_f64: f64 = 0.0;
+^entry:
+  %total_i64 = 0;
+  %p_tot = addr %total_i64;
+  %i = 0;
+  %j = 0;
+  store %p_tot, %total_i64;
+  %cur = -2147483648;
+  br ^pre1;
+^pre1:
+  %v = 100;
+  %tmp_i64 = %v as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %tmp_f64 = %tmp_f32 as f64;
+  %cur = 0;
+  br ^pre2;
+^pre2:
+  %v = -50;
+  %tmp_i64 = %v as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %tmp_f64 = %tmp_f32 as f64;
+  %cur = 0;
+  br ^head;
+^head:
+  %i = 0;
+  %cur = -2147483648;
+  %v = 0;
+  %tmp_i64 = %j as i64;
+  %tmp_f32 = %j as f32;
+  br %j < 3, ^inner_head, ^post;
+^inner_head:
+  %v = 0;
+  %tmp_i64 = %i as i64;
+  %tmp_f32 = %i as f32;
+  %tmp_f64 = %tmp_f32 as f64;
+  br %i < 4, ^inner_body, ^outer_step;
+^inner_body:
+  %v = %m[%i][%j];
+  %cur = select %v > %cur, %v, %cur;
+  %tmp_i64 = %v as i64;
+  br ^inner_step;
+^inner_step:
+  %i = %i + 1;
+  %tmp_i64 = %i as i64;
+  %tmp_f32 = %i as f32;
+  %tmp_f64 = %tmp_f32 as f64;
+  br ^inner_head;
+^outer_step:
+  %st.col_max[%j] = %cur;
+  %tmp_i64 = %cur as i64;
+  %total_i64 = %total_i64 + %tmp_i64;
+  store %p_tot, %total_i64;
+  %j = %j + 1;
+  %tmp_f32 = %j as f32;
+  br ^head;
+^post:
+  %tmp_i64 = load %p_tot;
+  %st.total = %tmp_i64 + 0;
+  %tmp_f32 = %tmp_i64 as f32;
+  %tmp_f64 = %tmp_f32 as f64;
+  %v = %tmp_i64 as i32;
+  br ^exit;
+^exit:
+  %tmp_i64 = %st.total + 0;
+  %tmp_f32 = %tmp_i64 as f32;
+  %tmp_f64 = %tmp_f32 as f64;
+  %v = %st.col_max[0];
+  %cur = %m[3][1];
+  ret %tmp_i64;
+}

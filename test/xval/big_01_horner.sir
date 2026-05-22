@@ -1,0 +1,108 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.8a8f7bc13d84p+8
+// Big xval test 01 — Horner polynomial evaluation.
+// p(x) = c5*x^5 + c4*x^4 + ... + c0 at x = 1.25; coeffs in an array-of-
+// structs. Index decremented each iter; block 3 cast pattern:
+//   i32 -> i8 -> i16 -> f64.
+struct @Coefs01 {
+  c: f64;
+  rank: i32;
+}
+
+fun @main() : f64 {
+  let mut %arr: [6] @Coefs01 = {{1.5, 0}, {-2.0, 1}, {3.25, 2}, {-0.5, 3}, {0.125, 4}, {2.0, 5}};
+  let mut %x: f64 = 1.25;
+  let mut %acc: f64 = 0.0;
+  let mut %p_acc: ptr f64 = undef;
+  let mut %i: i32 = 5;
+  let mut %ci: f64 = 0.0;
+  let mut %tmp_i8: i8 = 0;
+  let mut %tmp_i16: i16 = 0;
+  let mut %tmp_f64: f64 = 0.0;
+  let mut %rank_chk: i32 = 0;
+  let mut %two: i32 = 2;
+  let mut %rem: i32 = 0;
+  let mut %adj: f64 = 0.0;
+  let mut %step: f64 = 0.0;
+  let mut %neg_one: i32 = 0;
+^entry:
+  %acc = 0.0;
+  %p_acc = addr %acc;
+  %i = 5;
+  %x = 1.25;
+  %neg_one = 0 - 1;
+  %two = 2;
+  br ^pre1;
+^pre1:
+  %adj = 0.125;
+  %step = %adj + 0.0;
+  %tmp_f64 = 0.5 * %x;
+  %acc = %acc + %tmp_f64;
+  %rank_chk = 100;
+  %tmp_i16 = %rank_chk as i16;
+  br ^pre2;
+^pre2:
+  %tmp_i8 = %rank_chk as i8;
+  %tmp_i16 = %tmp_i8 as i16;
+  %tmp_f64 = %tmp_i16 as f64;
+  %acc = %acc + %tmp_f64;
+  %step = 0.0625 * %step;
+  %rem = 0;
+  br ^head;
+^head:
+  store %p_acc, %acc;
+  %tmp_i16 = %i as i16;
+  %tmp_f64 = 0.5 * %step;
+  %step = %tmp_f64 + 0.0;
+  %rem = 0;
+  %adj = %adj + 0.0;
+  br %i >= 0, ^body_a, ^post;
+^body_a:
+  %ci = %arr[%i].c;
+  %rank_chk = %arr[%i].rank;
+  %tmp_f64 = %x * %acc;
+  %acc = %tmp_f64 + %ci;
+  %rem = %rank_chk % %two;
+  %tmp_i8 = %rank_chk as i8;
+  br %rem == 0, ^body_b, ^body_c;
+^body_b:
+  %adj = 0.125 * %ci;
+  %acc = %acc + %adj;
+  %tmp_i16 = %i as i16;
+  %rank_chk = %tmp_i16 as i32;
+  %step = %step + 0.0;
+  %ci = %ci + 0.0;
+  br ^body_d;
+^body_c:
+  %adj = 0.0625 * %ci;
+  %acc = %acc - %adj;
+  %step = %step + 0.0;
+  %rank_chk = %rank_chk + 1;
+  %ci = %ci + 0.0;
+  %rem = %rem + 0;
+  br ^body_d;
+^body_d:
+  %i = %i - 1;
+  %tmp_f64 = 0.0625 * %step;
+  %step = %step + %tmp_f64;
+  store %p_acc, %acc;
+  %ci = %ci + 0.0;
+  %adj = %adj + 0.0;
+  br ^head;
+^post:
+  %tmp_f64 = load %p_acc;
+  %acc = %tmp_f64 + 0.0;
+  %tmp_i16 = %rank_chk as i16;
+  %tmp_f64 = %tmp_i16 as f64;
+  %acc = %acc + %step;
+  %step = %step + 0.0;
+  br ^exit;
+^exit:
+  %tmp_f64 = %neg_one as f64;
+  %acc = %acc + %tmp_f64;
+  %ci = %arr[0].c;
+  %acc = %acc + %ci;
+  %step = %step + 0.0;
+  %adj = %adj + 0.0;
+  ret %acc;
+}

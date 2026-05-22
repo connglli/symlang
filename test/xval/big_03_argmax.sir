@@ -1,0 +1,107 @@
+// EXPECT: PASS
+// EXPECT_RC: 2
+// Big xval test 03 — find argmax of an i64 array, returning the index as
+// i32. Each element is a struct { score: i64; tag: i16 }. Pointer is used
+// to mutate a "best score" cell. Block 3 casts:
+//   i64 -> i32 -> f64 -> i32.  (round-trip via fp + narrow)
+struct @Cand03 {
+  score: i64;
+  tag: i16;
+}
+
+fun @main() : i32 {
+  let mut %arr: [7] @Cand03 = {{30, 1}, {-12, 2}, {85, 3}, {41, 4}, {85, 5}, {-300, 6}, {19, 7}};
+  let mut %best: i64 = -1000000;
+  let mut %p_best: ptr i64 = undef;
+  let mut %argmax: i32 = 0;
+  let mut %i: i32 = 0;
+  let mut %sc: i64 = 0;
+  let mut %tag_v: i16 = 0;
+  let mut %tmp_f64: f64 = 0.0;
+  let mut %tmp_i32: i32 = 0;
+  let mut %tmp_i64: i64 = 0;
+  let mut %tie_breaks: i32 = 0;
+  let mut %parity: i32 = 0;
+  let mut %two: i32 = 2;
+  let mut %bias: i64 = 0;
+^entry:
+  %best = -1000000;
+  %p_best = addr %best;
+  %i = 0;
+  %argmax = -1;
+  %tie_breaks = 0;
+  %two = 2;
+  br ^pre1;
+^pre1:
+  %bias = 4;
+  %tmp_i64 = %bias + 0;
+  %tmp_i32 = %tie_breaks + 0;
+  %parity = 0;
+  store %p_best, %best;
+  %tag_v = 0;
+  br ^pre2;
+^pre2:
+  %tmp_i32 = %bias as i32;
+  %tmp_f64 = %tmp_i32 as f64;
+  %tmp_i32 = %tmp_f64 as i32;
+  %best = %best + 0;
+  %argmax = %tmp_i32 - %tmp_i32;
+  %argmax = %argmax + 0;
+  br ^head;
+^head:
+  %tmp_i32 = %i + 0;
+  store %p_best, %best;
+  %parity = %i % %two;
+  %tie_breaks = %tie_breaks + 0;
+  %bias = %bias + 0;
+  %tmp_i64 = %best + 0;
+  br %i < 7, ^body_a, ^post;
+^body_a:
+  %sc = %arr[%i].score;
+  %tag_v = %arr[%i].tag;
+  %tmp_i64 = load %p_best;
+  %best = %tmp_i64 + 0;
+  %tmp_i32 = %tag_v as i32;
+  %parity = %tmp_i32 % %two;
+  br %sc > %best, ^body_b, ^body_c;
+^body_b:
+  store %p_best, %sc;
+  %best = %sc + 0;
+  %argmax = %i + 0;
+  %tie_breaks = 0;
+  %tmp_i32 = %i + 0;
+  %bias = %bias + 0;
+  br ^body_d;
+^body_c:
+  %tmp_i64 = %sc - %best;
+  %tmp_i32 = %tmp_i64 as i32;
+  %parity = %tie_breaks + 1;
+  %tie_breaks = %parity + 0;
+  %tag_v = %tag_v + 0;
+  %sc = %sc + 0;
+  br ^body_d;
+^body_d:
+  %i = %i + 1;
+  %tmp_i64 = load %p_best;
+  %best = %tmp_i64 + 0;
+  %tmp_i32 = %tie_breaks + 0;
+  %parity = 0;
+  %bias = %bias + 0;
+  br ^head;
+^post:
+  %tmp_i64 = load %p_best;
+  %tmp_i32 = %tmp_i64 as i32;
+  %best = %tmp_i64 + 0;
+  %sc = %arr[%argmax].score;
+  %tag_v = %arr[%argmax].tag;
+  %tie_breaks = %tie_breaks + 0;
+  br ^exit;
+^exit:
+  %tmp_i32 = %argmax + 0;
+  %tmp_i64 = %argmax as i64;
+  %sc = %sc + 0;
+  %tag_v = %tag_v + 0;
+  %bias = %bias + 0;
+  %parity = %tie_breaks + 0;
+  ret %tmp_i32;
+}

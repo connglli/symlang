@@ -1,0 +1,94 @@
+// EXPECT: PASS
+// EXPECT_RC: 622
+// Big xval test 27 — For each entry of a 3x4 i32 matrix, shift right by
+// its row index then accumulate into i64. Nested struct
+// {row_total:[3]i64, grand:i64}. Block 3 casts:
+//   i32 -> i64 -> f32 -> i16.
+struct @Shift27 {
+  row_total: [3] i64;
+  grand: i64;
+}
+
+fun @main() : i64 {
+  let mut %m: [3] [4] i32 = {{16, 32, 64, 128}, {8, 4, 2, 1}, {100, 200, 400, 800}};
+  let mut %st: @Shift27 = {{0, 0, 0}, 0};
+  let mut %total: i64 = 0;
+  let mut %p_tot: ptr i64 = undef;
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %v: i32 = 0;
+  let mut %shifted: i32 = 0;
+  let mut %row_acc: i64 = 0;
+  let mut %tmp_i64: i64 = 0;
+  let mut %tmp_f32: f32 = 0.0;
+  let mut %tmp_i16: i16 = 0;
+^entry:
+  %total = 0;
+  %p_tot = addr %total;
+  %i = 0;
+  %j = 0;
+  store %p_tot, %total;
+  %row_acc = 0;
+  br ^pre1;
+^pre1:
+  %v = 256;
+  %tmp_i64 = %v as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %tmp_i16 = %tmp_f32 as i16;
+  %shifted = 0;
+  br ^pre2;
+^pre2:
+  %v = -16;
+  %tmp_i64 = %v as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %tmp_i16 = %tmp_f32 as i16;
+  %shifted = 0;
+  br ^head;
+^head:
+  %j = 0;
+  %row_acc = 0;
+  %v = 0;
+  %tmp_i64 = %i as i64;
+  %tmp_f32 = %i as f32;
+  br %i < 3, ^inner_head, ^post;
+^inner_head:
+  %v = 0;
+  %shifted = 0;
+  %tmp_i64 = %j as i64;
+  %tmp_f32 = %j as f32;
+  %tmp_i16 = %j as i16;
+  br %j < 4, ^inner_body, ^outer_step;
+^inner_body:
+  %v = %m[%i][%j];
+  %shifted = %v >> %i;
+  %tmp_i64 = %shifted as i64;
+  %row_acc = %row_acc + %tmp_i64;
+  br ^inner_step;
+^inner_step:
+  %j = %j + 1;
+  %tmp_i64 = %j as i64;
+  %tmp_f32 = %j as f32;
+  %tmp_i16 = %j as i16;
+  br ^inner_head;
+^outer_step:
+  %st.row_total[%i] = %row_acc;
+  %total = %total + %row_acc;
+  store %p_tot, %total;
+  %i = %i + 1;
+  %tmp_f32 = %total as f32;
+  br ^head;
+^post:
+  %total = load %p_tot;
+  %st.grand = %total + 0;
+  %tmp_f32 = %total as f32;
+  %tmp_i16 = %tmp_f32 as i16;
+  %v = %tmp_i16 as i32;
+  br ^exit;
+^exit:
+  %tmp_i64 = %st.grand + 0;
+  %tmp_f32 = %tmp_i64 as f32;
+  %tmp_i16 = %tmp_f32 as i16;
+  %v = %st.row_total[2] as i32;
+  %shifted = %m[2][3];
+  ret %tmp_i64;
+}

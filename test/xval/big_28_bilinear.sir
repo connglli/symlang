@@ -1,0 +1,124 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.3cp+3
+// Big xval test 28 — Sample a 3x3 f64 grid at fractional positions using
+// bilinear interpolation; sum the samples. Nested struct
+// {samples:[3]f64, total:f64}. Block 3 casts:
+//   f64 -> f32 -> i32 -> i64.
+struct @BL28 {
+  samples: [3] f64;
+  total: f64;
+}
+
+fun @main() : f64 {
+  let mut %g: [3] [3] f64 = {{0.0, 1.0, 2.0}, {1.0, 2.0, 4.0}, {2.0, 4.0, 8.0}};
+  let mut %frac: [3] f64 = {0.25, 0.5, 0.75};
+  let mut %st: @BL28 = {{0.0, 0.0, 0.0}, 0.0};
+  let mut %total: f64 = 0.0;
+  let mut %p_tot: ptr f64 = undef;
+  let mut %k: i32 = 0;
+  let mut %s: i32 = 0;
+  let mut %t: f64 = 0.0;
+  let mut %a: f64 = 0.0;
+  let mut %b: f64 = 0.0;
+  let mut %c: f64 = 0.0;
+  let mut %d: f64 = 0.0;
+  let mut %ab: f64 = 0.0;
+  let mut %cd: f64 = 0.0;
+  let mut %sample: f64 = 0.0;
+  let mut %tmp_f32: f32 = 0.0;
+  let mut %tmp_i32: i32 = 0;
+  let mut %tmp_i64: i64 = 0;
+  let mut %one_minus_t: f64 = 0.0;
+  let mut %s1: i32 = 0;
+  let mut %prod_tb: f64 = 0.0;
+  let mut %prod_td: f64 = 0.0;
+  let mut %prod_tcd: f64 = 0.0;
+^entry:
+  %total = 0.0;
+  %p_tot = addr %total;
+  %k = 0;
+  store %p_tot, %total;
+  %sample = 0.0;
+  br ^pre1;
+^pre1:
+  %t = 0.5;
+  %tmp_f32 = %t as f32;
+  %tmp_i32 = %tmp_f32 as i32;
+  %tmp_i64 = %tmp_i32 as i64;
+  %a = 0.0;
+  %b = 0.0;
+  br ^pre2;
+^pre2:
+  %t = 1.5;
+  %tmp_f32 = %t as f32;
+  %tmp_i32 = %tmp_f32 as i32;
+  %tmp_i64 = %tmp_i32 as i64;
+  %a = 0.0;
+  %b = 0.0;
+  br ^head;
+^head:
+  %s = 0;
+  %a = 0.0;
+  %b = 0.0;
+  %c = 0.0;
+  %d = 0.0;
+  %tmp_i32 = %k + 0;
+  br %k < 3, ^inner_head, ^post;
+^inner_head:
+  %a = 0.0;
+  %b = 0.0;
+  %c = 0.0;
+  %d = 0.0;
+  %tmp_i32 = %s + 0;
+  %tmp_i64 = %s as i64;
+  %tmp_f32 = %s as f32;
+  br %s < 2, ^inner_body, ^outer_step;
+^inner_body:
+  %s1 = %s + 1;
+  %t = %frac[%k];
+  %a = %g[%s][0];
+  %b = %g[%s][1];
+  %c = %g[%s1][0];
+  %d = %g[%s1][1];
+  %one_minus_t = 1.0 - %t;
+  %ab = %one_minus_t * %a;
+  %prod_tb = %t * %b;
+  %ab = %ab + %prod_tb;
+  %cd = %one_minus_t * %c;
+  %prod_td = %t * %d;
+  %cd = %cd + %prod_td;
+  %sample = %one_minus_t * %ab;
+  %prod_tcd = %t * %cd;
+  %sample = %sample + %prod_tcd;
+  %total = %total + %sample;
+  store %p_tot, %total;
+  br ^inner_step;
+^inner_step:
+  %s = %s + 1;
+  %tmp_i32 = %s + 0;
+  %tmp_i64 = %s as i64;
+  %tmp_f32 = %s as f32;
+  br ^inner_head;
+^outer_step:
+  %st.samples[%k] = %sample;
+  %k = %k + 1;
+  %tmp_i32 = %k + 0;
+  %tmp_i64 = %k as i64;
+  %tmp_f32 = %k as f32;
+  br ^head;
+^post:
+  %total = load %p_tot;
+  %st.total = %total + 0.0;
+  %tmp_f32 = %total as f32;
+  %tmp_i32 = %total as i32;
+  %tmp_i64 = %total as i64;
+  br ^exit;
+^exit:
+  %total = %st.total + 0.0;
+  %tmp_f32 = %total as f32;
+  %tmp_i32 = %total as i32;
+  %tmp_i64 = %total as i64;
+  %a = %st.samples[0];
+  %b = %g[2][2];
+  ret %total;
+}

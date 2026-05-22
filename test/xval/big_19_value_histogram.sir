@@ -1,0 +1,109 @@
+// EXPECT: PASS
+// EXPECT_RC: 6
+// Big xval test 19 — Bucket each entry of a 3x4 i64 matrix into one of three
+// buckets (by f32 cast threshold). Nested struct holds {edges:[3]f32, b:@B}
+// where @B has three i32 counters. Returns total entries > middle threshold
+// as i32. Block 3 casts:  i64 -> f32 -> f64 -> i32.
+struct @Counts19 {
+  c0: i32;
+  c1: i32;
+  c2: i32;
+}
+struct @Hist19 {
+  edges: [3] f32;
+  counts: @Counts19;
+}
+
+fun @main() : i32 {
+  let mut %m: [3] [4] i64 = {{10, 25, 5, 30}, {50, 15, 40, 20}, {35, 5, 22, 8}};
+  let mut %hist: @Hist19 = {{10.0, 20.0, 100.0}, {0, 0, 0}};
+  let mut %above_mid: i32 = 0;
+  let mut %p_above: ptr i32 = undef;
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %vi64: i64 = 0;
+  let mut %vf32: f32 = 0.0;
+  let mut %vf64: f64 = 0.0;
+  let mut %tmp_i32: i32 = 0;
+  let mut %mid_thr: f32 = 0.0;
+^entry:
+  %above_mid = 0;
+  %p_above = addr %above_mid;
+  %i = 0;
+  %j = 0;
+  store %p_above, %above_mid;
+  %mid_thr = 20.0;
+  br ^pre1;
+^pre1:
+  %vi64 = 10;
+  %vf32 = %vi64 as f32;
+  %vf64 = %vf32 as f64;
+  %tmp_i32 = %vf64 as i32;
+  %mid_thr = %hist.edges[1];
+  %above_mid = 0;
+  br ^pre2;
+^pre2:
+  %vi64 = 50;
+  %vf32 = %vi64 as f32;
+  %vf64 = %vf32 as f64;
+  %tmp_i32 = %vf64 as i32;
+  %mid_thr = %hist.edges[1];
+  %above_mid = 0;
+  br ^head;
+^head:
+  %j = 0;
+  %tmp_i32 = %i + 0;
+  %vi64 = %i as i64;
+  %vf32 = %i as f32;
+  %vf64 = %vf32 as f64;
+  %mid_thr = %hist.edges[1];
+  br %i < 3, ^inner_head, ^post;
+^inner_head:
+  %vi64 = 0;
+  %vf32 = 0.0;
+  %vf64 = 0.0;
+  %tmp_i32 = %j + 0;
+  %mid_thr = %hist.edges[1];
+  %above_mid = %above_mid + 0;
+  br %j < 4, ^inner_body, ^outer_step;
+^inner_body:
+  %vi64 = %m[%i][%j];
+  %vf32 = %vi64 as f32;
+  %vf64 = %vf32 as f64;
+  %tmp_i32 = select %vf32 > %mid_thr, 1, 0;
+  %above_mid = %above_mid + %tmp_i32;
+  store %p_above, %above_mid;
+  br ^inner_step;
+^inner_step:
+  %j = %j + 1;
+  %tmp_i32 = load %p_above;
+  %above_mid = %tmp_i32 + 0;
+  %vi64 = %j as i64;
+  %vf32 = %j as f32;
+  %vf64 = %vf32 as f64;
+  br ^inner_head;
+^outer_step:
+  %i = %i + 1;
+  %tmp_i32 = load %p_above;
+  %above_mid = %tmp_i32 + 0;
+  %vi64 = %i as i64;
+  %vf32 = %i as f32;
+  %vf64 = %vf32 as f64;
+  br ^head;
+^post:
+  %tmp_i32 = load %p_above;
+  %above_mid = %tmp_i32 + 0;
+  %hist.counts.c1 = %tmp_i32 + 0;
+  %vi64 = %tmp_i32 as i64;
+  %vf32 = %tmp_i32 as f32;
+  %vf64 = %vf32 as f64;
+  br ^exit;
+^exit:
+  %tmp_i32 = %hist.counts.c1 + 0;
+  %vi64 = %tmp_i32 as i64;
+  %vf32 = %tmp_i32 as f32;
+  %vf64 = %vf32 as f64;
+  %mid_thr = %hist.edges[1];
+  %vi64 = %m[2][3];
+  ret %tmp_i32;
+}

@@ -1,0 +1,111 @@
+// EXPECT: PASS
+// EXPECT_RC: 246
+// Big xval test 08 — Iterative Fibonacci computation, accumulating each
+// Fib_k into a struct array. Each iteration also branches on parity to
+// scale the accumulator differently (so the loop body has interesting
+// per-iter divergence). Returns sum of all stored values + count, as i64.
+// Block 3 casts:  i32 -> i64 -> f32 -> i32.
+struct @Slot08 {
+  k: i32;
+  fib: i64;
+}
+
+fun @main() : i64 {
+  let mut %slots: [12] @Slot08 = {
+    {0,0},{0,0},{0,0},{0,0},{0,0},{0,0},{0,0},{0,0},{0,0},{0,0},{0,0},{0,0}
+  };
+  let mut %sum: i64 = 0;
+  let mut %p_sum: ptr i64 = undef;
+  let mut %a: i64 = 0;
+  let mut %b: i64 = 1;
+  let mut %i: i32 = 0;
+  let mut %niters: i32 = 10;
+  let mut %two: i32 = 2;
+  let mut %parity: i32 = 0;
+  let mut %tmp_i64: i64 = 0;
+  let mut %tmp_i32: i32 = 0;
+  let mut %tmp_f32: f32 = 0.0;
+  let mut %tmp_f64: f64 = 0.0;
+  let mut %scaled: f32 = 0.0;
+  let mut %count: i32 = 0;
+^entry:
+  %sum = 0;
+  %p_sum = addr %sum;
+  %a = 0;
+  %b = 1;
+  %i = 0;
+  %count = 0;
+  br ^pre1;
+^pre1:
+  %niters = 10;
+  %two = 2;
+  %parity = 0;
+  store %p_sum, %sum;
+  %tmp_i32 = %niters + 0;
+  %scaled = 0.0;
+  br ^pre2;
+^pre2:
+  %tmp_i32 = %niters + 0;
+  %tmp_i64 = %tmp_i32 as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %tmp_i32 = %tmp_f32 as i32;
+  %parity = %tmp_i32 + 0;
+  %scaled = %scaled + 0.0;
+  br ^head;
+^head:
+  %tmp_i64 = %a + %b;
+  %parity = %i % %two;
+  %tmp_i32 = %i + 0;
+  %scaled = 0.0;
+  %tmp_f32 = 0.0;
+  %tmp_f64 = 0.0;
+  br %i < %niters, ^body_a, ^post;
+^body_a:
+  %tmp_i64 = %a + %b;
+  %slots[%i].k = %i;
+  %slots[%i].fib = %tmp_i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %scaled = %tmp_f32 + 0.0;
+  %count = %count + 1;
+  br %parity == 0, ^body_b, ^body_c;
+^body_b:
+  %a = %b + 0;
+  %b = %tmp_i64 + 0;
+  %sum = %sum + %tmp_i64;
+  %tmp_f32 = 0.5 * %scaled;
+  %scaled = %tmp_f32 + 0.0;
+  %tmp_f64 = %scaled as f64;
+  br ^body_d;
+^body_c:
+  %a = %b + 0;
+  %b = %tmp_i64 + 0;
+  %tmp_i64 = %tmp_i64 + 0;
+  %sum = %sum + %tmp_i64;
+  %tmp_f32 = 0.25 * %scaled;
+  %scaled = %tmp_f32 + 0.0;
+  br ^body_d;
+^body_d:
+  %i = %i + 1;
+  store %p_sum, %sum;
+  %tmp_i64 = load %p_sum;
+  %sum = %tmp_i64 + 0;
+  %tmp_i32 = %i + 0;
+  %parity = 0;
+  br ^head;
+^post:
+  %tmp_i64 = load %p_sum;
+  %sum = %tmp_i64 + 0;
+  %tmp_i32 = %count + 0;
+  %tmp_f32 = %tmp_i32 as f32;
+  %tmp_f64 = %tmp_f32 as f64;
+  %scaled = %tmp_f32 + 0.0;
+  br ^exit;
+^exit:
+  %tmp_i64 = %count as i64;
+  %sum = %sum + %tmp_i64;
+  %tmp_i64 = %slots[3].fib;
+  %sum = %sum + %tmp_i64;
+  %tmp_i32 = %count + 0;
+  %tmp_f32 = %scaled + 0.0;
+  ret %sum;
+}

@@ -1,0 +1,105 @@
+// EXPECT: PASS
+// EXPECT_RC: 11
+// Big xval test 17 — Find the row-wise max of a 4x4 f64 matrix; sum the
+// row maxes as an i32 via cast. Tracks per-row max in a nested struct
+// {row_maxes:[4]f64, sum_of_maxes:i64}. Block 3 casts:
+//   f64 -> i32 -> i64 -> f32.
+struct @Maxes17 {
+  row_maxes: [4] f64;
+  sum_of_maxes: i64;
+}
+
+fun @main() : i32 {
+  let mut %m: [4] [4] f64 = {{1.5, 2.5, 3.5, 4.5}, {-1.0, 0.5, 1.5, 2.5}, {0.25, 0.5, 1.0, 0.75}, {2.0, 4.0, 3.0, 1.0}};
+  let mut %mx: @Maxes17 = {{0.0,0.0,0.0,0.0}, 0};
+  let mut %sum_i: i64 = 0;
+  let mut %p_sum: ptr i64 = undef;
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %vij: f64 = 0.0;
+  let mut %row_max: f64 = -1000000.0;
+  let mut %row_max_i: i32 = 0;
+  let mut %tmp_i32: i32 = 0;
+  let mut %tmp_i64: i64 = 0;
+  let mut %tmp_f32: f32 = 0.0;
+^entry:
+  %sum_i = 0;
+  %p_sum = addr %sum_i;
+  %i = 0;
+  %j = 0;
+  store %p_sum, %sum_i;
+  %row_max = -1000000.0;
+  br ^pre1;
+^pre1:
+  %vij = 3.5;
+  %tmp_i32 = %vij as i32;
+  %tmp_i64 = %tmp_i32 as i64;
+  %tmp_f32 = %vij as f32;
+  %row_max = -1000000.0;
+  %row_max_i = 0;
+  br ^pre2;
+^pre2:
+  %vij = 7.0;
+  %tmp_i32 = %vij as i32;
+  %tmp_i64 = %tmp_i32 as i64;
+  %tmp_f32 = %tmp_i64 as f32;
+  %row_max = -1000000.0;
+  %j = 0;
+  br ^head;
+^head:
+  %row_max = -1000000.0;
+  %j = 0;
+  %tmp_i32 = %i + 0;
+  %tmp_i64 = %i as i64;
+  %tmp_f32 = %i as f32;
+  %vij = 0.0;
+  br %i < 4, ^inner_head, ^post;
+^inner_head:
+  %vij = 0.0;
+  %tmp_i32 = %j + 0;
+  %tmp_i64 = %j as i64;
+  %tmp_f32 = %j as f32;
+  %row_max_i = %row_max as i32;
+  %tmp_i32 = %row_max_i + 0;
+  br %j < 4, ^inner_body, ^outer_step;
+^inner_body:
+  %vij = %m[%i][%j];
+  %row_max = select %vij > %row_max, %vij, %row_max;
+  %tmp_i32 = %vij as i32;
+  %tmp_i64 = %tmp_i32 as i64;
+  %tmp_f32 = %vij as f32;
+  %row_max_i = %row_max as i32;
+  br ^inner_step;
+^inner_step:
+  %j = %j + 1;
+  %tmp_i32 = %j + 0;
+  %tmp_i64 = %row_max as i64;
+  %tmp_f32 = %row_max as f32;
+  %row_max_i = %row_max as i32;
+  %vij = 0.0;
+  br ^inner_head;
+^outer_step:
+  %mx.row_maxes[%i] = %row_max;
+  %row_max_i = %row_max as i32;
+  %tmp_i64 = %row_max_i as i64;
+  %sum_i = %sum_i + %tmp_i64;
+  store %p_sum, %sum_i;
+  %i = %i + 1;
+  br ^head;
+^post:
+  %tmp_i64 = load %p_sum;
+  %mx.sum_of_maxes = %tmp_i64 + 0;
+  %tmp_i32 = %tmp_i64 as i32;
+  %tmp_f32 = %tmp_i64 as f32;
+  %row_max = %tmp_f32 as f64;
+  %row_max_i = %tmp_i32 + 0;
+  br ^exit;
+^exit:
+  %tmp_i64 = %mx.sum_of_maxes + 0;
+  %tmp_i32 = %tmp_i64 as i32;
+  %tmp_f32 = %tmp_i64 as f32;
+  %row_max = %mx.row_maxes[0];
+  %vij = %m[3][3];
+  %row_max_i = 0;
+  ret %tmp_i32;
+}

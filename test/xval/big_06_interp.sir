@@ -1,0 +1,111 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.4p+2
+// Big xval test 06 — Linear interpolation between waypoints. Struct array
+// holds (x, y) waypoints; loop computes y at query x's by linear blend
+// between bracketing pair. Block 3 casts:
+//   f64 -> i32 -> i64 -> f64.
+struct @Wpt06 {
+  x: f64;
+  y: f64;
+}
+
+fun @main() : f64 {
+  let mut %wp: [4] @Wpt06 = {{0.0, 0.0}, {1.0, 2.0}, {2.0, 1.0}, {3.0, 4.0}};
+  let mut %q: [3] f64 = {0.5, 1.5, 2.5};
+  let mut %sum: f64 = 0.0;
+  let mut %p_sum: ptr f64 = undef;
+  let mut %i: i32 = 0;
+  let mut %qx: f64 = 0.0;
+  let mut %x0: f64 = 0.0;
+  let mut %y0: f64 = 0.0;
+  let mut %x1: f64 = 0.0;
+  let mut %y1: f64 = 0.0;
+  let mut %t: f64 = 0.0;
+  let mut %dx: f64 = 0.0;
+  let mut %dy: f64 = 0.0;
+  let mut %yq: f64 = 0.0;
+  let mut %tmp_i32: i32 = 0;
+  let mut %tmp_i64: i64 = 0;
+  let mut %tmp_f64: f64 = 0.0;
+  let mut %idx_lo: i32 = 0;
+^entry:
+  %sum = 0.0;
+  %p_sum = addr %sum;
+  %i = 0;
+  %idx_lo = 0;
+  store %p_sum, %sum;
+  %tmp_i64 = 0;
+  br ^pre1;
+^pre1:
+  %qx = 0.5;
+  %x0 = %qx + 0.0;
+  %y0 = %qx + 0.0;
+  %t = %qx + 0.0;
+  %tmp_f64 = 0.5 * %qx;
+  %tmp_i32 = %idx_lo + 0;
+  br ^pre2;
+^pre2:
+  %tmp_f64 = 1.5;
+  %tmp_i32 = %tmp_f64 as i32;
+  %tmp_i64 = %tmp_i32 as i64;
+  %qx = %tmp_i64 as f64;
+  %qx = %qx + 0.0;
+  %idx_lo = %tmp_i32 + 0;
+  br ^head;
+^head:
+  %qx = 0.0;
+  %tmp_i32 = %i + 0;
+  %x0 = 0.0;
+  %x1 = 0.0;
+  %yq = 0.0;
+  %tmp_i64 = %i as i64;
+  br %i < 3, ^body_a, ^post;
+^body_a:
+  %qx = %q[%i];
+  %idx_lo = %qx as i32;
+  %x0 = %wp[%idx_lo].x;
+  %y0 = %wp[%idx_lo].y;
+  %tmp_i32 = %idx_lo + 1;
+  %tmp_i64 = %tmp_i32 as i64;
+  br %tmp_i32 < 4, ^body_b, ^body_c;
+^body_b:
+  %x1 = %wp[%tmp_i32].x;
+  %y1 = %wp[%tmp_i32].y;
+  %dx = %x1 - %x0;
+  %dy = %y1 - %y0;
+  %tmp_f64 = %qx - %x0;
+  %t = %tmp_f64 / %dx;
+  br ^body_d;
+^body_c:
+  %x1 = %x0 + 0.0;
+  %y1 = %y0 + 0.0;
+  %dx = 1.0;
+  %dy = 0.0;
+  %t = 0.0;
+  %tmp_f64 = %qx + 0.0;
+  br ^body_d;
+^body_d:
+  %yq = %t * %dy;
+  %yq = %yq + %y0;
+  %sum = %sum + %yq;
+  store %p_sum, %sum;
+  %i = %i + 1;
+  %tmp_i64 = %i as i64;
+  br ^head;
+^post:
+  %tmp_f64 = load %p_sum;
+  %sum = %tmp_f64 + 0.0;
+  %tmp_i32 = %i + 0;
+  %tmp_i64 = %tmp_i32 as i64;
+  %qx = %tmp_i64 as f64;
+  %yq = %sum + 0.0;
+  br ^exit;
+^exit:
+  %tmp_f64 = %wp[0].x;
+  %sum = %sum + %tmp_f64;
+  %tmp_i32 = %i + 0;
+  %tmp_i64 = %tmp_i32 as i64;
+  %tmp_f64 = %tmp_i64 as f64;
+  %yq = %yq + 0.0;
+  ret %sum;
+}

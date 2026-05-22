@@ -1,0 +1,109 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.9p+5
+// Big xval test 07 — Welford's online mean / variance over a stream of
+// i32 samples cast to f64. Returns the variance scaled by N as f32.
+// Uses an array of i32 (input), a struct holding running mean/M2/count,
+// and a pointer to the count field for in-place increment. Block 3 casts:
+//   i32 -> f64 -> f32 -> i64.
+struct @Stat07 {
+  count: i32;
+  mean: f64;
+  m2: f64;
+}
+
+fun @main() : f32 {
+  let mut %samples: [6] i32 = {4, -2, 7, 3, 1, 5};
+  let mut %st: @Stat07 = {0, 0.0, 0.0};
+  let mut %p_count: ptr i32 = undef;
+  let mut %i: i32 = 0;
+  let mut %s_i: i32 = 0;
+  let mut %s_f: f64 = 0.0;
+  let mut %delta: f64 = 0.0;
+  let mut %delta2: f64 = 0.0;
+  let mut %inv_n: f64 = 0.0;
+  let mut %tmp_f64: f64 = 0.0;
+  let mut %tmp_f32: f32 = 0.0;
+  let mut %tmp_i64: i64 = 0;
+  let mut %parity: i32 = 0;
+  let mut %two: i32 = 2;
+^entry:
+  %p_count = addr %st.count;
+  %i = 0;
+  %two = 2;
+  %inv_n = 0.0;
+  %parity = 0;
+  store %p_count, %i;
+  br ^pre1;
+^pre1:
+  %s_i = 100;
+  %tmp_i64 = %s_i as i64;
+  %tmp_f64 = %tmp_i64 as f64;
+  %tmp_f32 = %tmp_f64 as f32;
+  %parity = %s_i + 0;
+  %delta = %tmp_f64 + 0.0;
+  br ^pre2;
+^pre2:
+  %s_i = 50;
+  %tmp_f64 = %s_i as f64;
+  %tmp_f32 = %tmp_f64 as f32;
+  %tmp_i64 = %tmp_f32 as i64;
+  %delta2 = %tmp_f64 + 0.0;
+  %inv_n = %inv_n + 0.0;
+  br ^head;
+^head:
+  %s_i = 0;
+  %s_f = 0.0;
+  %delta = 0.0;
+  %delta2 = 0.0;
+  %parity = %i % %two;
+  %tmp_i64 = %i as i64;
+  br %i < 6, ^body_a, ^post;
+^body_a:
+  %s_i = %samples[%i];
+  %s_f = %s_i as f64;
+  %st.count = %st.count + 1;
+  %delta = %s_f - %st.mean;
+  %tmp_f32 = %s_f as f32;
+  %inv_n = %st.count as f64;
+  br %parity == 0, ^body_b, ^body_c;
+^body_b:
+  %tmp_f64 = %delta / %inv_n;
+  %st.mean = %st.mean + %tmp_f64;
+  %delta2 = %s_f - %st.mean;
+  %tmp_f64 = %delta * %delta2;
+  %st.m2 = %st.m2 + %tmp_f64;
+  %tmp_f32 = %st.mean as f32;
+  br ^body_d;
+^body_c:
+  %tmp_f64 = %delta / %inv_n;
+  %st.mean = %st.mean + %tmp_f64;
+  %delta2 = %s_f - %st.mean;
+  %tmp_f64 = %delta * %delta2;
+  %st.m2 = %st.m2 + %tmp_f64;
+  %tmp_f32 = 0.5 * %tmp_f32;
+  br ^body_d;
+^body_d:
+  %i = %i + 1;
+  %tmp_i64 = %i as i64;
+  store %p_count, %st.count;
+  %parity = 0;
+  %inv_n = %st.count as f64;
+  %delta = %delta + 0.0;
+  br ^head;
+^post:
+  %tmp_f64 = %st.m2 + 0.0;
+  %tmp_f32 = %tmp_f64 as f32;
+  %inv_n = %st.count as f64;
+  %s_i = load %p_count;
+  %tmp_i64 = %s_i as i64;
+  %delta = %tmp_f64 + 0.0;
+  br ^exit;
+^exit:
+  %tmp_f32 = %st.m2 as f32;
+  %tmp_f64 = %tmp_f32 as f64;
+  %s_i = %samples[0];
+  %tmp_i64 = %s_i as i64;
+  %parity = 0;
+  %inv_n = %inv_n + 0.0;
+  ret %tmp_f32;
+}

@@ -1,0 +1,107 @@
+// EXPECT: PASS
+// EXPECT_RC: 104
+// Big xval test 16 — Sum-of-squares over a 4x4 i32 matrix with per-element
+// cast through f32. Result accumulated in nested struct
+// {per_row:[4]f64, grand:f64}. Returns grand as i32. 5-block nested loop.
+// Block 3 casts:  i64 -> f64 -> f32 -> i32.
+struct @Acc16 {
+  per_row: [4] f64;
+  grand: f64;
+}
+
+fun @main() : i32 {
+  let mut %m: [4] [4] i32 = {{1,2,3,4},{2,3,4,5},{0,1,2,3},{1,0,2,1}};
+  let mut %acc: @Acc16 = {{0.0,0.0,0.0,0.0}, 0.0};
+  let mut %grand: f64 = 0.0;
+  let mut %p_grand: ptr f64 = undef;
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %vi: i32 = 0;
+  let mut %vf: f32 = 0.0;
+  let mut %vsq: f64 = 0.0;
+  let mut %row_sum: f64 = 0.0;
+  let mut %tmp_f64: f64 = 0.0;
+  let mut %tmp_f32: f32 = 0.0;
+  let mut %tmp_i32: i32 = 0;
+  let mut %tmp_i64: i64 = 0;
+^entry:
+  %grand = 0.0;
+  %p_grand = addr %grand;
+  %i = 0;
+  %j = 0;
+  store %p_grand, %grand;
+  %row_sum = 0.0;
+  br ^pre1;
+^pre1:
+  %tmp_i64 = 99;
+  %tmp_f64 = %tmp_i64 as f64;
+  %tmp_f32 = %tmp_f64 as f32;
+  %tmp_i32 = %tmp_f32 as i32;
+  %row_sum = 0.0;
+  %vsq = 0.0;
+  br ^pre2;
+^pre2:
+  %tmp_i64 = 11;
+  %tmp_f64 = %tmp_i64 as f64;
+  %tmp_f32 = %tmp_f64 as f32;
+  %tmp_i32 = %tmp_f32 as i32;
+  %vsq = 0.0;
+  %row_sum = 0.0;
+  br ^head;
+^head:
+  %row_sum = 0.0;
+  %j = 0;
+  %tmp_i32 = %i + 0;
+  %tmp_i64 = %i as i64;
+  %tmp_f32 = %i as f32;
+  %tmp_f64 = %tmp_f32 as f64;
+  br %i < 4, ^inner_head, ^post;
+^inner_head:
+  %vi = 0;
+  %vf = 0.0;
+  %vsq = 0.0;
+  %tmp_i32 = %j + 0;
+  %tmp_f32 = %j as f32;
+  %tmp_f64 = %tmp_f32 as f64;
+  br %j < 4, ^inner_body, ^outer_step;
+^inner_body:
+  %vi = %m[%i][%j];
+  %vf = %vi as f32;
+  %tmp_f32 = %vf * %vf;
+  %vsq = %tmp_f32 as f64;
+  %row_sum = %row_sum + %vsq;
+  %tmp_i64 = %vi as i64;
+  br ^inner_step;
+^inner_step:
+  %j = %j + 1;
+  %tmp_i32 = %j + 0;
+  %tmp_f32 = %row_sum as f32;
+  %tmp_f64 = %row_sum + 0.0;
+  %tmp_i64 = %j as i64;
+  %vsq = 0.0;
+  br ^inner_head;
+^outer_step:
+  %acc.per_row[%i] = %row_sum;
+  %grand = %grand + %row_sum;
+  store %p_grand, %grand;
+  %i = %i + 1;
+  %tmp_i64 = %grand as i64;
+  %tmp_f32 = %grand as f32;
+  br ^head;
+^post:
+  %tmp_f64 = load %p_grand;
+  %acc.grand = %tmp_f64 + 0.0;
+  %tmp_f32 = %tmp_f64 as f32;
+  %tmp_i32 = %tmp_f32 as i32;
+  %tmp_i64 = %tmp_i32 as i64;
+  %row_sum = %tmp_f64 + 0.0;
+  br ^exit;
+^exit:
+  %tmp_f64 = %acc.grand + 0.0;
+  %tmp_f32 = %tmp_f64 as f32;
+  %tmp_i32 = %tmp_f32 as i32;
+  %tmp_i64 = %tmp_i32 as i64;
+  %row_sum = %acc.per_row[0];
+  %vi = %m[3][3];
+  ret %tmp_i32;
+}

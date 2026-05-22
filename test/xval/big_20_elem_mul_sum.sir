@@ -1,0 +1,110 @@
+// EXPECT: PASS
+// EXPECT_RC: 21
+// Big xval test 20 — Element-wise product of two 3x3 f32 matrices summed
+// to f64. Nested struct holds {dot:f64, rms:@RMS} where @RMS has
+// {sum_sq:f64, count:i32}. Returns dot as i64. Block 3 casts:
+//   f32 -> f64 -> i64 -> i32.
+struct @RMS20 {
+  sum_sq: f64;
+  count: i32;
+}
+struct @Outer20 {
+  dot: f64;
+  rms: @RMS20;
+}
+
+fun @main() : i64 {
+  let mut %a: [3] [3] f32 = {{1.0, 2.0, 3.0}, {0.5, 1.5, 2.5}, {2.0, 0.0, 4.0}};
+  let mut %b: [3] [3] f32 = {{2.0, 1.0, 0.5}, {3.0, 2.0, 1.0}, {0.5, 4.0, 2.0}};
+  let mut %st: @Outer20 = {0.0, {0.0, 0}};
+  let mut %running: f64 = 0.0;
+  let mut %p_running: ptr f64 = undef;
+  let mut %i: i32 = 0;
+  let mut %j: i32 = 0;
+  let mut %ai: f32 = 0.0;
+  let mut %bj: f32 = 0.0;
+  let mut %prod_f32: f32 = 0.0;
+  let mut %prod_f64: f64 = 0.0;
+  let mut %tmp_i64: i64 = 0;
+  let mut %tmp_i32: i32 = 0;
+^entry:
+  %running = 0.0;
+  %p_running = addr %running;
+  %i = 0;
+  %j = 0;
+  store %p_running, %running;
+  %prod_f64 = 0.0;
+  br ^pre1;
+^pre1:
+  %ai = 1.0;
+  %prod_f64 = %ai as f64;
+  %tmp_i64 = %prod_f64 as i64;
+  %tmp_i32 = %tmp_i64 as i32;
+  %prod_f32 = 0.0;
+  %prod_f64 = 0.0;
+  br ^pre2;
+^pre2:
+  %ai = 2.5;
+  %prod_f64 = %ai as f64;
+  %tmp_i64 = %prod_f64 as i64;
+  %tmp_i32 = %tmp_i64 as i32;
+  %prod_f32 = 0.0;
+  %prod_f64 = 0.0;
+  br ^head;
+^head:
+  %j = 0;
+  %tmp_i32 = %i + 0;
+  %ai = 0.0;
+  %bj = 0.0;
+  %prod_f32 = 0.0;
+  %prod_f64 = 0.0;
+  br %i < 3, ^inner_head, ^post;
+^inner_head:
+  %ai = 0.0;
+  %bj = 0.0;
+  %prod_f32 = 0.0;
+  %prod_f64 = 0.0;
+  %tmp_i32 = %j + 0;
+  %tmp_i64 = %j as i64;
+  br %j < 3, ^inner_body, ^outer_step;
+^inner_body:
+  %ai = %a[%i][%j];
+  %bj = %b[%i][%j];
+  %prod_f32 = %ai * %bj;
+  %prod_f64 = %prod_f32 as f64;
+  %running = %running + %prod_f64;
+  store %p_running, %running;
+  br ^inner_step;
+^inner_step:
+  %j = %j + 1;
+  %prod_f64 = load %p_running;
+  %running = %prod_f64 + 0.0;
+  %tmp_i32 = %j + 0;
+  %tmp_i64 = %j as i64;
+  %prod_f32 = 0.0;
+  br ^inner_head;
+^outer_step:
+  %i = %i + 1;
+  %prod_f64 = load %p_running;
+  %running = %prod_f64 + 0.0;
+  %tmp_i32 = %i + 0;
+  %tmp_i64 = %i as i64;
+  %prod_f32 = 0.0;
+  br ^head;
+^post:
+  %prod_f64 = load %p_running;
+  %st.dot = %prod_f64 + 0.0;
+  %tmp_i64 = %prod_f64 as i64;
+  %tmp_i32 = %tmp_i64 as i32;
+  %prod_f32 = %prod_f64 as f32;
+  %ai = %prod_f32 + 0.0;
+  br ^exit;
+^exit:
+  %prod_f64 = %st.dot + 0.0;
+  %tmp_i64 = %prod_f64 as i64;
+  %tmp_i32 = %tmp_i64 as i32;
+  %prod_f32 = %prod_f64 as f32;
+  %ai = %a[0][0];
+  %bj = %b[2][2];
+  ret %tmp_i64;
+}
