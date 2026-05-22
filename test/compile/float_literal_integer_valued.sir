@@ -1,0 +1,22 @@
+// EXPECT: PASS
+// Intention: Backend must emit integer-valued doubles with an explicit
+//   decimal/exponent so the lowered literal stays floating-point.
+// Purpose: An untagged literal like `100` in C would be parsed as `int`,
+//   then promoted at the assignment. For most contexts this is invisible,
+//   but f64 division with the literal as the divisor exposes the bug —
+//   `7 / 2` in C is integer-div = 3, while `7.0 / 2.0` is 3.5.
+// formatFloatLit appends ".0" when the printed form lacks a
+// decimal/exponent so the C lexer treats the constant as a double.
+// (This is purely a test of the FLOAT literal emitter — there is no path
+// in SymIR where a FloatLit becomes an integer-typed C literal at runtime
+// once the AST is correct, but having the .0 suffix makes the emitted C
+// self-documenting and survives future refactors.)
+fun @main() : i32 {
+  let mut %a: f64 = 7.0;
+  let mut %b: f64 = 2.0;
+  let mut %r: f64 = 0.0;
+^entry:
+  %r = %a / %b;
+  require %r == 3.5, "f64 7.0 / 2.0 = 3.5 (not integer-div 3)";
+  ret 0;
+}

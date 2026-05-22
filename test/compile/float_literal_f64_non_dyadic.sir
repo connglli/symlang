@@ -1,0 +1,15 @@
+// EXPECT: PASS
+// Intention: Backend must round-trip f64 literals that are not dyadic
+//   rationals (i.e., values requiring the full mantissa to disambiguate).
+// Purpose: π to f64 precision is 3.141592653589793. The nearest neighbouring
+//   double values differ in the last bit; emission with insufficient digits
+//   would print a string that parses back to the wrong neighbour, so the
+//   require equality would fail.
+fun @main() : i32 {
+  let mut %a: f64 = 3.141592653589793;
+  let mut %r: f64 = 0.0;
+^entry:
+  %r = %a + 0.0;
+  require %r == 3.141592653589793, "f64 pi round-trips at full precision";
+  ret 0;
+}

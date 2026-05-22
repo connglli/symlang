@@ -1,0 +1,14 @@
+// EXPECT: PASS
+// Intention: Backend must preserve negative float literals' full precision.
+// Purpose: Symmetric to float_literal_full_precision but for the negative
+//   side of the f32 mantissa boundary. -16777218.0 = -(2^24+2) is exactly
+//   representable; default 6-digit emission would clip it to -16777200.0
+//   and the equality test would fail at runtime.
+fun @main() : i32 {
+  let mut %a: f32 = -16777218.0;
+  let mut %r: f32 = 0.0;
+^entry:
+  %r = %a + 0.0;
+  require %r == -16777218.0, "negative f32 literal round-trips";
+  ret 0;
+}

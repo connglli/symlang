@@ -1,0 +1,15 @@
+// EXPECT: PASS
+// Intention: Backend must round-trip f64 literals at the top of the
+//   exact-integer range.
+// Purpose: 2^53 = 9007199254740992 is the largest integer that's exactly
+//   representable in binary64 with unit spacing. Anything beyond requires
+//   even more digits than the existing f32 case. Default 6-digit emission
+//   would print "9.0072e+15" = 9007200000000000 — off by ~745M.
+fun @main() : i32 {
+  let mut %a: f64 = 9007199254740992.0;
+  let mut %r: f64 = 0.0;
+^entry:
+  %r = %a + 0.0;
+  require %r == 9007199254740992.0, "f64 2^53 round-trips";
+  ret 0;
+}
