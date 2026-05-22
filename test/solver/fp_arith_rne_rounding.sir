@@ -1,0 +1,36 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @test --path ^entry,^exit
+// SKIP: COMPILER
+// Regression: solver must use RNE rounding mode for FP arithmetic ops
+// (fp.add, fp.sub, fp.mul, fp.div), per SPEC §2.9.
+// SMT-LIB FP theory requires a rounding-mode operand; omitting it makes
+// bitwuzla pick a default, which may not be RNE — leading to models that
+// diverge from the interpreter (which uses C++ default RNE).
+//
+// 16777217.0 is NOT exactly representable in f32:
+//   - nearest f32 below: 16777216.0 (= 2^24)
+//   - nearest f32 above: 16777218.0 (= 2^24 + 2)
+//   - both equidistant; RNE rounds to even → 16777216.0
+//
+// Test: solver finds %?x = 16777217.0 (i.e. its f32-rounded representation)
+// such that  %r = 1.0 * %?x  equals 16777216.0. Under any non-RNE rounding
+// (e.g. RTP/RTN/RTZ) the result would differ, and the require would fail
+// for the solver but pass in the interp (or vice versa).
+fun @test() : i32 {
+  sym %?x: value f32;
+  let %expected: f32 = 16777216.0;
+  let mut %v: f32 = 0.0;
+  let mut %r: f32 = 0.0;
+^entry:
+  // 2^24 = 16777216.0 is exactly representable in f32; the next f32 above is
+  // 16777218.0. The mathematical sum 16777216 + 1 = 16777217 is the tie
+  // between them, so RNE rounds to the even LSB → 16777216.0. Under RNA or
+  // RTP/RTZ this would round up to 16777218.0, making the require fail.
+  require %?x == 1.0, "force x = 1.0";
+  %v = %?x as f32;
+  %r = 16777216.0 + %v;
+  require %r == %expected, "16777216 + 1 rounds to 16777216 under RNE";
+  br ^exit;
+^exit:
+  ret 0;
+}

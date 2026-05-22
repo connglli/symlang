@@ -1,0 +1,15 @@
+// EXPECT: PASS
+// Intention: Test that assigning a non-representable literal to an f32-typed
+//   local rounds the value to f32 precision.
+// Purpose: Symmetric to fp_test_33 (init), but exercises AssignInstr's
+//   setLValue path. evalCoef tags FloatLit with bits=64 (it has no context),
+//   so without explicit rounding the destination f32 keeps the f64 image and
+//   diverges from C/WASM, where the same literal would round to f32 via RNE.
+fun @main() : i32 {
+  let mut %a: f32 = 0.0;
+  let %expected: f32 = 16777216.0;
+^entry:
+  %a = 16777217.0;
+  require %a == %expected, "f32 assign rounds non-representable literal";
+  ret 0;
+}

@@ -797,10 +797,12 @@ namespace symir {
       auto rSort = solver.get_sort(right);
 
       if (solver.is_fp_sort(lSort)) {
+        // SPEC §2.9: all FP ops use RNE (no dynamic rounding modes).
+        auto rmRNE = solver.make_rm_value(smt::RoundingMode::RNE);
         if (tail.op == AddOp::Plus) {
-          res = solver.make_term(smt::Kind::FP_ADD, {res, right});
+          res = solver.make_term(smt::Kind::FP_ADD, {rmRNE, res, right});
         } else {
-          res = solver.make_term(smt::Kind::FP_SUB, {res, right});
+          res = solver.make_term(smt::Kind::FP_SUB, {rmRNE, res, right});
         }
         assertFPFinite(res, solver, pc);
       } else if (solver.is_bv_sort(lSort) && solver.is_bv_sort(rSort)) {
@@ -841,19 +843,22 @@ namespace symir {
             auto rSort = solver.get_sort(r);
 
             if (solver.is_fp_sort(cSort)) {
+              // SPEC §2.9: all FP ops use RNE. The fmod encoding additionally
+              // uses RTZ for the quotient-to-integer step.
+              auto rmRNE = solver.make_rm_value(smt::RoundingMode::RNE);
               smt::Term fpRes;
               if (arg.op == AtomOpKind::Mul)
-                fpRes = solver.make_term(smt::Kind::FP_MUL, {c, r});
+                fpRes = solver.make_term(smt::Kind::FP_MUL, {rmRNE, c, r});
               else if (arg.op == AtomOpKind::Div)
-                fpRes = solver.make_term(smt::Kind::FP_DIV, {c, r});
+                fpRes = solver.make_term(smt::Kind::FP_DIV, {rmRNE, c, r});
               else if (arg.op == AtomOpKind::Mod) {
                 // fmod(x,y) = x - trunc(x/y)*y  (truncated-quotient, matches integer %)
                 // Encode as: fp.sub(x, fp.mul(fp.roundToIntegral[RTZ](fp.div(x,y)), y))
                 auto rmRTZ = solver.make_rm_value(smt::RoundingMode::RTZ);
-                auto q = solver.make_term(smt::Kind::FP_DIV, {c, r});      // div with default RNE
-                auto qi = solver.make_term(smt::Kind::FP_RTI, {rmRTZ, q}); // truncate to integer
-                auto prod = solver.make_term(smt::Kind::FP_MUL, {qi, r});  // qi * y
-                fpRes = solver.make_term(smt::Kind::FP_SUB, {c, prod});    // x - qi*y
+                auto q = solver.make_term(smt::Kind::FP_DIV, {rmRNE, c, r});
+                auto qi = solver.make_term(smt::Kind::FP_RTI, {rmRTZ, q});
+                auto prod = solver.make_term(smt::Kind::FP_MUL, {rmRNE, qi, r});
+                fpRes = solver.make_term(smt::Kind::FP_SUB, {rmRNE, c, prod});
               } else
                 return {};
               assertFPFinite(fpRes, solver, pc);

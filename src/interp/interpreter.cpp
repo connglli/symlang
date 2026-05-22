@@ -347,6 +347,13 @@ namespace symir {
       v.bits = (t && std::holds_alternative<FloatType>(t->v))
                    ? (std::get<FloatType>(t->v).kind == FloatType::Kind::F32 ? 32 : 64)
                    : 64;
+      // SPEC §6.4: an init value for an f32 local must take its f32 precision.
+      // Without this, a non-exactly-representable literal like
+      // `let %a: f32 = 16777217.0` keeps the f64 image (exact 16777217.0)
+      // while claiming bits=32, so later arithmetic diverges from the lowered
+      // C/WASM (where the literal would round to 16777216.0 under RNE).
+      if (v.bits == 32)
+        v.floatVal = static_cast<double>(static_cast<float>(v.floatVal));
     }
 
     if (TypeUtils::asArray(t) || TypeUtils::asStruct(t)) {
@@ -498,6 +505,17 @@ namespace symir {
                   throw UndefinedBehaviorError("UB: Store to unknown address");
                 if (ptrVal.ptrVal < obj->base || ptrVal.ptrVal >= obj->end)
                   throw UndefinedBehaviorError("UB: Store out of bounds");
+                // SPEC §6.4: enforce destination precision. The pointee object
+                // has an elemSize that reflects the pointee type; for f32 this
+                // is 4, for f64 it is 8. Round float values to f32 if the
+                // pointee is f32-sized so the stored bits match what C/WASM
+                // would compute. (Int canonicalization is already handled in
+                // AssignInstr's setLValue and is left to the store-side mirror
+                // for now since the heap holds full int64 bits.)
+                if (val.kind == RuntimeValue::Kind::Float && obj->elemSize == 4) {
+                  val.bits = 32;
+                  val.floatVal = static_cast<double>(static_cast<float>(val.floatVal));
+                }
                 heap_[ptrVal.ptrVal] = val;
                 // Sync back to store for Store/Heap consistency.
                 if (!obj->fieldName.empty()) {
@@ -1058,10 +1076,18 @@ namespace symir {
       }
     }
 
-    // Enforce bitwidth of destination if it's an integer
+    // Enforce destination precision.
+    //   Int:   canonicalize to bit width.
+    //   Float: round to declared precision (f32 destinations must store the
+    //          f32 image, not the wider double the RHS evaluator may have
+    //          produced — evalCoef tags FloatLit with bits=64 by default).
     if (val.kind == RuntimeValue::Kind::Int) {
       val.bits = cur->bits;
       val.intVal = canonicalize(val.intVal, val.bits);
+    } else if (val.kind == RuntimeValue::Kind::Float) {
+      val.bits = cur->bits;
+      if (val.bits == 32)
+        val.floatVal = static_cast<double>(static_cast<float>(val.floatVal));
     }
     *cur = val;
 

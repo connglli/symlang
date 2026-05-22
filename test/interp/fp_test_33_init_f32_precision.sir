@@ -1,0 +1,19 @@
+// EXPECT: PASS
+// Intention: Test that init values of f32-typed locals are rounded to f32 precision.
+// Purpose: SPEC §6.4 says the float value of a let-binding should match the
+//   declared precision. A non-dyadic literal like 0.1 isn't exactly representable
+//   in either f32 or f64 — but its closest f32 representation differs from its
+//   closest f64 representation. Without rounding at init, the interp keeps the
+//   f64 image while claiming bits=32, then arithmetic against another f32 value
+//   diverges from what the C/WASM backend would compute.
+//
+// 16777217.0 = 2^24 + 1 is not exactly representable in f32. Its f32-rounded
+// (RNE) image is 16777216.0. If the interp keeps the f64 (exact 16777217.0)
+// while tagging bits=32, then comparing to the literal 16777216.0 yields false.
+fun @main() : i32 {
+  let %a: f32 = 16777217.0;
+  let %expected: f32 = 16777216.0;
+^entry:
+  require %a == %expected, "f32 init rounds non-representable literal";
+  ret 0;
+}

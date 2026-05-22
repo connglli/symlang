@@ -1,0 +1,17 @@
+// EXPECT: PASS
+// Intention: Test that storing through a `ptr f32` rounds the stored value
+//   to f32 precision, matching what C/WASM lowering would compute.
+// Purpose: Without rounding at the store boundary, a non-representable
+//   literal pushed through `store %p, lit` would land in memory as the f64
+//   image (since evalCoef tags FloatLit with bits=64), then subsequent
+//   loads see the wider value while the C lowering already rounded.
+fun @main() : i32 {
+  let mut %v: f32 = 0.0;
+  let mut %p: ptr f32 = undef;
+  let %expected: f32 = 16777216.0;
+^entry:
+  %p = addr %v;
+  store %p, 16777217.0;
+  require %v == %expected, "store-through-ptr rounds to f32";
+  ret 0;
+}
