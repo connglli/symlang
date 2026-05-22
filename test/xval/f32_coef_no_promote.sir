@@ -1,0 +1,28 @@
+// EXPECT: PASS
+// EXPECT_RC: -50331644
+// Regression for the bug fixed in c_backend.cpp where bare float literals
+// in an f32 evaluation context were emitted without the ``f`` suffix,
+// causing the compiled C to promote the multiplication to ``double`` under
+// FLT_EVAL_METHOD == 0 conventions and diverge from the interpreter.
+//
+// The shape we want is exactly the one from bbbbbugs/bug1.sir:
+//   1. cast a large int (>2^24) to f32 so the f32 cast rounds RNE;
+//   2. multiply the rounded f32 by a *literal* (Coef in an OpAtom), which
+//      is the path that emitted ``-3.0`` instead of ``-3.0f``;
+//   3. compare interp vs compiled output.
+// If the backend regresses (drops the ``f`` suffix), the compiled value
+// will differ from the interpreter's f32 RNE result.
+// Pick x = 2^24 - 1 (representable in f32). Then -3.0 * x = -50331645
+// which is NOT representable in f32 at exponent 25 (granularity 4) and
+// rounds RNE to -50331644. If the compiler does the multiply in double,
+// the exact -50331645 survives and the i32 truncation diverges by one.
+fun @main() : i32 {
+  let mut %big_i: i32 = 16777215;
+  let mut %x: f32 = 0.0;
+  let mut %r: i32 = 0;
+^entry:
+  %x = %big_i as f32;
+  %x = -3.0 * %x;
+  %r = %x as i32;
+  ret %r;
+}

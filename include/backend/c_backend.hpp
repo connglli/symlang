@@ -29,13 +29,18 @@ namespace symir {
     bool noRequire_ = false;
     std::string curFuncName_;
     std::unordered_map<std::string, std::uint32_t> varWidths_;
-    std::unordered_map<std::string, bool> varIsFloat_; // true if f32 or f64
-    std::unordered_map<std::string, bool> varIsF32_;   // true if f32, false if f64
     TypePtr curFuncRetType_;
+    // ``isDoubleCtx_`` is the lowering-time evaluation context for float
+    // literals: when false, literals emit with the ``f`` suffix so an
+    // expression like ``-3.0 * %f32_var`` stays in single precision under
+    // FLT_EVAL_METHOD == 0. Mutated transiently around assign/store/ret/
+    // cond/init/cast emission via ``CtxGuard``.
     bool isDoubleCtx_ = false;
     std::unordered_map<std::string, TypePtr> varTypes_;
-    std::unordered_map<std::string, std::unordered_map<std::string, TypePtr>> structFields_;
-    std::unordered_map<std::string, std::vector<TypePtr>> structFieldTypesOrder_;
+    // Struct field name+type in declaration order. Linear lookup by name
+    // for AccessField, indexed lookup for InitVal aggregates. Structs are
+    // tiny (handful of fields), so linear scan is fine.
+    std::unordered_map<std::string, std::vector<std::pair<std::string, TypePtr>>> structFields_;
 
     // --- Emission helpers ---
     void indent();
@@ -50,10 +55,28 @@ namespace symir {
     void emitInitVal(const InitVal &iv, TypePtr expectedType = nullptr);
 
     // --- Type query helpers ---
+    // Resolve the static type of an lvalue / atom / expression. Used to
+    // decide whether float-literal emission needs the ``f`` suffix. For
+    // expressions, only the first atom is examined: SymIR requires every
+    // operand in an Expr to share a single type, so this is sound.
+    //
+    // NOTE on impurity: ``getCoefType`` returns a type for a bare float
+    // literal that depends on the *current* ``isDoubleCtx_``. Callers
+    // therefore see the literal as inheriting the outer context — which
+    // is what every existing call site (emitCond / emitStore) wants. If
+    // you add a new caller, be aware the answer for ``FloatLit`` reflects
+    // the surrounding context, not the literal in isolation.
     TypePtr getLValueType(const LValue &lv);
     TypePtr getAtomType(const Atom &atom);
     TypePtr getExprType(const Expr &expr);
     TypePtr getCoefType(const Coef &coef);
+
+    // Look up a struct field by name; returns nullptr if either the
+    // struct or the field is unknown.
+    TypePtr findStructFieldType(const std::string &structName, const std::string &fieldName) const;
+    // Look up a struct field by declaration-order index; returns nullptr
+    // if the struct is unknown or the index is out of range.
+    TypePtr getStructFieldTypeAt(const std::string &structName, size_t idx) const;
 
     // --- Mangling and naming helpers ---
     std::string getMangledSymbolName(const std::string &funcName, const std::string &symName);

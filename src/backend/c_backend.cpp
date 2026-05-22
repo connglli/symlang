@@ -1,5 +1,6 @@
 #include "backend/c_backend.hpp"
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <functional>
 #include <iomanip>
@@ -45,6 +46,22 @@ namespace symir {
         t->v
     );
   }
+
+  // RAII guard for ``isDoubleCtx_``: sets it to ``newValue`` on entry and
+  // restores the prior value when it goes out of scope. Used at every
+  // emission entry point that establishes a fresh evaluation context
+  // (assign, store, return, cond, cast-from-float-lit, init).
+  struct CtxGuard {
+    bool &flag;
+    bool saved;
+
+    CtxGuard(bool &f, bool newValue) : flag(f), saved(f) { flag = newValue; }
+
+    ~CtxGuard() { flag = saved; }
+
+    CtxGuard(const CtxGuard &) = delete;
+    CtxGuard &operator=(const CtxGuard &) = delete;
+  };
 
   void CBackend::indent() {
     for (int i = 0; i < indent_level_; ++i)
@@ -152,18 +169,14 @@ namespace symir {
     out_ << "#pragma STDC FP_CONTRACT OFF\n";
     out_ << "\n";
 
-    // 0. Populate struct fields map
+    // 0. Populate struct fields map (name + type in declaration order).
     structFields_.clear();
-    structFieldTypesOrder_.clear();
     for (const auto &s: prog.structs) {
-      std::unordered_map<std::string, TypePtr> fields;
-      std::vector<TypePtr> fieldTypes;
-      for (const auto &f: s.fields) {
-        fields[f.name] = f.type;
-        fieldTypes.push_back(f.type);
-      }
+      std::vector<std::pair<std::string, TypePtr>> fields;
+      fields.reserve(s.fields.size());
+      for (const auto &f: s.fields)
+        fields.emplace_back(f.name, f.type);
       structFields_[s.name.name] = std::move(fields);
-      structFieldTypesOrder_[s.name.name] = std::move(fieldTypes);
     }
 
     // 1. Forward decls for structs
@@ -214,30 +227,19 @@ namespace symir {
       curFuncName_ = f.name.name;
       curFuncRetType_ = f.retType;
       varWidths_.clear();
-      varIsFloat_.clear();
-      varIsF32_.clear();
       varTypes_.clear();
-      auto recordFloatKind = [&](const std::string &name, const TypePtr &t) {
+      auto recordVar = [&](const std::string &name, const TypePtr &t) {
         if (!t)
           return;
+        varWidths_[name] = getWidth(t);
         varTypes_[name] = t;
-        if (auto ft = std::get_if<FloatType>(&t->v)) {
-          varIsFloat_[name] = true;
-          varIsF32_[name] = (ft->kind == FloatType::Kind::F32);
-        }
       };
-      for (const auto &p: f.params) {
-        varWidths_[p.name.name] = getWidth(p.type);
-        recordFloatKind(p.name.name, p.type);
-      }
-      for (const auto &s: f.syms) {
-        varWidths_[s.name.name] = getWidth(s.type);
-        recordFloatKind(s.name.name, s.type);
-      }
-      for (const auto &l: f.lets) {
-        varWidths_[l.name.name] = getWidth(l.type);
-        recordFloatKind(l.name.name, l.type);
-      }
+      for (const auto &p: f.params)
+        recordVar(p.name.name, p.type);
+      for (const auto &s: f.syms)
+        recordVar(s.name.name, s.type);
+      for (const auto &l: f.lets)
+        recordVar(l.name.name, l.type);
 
       // 3a. Extern symbols
       for (const auto &s: f.syms) {
@@ -275,8 +277,7 @@ namespace symir {
 
       // 3c. Locals and their initializations
       for (const auto &l: f.lets) {
-        bool saved = isDoubleCtx_;
-        isDoubleCtx_ = isOrContainsF64(l.type);
+        CtxGuard ctx(isDoubleCtx_, isOrContainsF64(l.type));
 
         indent();
         TypePtr cur = l.type;
@@ -339,7 +340,6 @@ namespace symir {
         } else {
           out_ << ";\n";
         }
-        isDoubleCtx_ = saved;
       }
 
       // 3d. Blocks
@@ -352,13 +352,11 @@ namespace symir {
               [this](auto &&arg) {
                 using T = std::decay_t<decltype(arg)>;
                 if constexpr (std::is_same_v<T, AssignInstr>) {
-                  bool saved = isDoubleCtx_;
-                  isDoubleCtx_ = isOrContainsF64(getLValueType(arg.lhs));
+                  CtxGuard ctx(isDoubleCtx_, isOrContainsF64(getLValueType(arg.lhs)));
                   emitLValue(arg.lhs);
                   out_ << " = ";
                   emitExpr(arg.rhs);
                   out_ << ";\n";
-                  isDoubleCtx_ = saved;
                 } else if constexpr (std::is_same_v<T, AssumeInstr>) {
                   out_ << "// assume ";
                   emitCond(arg.cond);
@@ -372,21 +370,17 @@ namespace symir {
                     out_ << ");\n";
                   }
                 } else if constexpr (std::is_same_v<T, StoreInstr>) {
-                  bool saved = isDoubleCtx_;
-                  auto ptrTy = getExprType(arg.ptr);
                   TypePtr pointeeTy = nullptr;
-                  if (ptrTy) {
-                    if (auto pt = std::get_if<PtrType>(&ptrTy->v)) {
+                  if (auto ptrTy = getExprType(arg.ptr)) {
+                    if (auto pt = std::get_if<PtrType>(&ptrTy->v))
                       pointeeTy = pt->pointee;
-                    }
                   }
-                  isDoubleCtx_ = isOrContainsF64(pointeeTy);
+                  CtxGuard ctx(isDoubleCtx_, isOrContainsF64(pointeeTy));
                   out_ << "*";
                   emitExpr(arg.ptr);
                   out_ << " = ";
                   emitExpr(arg.val);
                   out_ << ";\n";
-                  isDoubleCtx_ = saved;
                 }
               },
               ins
@@ -409,11 +403,9 @@ namespace symir {
               } else if constexpr (std::is_same_v<T, RetTerm>) {
                 out_ << "return";
                 if (arg.value) {
-                  bool saved = isDoubleCtx_;
-                  isDoubleCtx_ = isOrContainsF64(curFuncRetType_);
+                  CtxGuard ctx(isDoubleCtx_, isOrContainsF64(curFuncRetType_));
                   out_ << " ";
                   emitExpr(*arg.value);
-                  isDoubleCtx_ = saved;
                 }
                 out_ << ";\n";
               } else if constexpr (std::is_same_v<T, UnreachableTerm>) {
@@ -482,21 +474,30 @@ namespace symir {
             } else if (arg.op == AtomOpKind::Mod) {
               // C fmod (truncated quotient): same semantics as integer %, consistent
               // with SymIR spec which aligns float % with integer % (truncate-toward-zero).
-              // Detect float operand via coef type.
+              // Detect float operand via coef type; for a literal coef, the rval
+              // pins f32 vs f64 (operands share a type in SymIR).
+              auto floatKindOf = [this](const TypePtr &t) -> FloatType::Kind * {
+                if (!t)
+                  return nullptr;
+                if (auto ft = std::get_if<FloatType>(&t->v))
+                  return &const_cast<FloatType::Kind &>(ft->kind);
+                return nullptr;
+              };
               bool isFloat = std::holds_alternative<FloatLit>(arg.coef);
               bool isF32 = false;
-              if (!isFloat) {
-                if (auto *lid = std::get_if<LocalOrSymId>(&arg.coef)) {
-                  auto name = std::visit([](auto &&v) { return v.name; }, *lid);
-                  isFloat = varIsFloat_.count(name) && varIsFloat_.at(name);
-                  isF32 = isFloat && varIsF32_.count(name) && varIsF32_.at(name);
+              if (auto *lid = std::get_if<LocalOrSymId>(&arg.coef)) {
+                auto name = std::visit([](auto &&v) { return v.name; }, *lid);
+                auto it = varTypes_.find(name);
+                if (it != varTypes_.end()) {
+                  if (auto *k = floatKindOf(it->second)) {
+                    isFloat = true;
+                    isF32 = (*k == FloatType::Kind::F32);
+                  }
                 }
               }
-              // For a float literal coef, infer f32 vs f64 from the rval variable type
               if (isFloat && !isF32) {
-                const auto &rname = arg.rval.base.name;
-                if (varIsF32_.count(rname) && varIsF32_.at(rname))
-                  isF32 = true;
+                if (auto *k = floatKindOf(getLValueType(arg.rval)))
+                  isF32 = (*k == FloatType::Kind::F32);
               }
               if (isFloat) {
                 out_ << (isF32 ? "fmodf(" : "fmod(");
@@ -573,12 +574,10 @@ namespace symir {
                   if constexpr (std::is_same_v<S, IntLit>) {
                     out_ << src.value;
                   } else if constexpr (std::is_same_v<S, FloatLit>) {
-                    bool saved = isDoubleCtx_;
-                    isDoubleCtx_ = isOrContainsF64(arg.dstType);
+                    CtxGuard ctx(isDoubleCtx_, isOrContainsF64(arg.dstType));
                     out_ << formatFloatLit(src.value);
                     if (!isDoubleCtx_)
                       out_ << "f";
-                    isDoubleCtx_ = saved;
                   } else if constexpr (std::is_same_v<S, SymId>) {
                     out_ << getMangledSymbolName(curFuncName_, src.name) << "()";
                   } else {
@@ -596,10 +595,12 @@ namespace symir {
   }
 
   void CBackend::emitCond(const Cond &cond) {
-    bool saved = isDoubleCtx_;
-    auto lhsTy = getExprType(cond.lhs);
-    auto rhsTy = getExprType(cond.rhs);
-    isDoubleCtx_ = isOrContainsF64(lhsTy) || isOrContainsF64(rhsTy);
+    // Take the type from either operand: SymIR requires lhs and rhs to share
+    // a type, so the disjunction is just defensive against missing lookups.
+    CtxGuard ctx(
+        isDoubleCtx_,
+        isOrContainsF64(getExprType(cond.lhs)) || isOrContainsF64(getExprType(cond.rhs))
+    );
     emitExpr(cond.lhs);
     switch (cond.op) {
       case RelOp::EQ:
@@ -622,7 +623,6 @@ namespace symir {
         break;
     }
     emitExpr(cond.rhs);
-    isDoubleCtx_ = saved;
   }
 
   void CBackend::emitLValue(const LValue &lv) {
@@ -698,10 +698,10 @@ namespace symir {
   }
 
   void CBackend::emitInitVal(const InitVal &iv, TypePtr expectedType) {
-    bool saved = isDoubleCtx_;
-    if (expectedType) {
-      isDoubleCtx_ = isOrContainsF64(expectedType);
-    }
+    // When ``expectedType`` is unknown (nullptr), leave the existing context
+    // alone — the caller already established it (e.g., from the surrounding
+    // let.type). Only override when we know the destination type locally.
+    CtxGuard ctx(isDoubleCtx_, expectedType ? isOrContainsF64(expectedType) : isDoubleCtx_);
     switch (iv.kind) {
       case InitVal::Kind::Int:
         out_ << std::get<IntLit>(iv.value).value;
@@ -729,14 +729,10 @@ namespace symir {
         for (size_t i = 0; i < elements.size(); ++i) {
           TypePtr elemType = nullptr;
           if (expectedType) {
-            if (auto at = std::get_if<ArrayType>(&expectedType->v)) {
+            if (auto at = std::get_if<ArrayType>(&expectedType->v))
               elemType = at->elem;
-            } else if (auto st = std::get_if<StructType>(&expectedType->v)) {
-              auto sit = structFieldTypesOrder_.find(st->name.name);
-              if (sit != structFieldTypesOrder_.end() && i < sit->second.size()) {
-                elemType = sit->second[i];
-              }
-            }
+            else if (auto st = std::get_if<StructType>(&expectedType->v))
+              elemType = getStructFieldTypeAt(st->name.name, i);
           }
           emitInitVal(*elements[i], elemType);
           if (i + 1 < elements.size())
@@ -746,46 +742,54 @@ namespace symir {
         break;
       }
     }
-    isDoubleCtx_ = saved;
   }
 
   TypePtr CBackend::getLValueType(const LValue &lv) {
     auto it = varTypes_.find(lv.base.name);
-    if (it == varTypes_.end()) {
+    // Every let-local, param, and sym is recorded in ``recordVar`` at the
+    // top of each function; reaching this assert means a code path emitted
+    // an lvalue whose base was never declared — that would silently mis-flag
+    // the float-evaluation context and produce a wrong result.
+    assert(it != varTypes_.end() && "lvalue base not in varTypes_");
+    if (it == varTypes_.end())
       return nullptr;
-    }
     TypePtr cur = it->second;
     for (const auto &acc: lv.accesses) {
-      if (!cur) {
+      if (!cur)
         return nullptr;
-      }
       if (std::holds_alternative<AccessIndex>(acc)) {
-        if (auto at = std::get_if<ArrayType>(&cur->v)) {
+        if (auto at = std::get_if<ArrayType>(&cur->v))
           cur = at->elem;
-        } else if (auto pt = std::get_if<PtrType>(&cur->v)) {
+        else if (auto pt = std::get_if<PtrType>(&cur->v))
           cur = pt->pointee;
-        } else {
+        else
           return nullptr;
-        }
       } else if (auto af = std::get_if<AccessField>(&acc)) {
-        if (auto st = std::get_if<StructType>(&cur->v)) {
-          auto sit = structFields_.find(st->name.name);
-          if (sit != structFields_.end()) {
-            auto fit = sit->second.find(af->field);
-            if (fit != sit->second.end()) {
-              cur = fit->second;
-            } else {
-              return nullptr;
-            }
-          } else {
-            return nullptr;
-          }
-        } else {
+        if (auto st = std::get_if<StructType>(&cur->v))
+          cur = findStructFieldType(st->name.name, af->field);
+        else
           return nullptr;
-        }
       }
     }
     return cur;
+  }
+
+  TypePtr
+  CBackend::findStructFieldType(const std::string &structName, const std::string &fieldName) const {
+    auto it = structFields_.find(structName);
+    if (it == structFields_.end())
+      return nullptr;
+    for (const auto &[name, type]: it->second)
+      if (name == fieldName)
+        return type;
+    return nullptr;
+  }
+
+  TypePtr CBackend::getStructFieldTypeAt(const std::string &structName, size_t idx) const {
+    auto it = structFields_.find(structName);
+    if (it == structFields_.end() || idx >= it->second.size())
+      return nullptr;
+    return it->second[idx].second;
   }
 
   TypePtr CBackend::getCoefType(const Coef &coef) {
@@ -793,10 +797,17 @@ namespace symir {
         [this](auto &&arg) -> TypePtr {
           using T = std::decay_t<decltype(arg)>;
           if constexpr (std::is_same_v<T, IntLit>) {
+            // Int literals are polymorphic in SymIR; the actual width is
+            // pinned by the surrounding context. We return *some* integer
+            // type because all callers consume this only via
+            // ``isOrContainsF64`` (which is false for any int).
             auto t = std::make_shared<Type>();
             t->v = IntType{IntType::Kind::I64, {}, {}};
             return t;
           } else if constexpr (std::is_same_v<T, FloatLit>) {
+            // Float literals inherit the surrounding ``isDoubleCtx_`` —
+            // see the header note: callers must invoke this BEFORE setting
+            // their own context, so the answer reflects the outer scope.
             auto t = std::make_shared<Type>();
             t->v = FloatType{isDoubleCtx_ ? FloatType::Kind::F64 : FloatType::Kind::F32, {}};
             return t;
@@ -860,6 +871,8 @@ namespace symir {
     );
   }
 
+  // SymIR requires every atom in an Expr to share a single type, so the
+  // first atom's type is the whole expression's type.
   TypePtr CBackend::getExprType(const Expr &expr) { return getAtomType(expr.first); }
 
 } // namespace symir
