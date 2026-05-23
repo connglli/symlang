@@ -1,6 +1,6 @@
 # SymIR v0.2.0 Specification
 
-**Status:** Draft v0.2.0
+**Status:** v0.2.0
 
 This document is the complete, standalone specification for SymIR v0.2.0. It supersedes v0.1.0. Sections and rules that are unchanged from v0.1.0 are included verbatim for self-containedness. All additions and changes are marked **[New in v0.2.0]**.
 
