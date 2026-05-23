@@ -598,6 +598,12 @@ namespace symir {
             if (auto rb = TypeUtils::getBitWidth(rt)) {
               return Ty{Ty::BVTy{*rb}};
             }
+            // [v0.2.1] Unary ~ on a vector of integers yields the same type.
+            if (auto vt = TypeUtils::asVec(rt)) {
+              if (!vt->elem || !std::holds_alternative<IntType>(vt->elem->v))
+                diags.error("Unary ~ requires integer lane type", arg.span);
+              return Ty{Ty::VecTy{rt}};
+            }
             diags.error("Unary op not supported for float", arg.span);
             return Ty{std::monostate{}};
           } else if constexpr (std::is_same_v<T, SelectAtom>) {

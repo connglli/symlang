@@ -216,6 +216,16 @@ namespace symir {
         return "{...}";
       case RuntimeValue::Kind::Ptr:
         return "ptr(0x" + std::to_string(rv.ptrVal) + ")";
+      case RuntimeValue::Kind::Vec: {
+        std::string s = "<";
+        for (size_t i = 0; i < rv.arrayVal.size(); ++i) {
+          if (i)
+            s += ", ";
+          s += rvToString(rv.arrayVal[i]);
+        }
+        s += ">";
+        return s;
+      }
     }
     return "?";
   }
@@ -233,7 +243,14 @@ namespace symir {
 
   Interpreter::RuntimeValue Interpreter::makeUndef(const TypePtr &t) {
     RuntimeValue res;
-    if (auto at = TypeUtils::asArray(t)) {
+    if (auto vt = TypeUtils::asVec(t)) {
+      // [v0.2.1] Undef vector: every lane is undef. A subsequent lane
+      // write produces a defined value at that lane; remaining lanes
+      // stay undef until a whole-vector copy assigns them (rule 22).
+      res.kind = RuntimeValue::Kind::Vec;
+      for (size_t i = 0; i < vt->size; ++i)
+        res.arrayVal.push_back(makeUndef(vt->elem));
+    } else if (auto at = TypeUtils::asArray(t)) {
       res.kind = RuntimeValue::Kind::Array;
       for (size_t i = 0; i < at->size; ++i)
         res.arrayVal.push_back(makeUndef(at->elem));
@@ -264,7 +281,15 @@ namespace symir {
   }
 
   Interpreter::RuntimeValue Interpreter::broadcast(const TypePtr &t, const RuntimeValue &v) {
-    if (auto at = TypeUtils::asArray(t)) {
+    if (auto vt = TypeUtils::asVec(t)) {
+      // [v0.2.1] Broadcast init for vector: each lane gets a copy of `v`
+      // canonicalized to the lane scalar type.
+      RuntimeValue res;
+      res.kind = RuntimeValue::Kind::Vec;
+      for (size_t i = 0; i < vt->size; ++i)
+        res.arrayVal.push_back(broadcast(vt->elem, v));
+      return res;
+    } else if (auto at = TypeUtils::asArray(t)) {
       RuntimeValue res;
       res.kind = RuntimeValue::Kind::Array;
       for (size_t i = 0; i < at->size; ++i)
@@ -307,7 +332,14 @@ namespace symir {
 
     if (iv.kind == InitVal::Kind::Aggregate) {
       const auto &elements = std::get<std::vector<InitValPtr>>(iv.value);
-      if (auto at = TypeUtils::asArray(t)) {
+      if (auto vt = TypeUtils::asVec(t)) {
+        // [v0.2.1] Brace init for vector: each lane init is a scalar.
+        RuntimeValue res;
+        res.kind = RuntimeValue::Kind::Vec;
+        for (size_t i = 0; i < elements.size(); ++i)
+          res.arrayVal.push_back(evalInit(*elements[i], vt->elem, store));
+        return res;
+      } else if (auto at = TypeUtils::asArray(t)) {
         RuntimeValue res;
         res.kind = RuntimeValue::Kind::Array;
         for (size_t i = 0; i < elements.size(); ++i)
@@ -357,7 +389,7 @@ namespace symir {
         v.floatVal = static_cast<double>(static_cast<float>(v.floatVal));
     }
 
-    if (TypeUtils::asArray(t) || TypeUtils::asStruct(t)) {
+    if (TypeUtils::asArray(t) || TypeUtils::asStruct(t) || TypeUtils::asVec(t)) {
       return broadcast(t, v);
     }
     return v;
@@ -590,6 +622,40 @@ namespace symir {
     RuntimeValue v = evalAtom(e.first, store);
     for (const auto &tail: e.rest) {
       RuntimeValue right = evalAtom(tail.atom, store);
+      // [v0.2.1] Vector chain: lane-wise +/-. Both operands must be Vec of
+      // the same lane count and lane kind. We synthesize a one-tail Expr per
+      // lane so all scalar UB checks (overflow, FP overflow) fire per lane.
+      if (v.kind == RuntimeValue::Kind::Vec && right.kind == RuntimeValue::Kind::Vec) {
+        if (v.arrayVal.size() != right.arrayVal.size())
+          throw std::runtime_error("Vector lane count mismatch in +/-");
+        for (size_t k = 0; k < v.arrayVal.size(); ++k) {
+          auto &lhsLane = v.arrayVal[k];
+          auto &rhsLane = right.arrayVal[k];
+          if (lhsLane.kind == RuntimeValue::Kind::Undef ||
+              rhsLane.kind == RuntimeValue::Kind::Undef)
+            throw UndefinedBehaviorError("UB: Reading undef vector lane");
+          if (lhsLane.kind == RuntimeValue::Kind::Int) {
+            __int128 a = lhsLane.intVal, b = rhsLane.intVal;
+            __int128 r = (tail.op == AddOp::Plus) ? (a + b) : (a - b);
+            int64_t smax =
+                (lhsLane.bits == 64) ? INT64_MAX : ((INT64_C(1) << (lhsLane.bits - 1)) - 1);
+            int64_t smin = (lhsLane.bits == 64) ? INT64_MIN : (-(INT64_C(1) << (lhsLane.bits - 1)));
+            if (r > (__int128) smax || r < (__int128) smin)
+              throw UndefinedBehaviorError("UB: vector lane overflow in +/-");
+            lhsLane.intVal = canonicalize(static_cast<int64_t>(r), lhsLane.bits);
+          } else if (lhsLane.kind == RuntimeValue::Kind::Float) {
+            uint32_t opBits = std::min(lhsLane.bits, rhsLane.bits);
+            if (tail.op == AddOp::Plus)
+              lhsLane.floatVal = checkFPResult(lhsLane.floatVal + rhsLane.floatVal, opBits);
+            else
+              lhsLane.floatVal = checkFPResult(lhsLane.floatVal - rhsLane.floatVal, opBits);
+            lhsLane.bits = opBits;
+          } else {
+            throw std::runtime_error("Unsupported lane kind in vector +/-");
+          }
+        }
+        continue;
+      }
       if (v.kind == RuntimeValue::Kind::Undef || right.kind == RuntimeValue::Kind::Undef)
         throw UndefinedBehaviorError("UB: Reading undef in expr");
 
@@ -670,6 +736,94 @@ namespace symir {
           if constexpr (std::is_same_v<T, OpAtom>) {
             RuntimeValue c = evalCoef(arg.coef, store);
             RuntimeValue r = evalLValue(arg.rval, store);
+            // [v0.2.1] Vector OpAtom: rval is Vec; coef is either Vec or a
+            // scalar literal that broadcasts. Build a per-lane Coef-LValue
+            // and recurse into a synthetic OpAtom evaluation for each lane.
+            if (r.kind == RuntimeValue::Kind::Vec) {
+              RuntimeValue res;
+              res.kind = RuntimeValue::Kind::Vec;
+              res.arrayVal.reserve(r.arrayVal.size());
+              for (size_t k = 0; k < r.arrayVal.size(); ++k) {
+                auto &rL = r.arrayVal[k];
+                RuntimeValue cL = (c.kind == RuntimeValue::Kind::Vec) ? c.arrayVal[k] : c;
+                if (rL.kind == RuntimeValue::Kind::Undef || cL.kind == RuntimeValue::Kind::Undef)
+                  throw UndefinedBehaviorError("UB: Reading undef vector lane");
+                // Inherit the lane's bits for the coef literal (broadcast).
+                if (c.kind != RuntimeValue::Kind::Vec) {
+                  if (cL.kind == RuntimeValue::Kind::Int)
+                    cL.bits = rL.bits;
+                  if (cL.kind == RuntimeValue::Kind::Float)
+                    cL.bits = rL.bits;
+                }
+                // Build a fake one-atom Atom { OpAtom with these scalar
+                // operands } and reuse evalAtom — too involved; inline.
+                RuntimeValue laneRes;
+                if (rL.kind == RuntimeValue::Kind::Int) {
+                  laneRes.kind = RuntimeValue::Kind::Int;
+                  laneRes.bits = rL.bits;
+                  int64_t bw_smax =
+                      (rL.bits == 64) ? INT64_MAX : ((INT64_C(1) << (rL.bits - 1)) - 1);
+                  int64_t bw_smin = (rL.bits == 64) ? INT64_MIN : (-(INT64_C(1) << (rL.bits - 1)));
+                  if (arg.op == AtomOpKind::Mul) {
+                    __int128 p = (__int128) cL.intVal * rL.intVal;
+                    if (p > (__int128) bw_smax || p < (__int128) bw_smin)
+                      throw UndefinedBehaviorError("UB: vector lane overflow in *");
+                    laneRes.intVal = static_cast<int64_t>(p);
+                  } else if (arg.op == AtomOpKind::Div) {
+                    if (rL.intVal == 0)
+                      throw UndefinedBehaviorError("UB: vector lane division by zero");
+                    if (cL.intVal == bw_smin && rL.intVal == -1)
+                      throw UndefinedBehaviorError("UB: vector lane overflow in /");
+                    laneRes.intVal = cL.intVal / rL.intVal;
+                  } else if (arg.op == AtomOpKind::Mod) {
+                    if (rL.intVal == 0)
+                      throw UndefinedBehaviorError("UB: vector lane modulo by zero");
+                    if (cL.intVal == bw_smin && rL.intVal == -1)
+                      throw UndefinedBehaviorError("UB: vector lane overflow in %");
+                    laneRes.intVal = cL.intVal % rL.intVal;
+                  } else if (arg.op == AtomOpKind::And)
+                    laneRes.intVal = cL.intVal & rL.intVal;
+                  else if (arg.op == AtomOpKind::Or)
+                    laneRes.intVal = cL.intVal | rL.intVal;
+                  else if (arg.op == AtomOpKind::Xor)
+                    laneRes.intVal = cL.intVal ^ rL.intVal;
+                  else if (arg.op == AtomOpKind::Shl || arg.op == AtomOpKind::Shr ||
+                           arg.op == AtomOpKind::LShr) {
+                    if (rL.intVal < 0 || (uint64_t) rL.intVal >= (uint64_t) laneRes.bits)
+                      throw UndefinedBehaviorError("UB: vector lane overshift");
+                    if (arg.op == AtomOpKind::Shl) {
+                      __int128 p = (__int128) cL.intVal << rL.intVal;
+                      if (p > (__int128) bw_smax || p < (__int128) bw_smin)
+                        throw UndefinedBehaviorError("UB: vector lane overflow in <<");
+                      laneRes.intVal = static_cast<int64_t>(p);
+                    } else if (arg.op == AtomOpKind::Shr) {
+                      laneRes.intVal = cL.intVal >> rL.intVal;
+                    } else {
+                      uint64_t mask = (laneRes.bits >= 64) ? ~0ULL : (1ULL << laneRes.bits) - 1;
+                      laneRes.intVal =
+                          (int64_t) ((static_cast<uint64_t>(cL.intVal) & mask) >> rL.intVal);
+                    }
+                  }
+                  laneRes.intVal = canonicalize(laneRes.intVal, laneRes.bits);
+                } else if (rL.kind == RuntimeValue::Kind::Float) {
+                  laneRes.kind = RuntimeValue::Kind::Float;
+                  laneRes.bits = std::min(cL.bits, rL.bits);
+                  if (arg.op == AtomOpKind::Mul)
+                    laneRes.floatVal = checkFPResult(cL.floatVal * rL.floatVal, laneRes.bits);
+                  else if (arg.op == AtomOpKind::Div)
+                    laneRes.floatVal = checkFPResult(cL.floatVal / rL.floatVal, laneRes.bits);
+                  else if (arg.op == AtomOpKind::Mod)
+                    laneRes.floatVal =
+                        checkFPResult(std::fmod(cL.floatVal, rL.floatVal), laneRes.bits);
+                  else
+                    throw std::runtime_error("Unsupported op for float vector lane");
+                } else {
+                  throw std::runtime_error("Unsupported vector lane kind in OpAtom");
+                }
+                res.arrayVal.push_back(std::move(laneRes));
+              }
+              return res;
+            }
             if (c.kind == RuntimeValue::Kind::Undef || r.kind == RuntimeValue::Kind::Undef)
               throw UndefinedBehaviorError("UB: Reading undef in op");
 
@@ -760,6 +914,24 @@ namespace symir {
             throw std::runtime_error("OpAtom requires same scalar kinds");
           } else if constexpr (std::is_same_v<T, UnaryAtom>) {
             RuntimeValue r = evalLValue(arg.rval, store);
+            // [v0.2.1] Vector unary ~: lane-wise.
+            if (r.kind == RuntimeValue::Kind::Vec) {
+              RuntimeValue res;
+              res.kind = RuntimeValue::Kind::Vec;
+              res.arrayVal.reserve(r.arrayVal.size());
+              for (auto &lane: r.arrayVal) {
+                if (lane.kind == RuntimeValue::Kind::Undef)
+                  throw UndefinedBehaviorError("UB: Reading undef lane in unary");
+                if (lane.kind != RuntimeValue::Kind::Int)
+                  throw std::runtime_error("Vector unary ~ requires integer lanes");
+                RuntimeValue laneRes;
+                laneRes.kind = RuntimeValue::Kind::Int;
+                laneRes.bits = lane.bits;
+                laneRes.intVal = canonicalize(~lane.intVal, lane.bits);
+                res.arrayVal.push_back(std::move(laneRes));
+              }
+              return res;
+            }
             if (r.kind == RuntimeValue::Kind::Undef)
               throw UndefinedBehaviorError("UB: Reading undef in unary op");
             if (r.kind != RuntimeValue::Kind::Int)
@@ -771,8 +943,90 @@ namespace symir {
             }
             return res;
           } else if constexpr (std::is_same_v<T, SelectAtom>) {
-            return evalCond(*arg.cond, store) ? evalSelectVal(arg.vtrue, store)
-                                              : evalSelectVal(arg.vfalse, store);
+            // [v0.2.1] Two forms. Mask form requires lane-wise (or scalar
+            // i1) blend; Cond form is the existing scalar boolean select.
+            if (arg.cond) {
+              return evalCond(*arg.cond, store) ? evalSelectVal(arg.vtrue, store)
+                                                : evalSelectVal(arg.vfalse, store);
+            }
+            // Mask form
+            RuntimeValue mask = evalExpr(*arg.maskExpr, store);
+            if (mask.kind == RuntimeValue::Kind::Vec) {
+              RuntimeValue vt = evalSelectVal(arg.vtrue, store);
+              RuntimeValue vf = evalSelectVal(arg.vfalse, store);
+              if (vt.kind != RuntimeValue::Kind::Vec || vf.kind != RuntimeValue::Kind::Vec ||
+                  vt.arrayVal.size() != mask.arrayVal.size() ||
+                  vf.arrayVal.size() != mask.arrayVal.size())
+                throw std::runtime_error("Mask-based select: lane count mismatch");
+              RuntimeValue res;
+              res.kind = RuntimeValue::Kind::Vec;
+              res.arrayVal.reserve(mask.arrayVal.size());
+              for (size_t k = 0; k < mask.arrayVal.size(); ++k) {
+                const auto &mL = mask.arrayVal[k];
+                if (mL.kind == RuntimeValue::Kind::Undef)
+                  throw UndefinedBehaviorError("UB: undef mask lane");
+                bool pick = (mL.intVal != 0);
+                const auto &chosen = pick ? vt.arrayVal[k] : vf.arrayVal[k];
+                if (chosen.kind == RuntimeValue::Kind::Undef)
+                  throw UndefinedBehaviorError("UB: undef lane selected by mask");
+                res.arrayVal.push_back(chosen);
+              }
+              return res;
+            }
+            // Scalar i1 mask: all-or-nothing.
+            if (mask.kind == RuntimeValue::Kind::Undef)
+              throw UndefinedBehaviorError("UB: undef scalar mask");
+            return (mask.intVal != 0) ? evalSelectVal(arg.vtrue, store)
+                                      : evalSelectVal(arg.vfalse, store);
+          } else if constexpr (std::is_same_v<T, CmpAtom>) {
+            // [v0.2.1] Reified comparison. Both operands are SelectVal.
+            RuntimeValue lv = evalSelectVal(arg.lhs, store);
+            RuntimeValue rv = evalSelectVal(arg.rhs, store);
+            auto cmpScalar = [&](const RuntimeValue &a, const RuntimeValue &b) -> bool {
+              if (a.kind == RuntimeValue::Kind::Undef || b.kind == RuntimeValue::Kind::Undef)
+                throw UndefinedBehaviorError("UB: undef in cmp");
+              double af = (a.kind == RuntimeValue::Kind::Float) ? a.floatVal
+                                                                : static_cast<double>(a.intVal);
+              double bf = (b.kind == RuntimeValue::Kind::Float) ? b.floatVal
+                                                                : static_cast<double>(b.intVal);
+              int64_t ai = a.intVal, bi = b.intVal;
+              bool isFP =
+                  (a.kind == RuntimeValue::Kind::Float || b.kind == RuntimeValue::Kind::Float);
+              switch (arg.op) {
+                case RelOp::EQ:
+                  return isFP ? af == bf : ai == bi;
+                case RelOp::NE:
+                  return isFP ? af != bf : ai != bi;
+                case RelOp::LT:
+                  return isFP ? af < bf : ai < bi;
+                case RelOp::LE:
+                  return isFP ? af <= bf : ai <= bi;
+                case RelOp::GT:
+                  return isFP ? af > bf : ai > bi;
+                case RelOp::GE:
+                  return isFP ? af >= bf : ai >= bi;
+              }
+              return false;
+            };
+            if (lv.kind == RuntimeValue::Kind::Vec) {
+              RuntimeValue res;
+              res.kind = RuntimeValue::Kind::Vec;
+              res.arrayVal.reserve(lv.arrayVal.size());
+              for (size_t k = 0; k < lv.arrayVal.size(); ++k) {
+                bool b = cmpScalar(lv.arrayVal[k], rv.arrayVal[k]);
+                RuntimeValue lane;
+                lane.kind = RuntimeValue::Kind::Int;
+                lane.bits = 1;
+                lane.intVal = b ? 1 : 0;
+                res.arrayVal.push_back(std::move(lane));
+              }
+              return res;
+            }
+            RuntimeValue res;
+            res.kind = RuntimeValue::Kind::Int;
+            res.bits = 1;
+            res.intVal = cmpScalar(lv, rv) ? 1 : 0;
+            return res;
           } else if constexpr (std::is_same_v<T, CoefAtom>) {
             return evalCoef(arg.coef, store);
           } else if constexpr (std::is_same_v<T, RValueAtom>) {
@@ -926,6 +1180,54 @@ namespace symir {
             if (v.kind == RuntimeValue::Kind::Undef)
               throw UndefinedBehaviorError("UB: Reading undef in cast");
 
+            // [v0.2.1] Vector cast: lane-wise. v is a Vec; dstType is <N> U.
+            if (v.kind == RuntimeValue::Kind::Vec) {
+              auto vt = TypeUtils::asVec(arg.dstType);
+              if (!vt)
+                throw std::runtime_error("Vector cast requires vector dst");
+              if (v.arrayVal.size() != vt->size)
+                throw std::runtime_error("Vector cast: lane count mismatch");
+              RuntimeValue res;
+              res.kind = RuntimeValue::Kind::Vec;
+              res.arrayVal.reserve(vt->size);
+              auto laneBits = TypeUtils::getBitWidth(vt->elem);
+              bool isFp = vt->elem && std::holds_alternative<FloatType>(vt->elem->v);
+              bool isF32 = isFp && std::get<FloatType>(vt->elem->v).kind == FloatType::Kind::F32;
+              uint32_t fpBits = isFp ? (isF32 ? 32u : 64u) : 0u;
+              for (auto &lane: v.arrayVal) {
+                if (lane.kind == RuntimeValue::Kind::Undef)
+                  throw UndefinedBehaviorError("UB: undef lane in cast");
+                RuntimeValue r;
+                if (laneBits) {
+                  r.kind = RuntimeValue::Kind::Int;
+                  r.bits = *laneBits;
+                  if (lane.kind == RuntimeValue::Kind::Int) {
+                    r.intVal = canonicalize(lane.intVal, r.bits);
+                  } else {
+                    double lo = -std::ldexp(1.0, static_cast<int>(r.bits) - 1);
+                    double hi = std::ldexp(1.0, static_cast<int>(r.bits) - 1);
+                    if (std::isnan(lane.floatVal) || std::isinf(lane.floatVal) ||
+                        lane.floatVal < lo || lane.floatVal >= hi)
+                      throw UndefinedBehaviorError("UB: vector lane float->int OOR");
+                    r.intVal = static_cast<int64_t>(lane.floatVal);
+                  }
+                } else if (isFp) {
+                  r.kind = RuntimeValue::Kind::Float;
+                  r.bits = fpBits;
+                  double raw = (lane.kind == RuntimeValue::Kind::Int)
+                                   ? static_cast<double>(lane.intVal)
+                                   : lane.floatVal;
+                  r.floatVal = isF32 ? static_cast<double>(static_cast<float>(raw)) : raw;
+                  if (isF32 && std::isinf(r.floatVal))
+                    throw UndefinedBehaviorError("UB: vector lane f32 overflow to inf");
+                } else {
+                  throw std::runtime_error("Vector cast: unsupported lane dst type");
+                }
+                res.arrayVal.push_back(std::move(r));
+              }
+              return res;
+            }
+
             RuntimeValue res;
             auto dstBits = TypeUtils::getBitWidth(arg.dstType);
             if (dstBits) {
@@ -1014,7 +1316,7 @@ namespace symir {
       if (auto ai = std::get_if<AccessIndex>(&acc)) {
         if (cur->kind == RuntimeValue::Kind::Undef)
           throw UndefinedBehaviorError("UB: Reading field of undef");
-        if (cur->kind != RuntimeValue::Kind::Array)
+        if (cur->kind != RuntimeValue::Kind::Array && cur->kind != RuntimeValue::Kind::Vec)
           throw std::runtime_error("Indexing non-array");
 
         // Eval index
@@ -1035,7 +1337,10 @@ namespace symir {
           throw UndefinedBehaviorError("UB: Undef index");
 
         if (idxVal.intVal < 0 || (size_t) idxVal.intVal >= cur->arrayVal.size())
-          throw UndefinedBehaviorError("UB: Array index out of bounds");
+          throw UndefinedBehaviorError(
+              cur->kind == RuntimeValue::Kind::Vec ? "UB: Vector lane index out of bounds"
+                                                   : "UB: Array index out of bounds"
+          );
 
         cur = &cur->arrayVal[idxVal.intVal];
       } else if (auto af = std::get_if<AccessField>(&acc)) {
@@ -1059,7 +1364,7 @@ namespace symir {
 
     for (const auto &acc: lv.accesses) {
       if (auto ai = std::get_if<AccessIndex>(&acc)) {
-        if (cur->kind != RuntimeValue::Kind::Array)
+        if (cur->kind != RuntimeValue::Kind::Array && cur->kind != RuntimeValue::Kind::Vec)
           throw std::runtime_error("Indexing non-array");
         RuntimeValue idxVal;
         const auto &idx = ai->index;
@@ -1075,7 +1380,10 @@ namespace symir {
           }
         }
         if (idxVal.intVal < 0 || (size_t) idxVal.intVal >= cur->arrayVal.size())
-          throw UndefinedBehaviorError("UB: Array index out of bounds");
+          throw UndefinedBehaviorError(
+              cur->kind == RuntimeValue::Kind::Vec ? "UB: Vector lane index out of bounds"
+                                                   : "UB: Array index out of bounds"
+          );
         cur = &cur->arrayVal[idxVal.intVal];
       } else if (auto af = std::get_if<AccessField>(&acc)) {
         if (cur->kind != RuntimeValue::Kind::Struct)

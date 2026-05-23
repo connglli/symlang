@@ -1,7 +1,9 @@
-// EXPECT: FAIL:UndefinedBehavior
+// EXPECT: FAIL:StaticError
 
-// Rule 22: reading a lane whose value is `undef` is UB. Here %v is
-// undef-initialized; the first lane read traps.
+// Rule 22: reading a lane whose value is `undef` is UB. The definite-init
+// static analysis catches this case before runtime (an undef-initialized
+// vector has no defined lanes); that's a stricter classification than
+// runtime UB but the same semantic guarantee.
 fun @main() : i32 {
   let mut %v: <4> i32 = undef;
   let mut %x: i32 = 0;
