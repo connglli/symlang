@@ -1,0 +1,14 @@
+// EXPECT: PASS
+
+// Lane-wise float arithmetic — interpreter vs compiled C must agree
+// bit-exactly under FLT_EVAL_METHOD == 0 and FP_CONTRACT OFF (the
+// invariants the v0.2.0 fix enforced).
+fun @main() : i32 {
+  let %a: <4> f32 = {1.5, 2.5, 3.5, 4.5};
+  let %b: <4> f32 = {0.5, 0.5, 0.5, 0.5};
+  let mut %c: <4> f32 = 0.0;
+^entry:
+  %c = %a * %b;             // {0.75, 1.25, 1.75, 2.25}
+  %c = %c + %a;             // {2.25, 3.75, 5.25, 6.75}
+  ret %c[2] as i32;         // truncates 5.25 to 5
+}

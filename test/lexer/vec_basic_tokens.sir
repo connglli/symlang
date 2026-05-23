@@ -1,0 +1,10 @@
+// EXPECT: PASS
+
+// Basic vector type tokens. The lexer must produce a token stream
+// that the parser can recognize as `<` Nat `>` ScalarType. No
+// special vector keywords — just existing tokens reused.
+fun @main() : i32 {
+  let %v: <4> i32 = 0;
+^entry:
+  ret 0;
+}

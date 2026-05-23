@@ -1,0 +1,15 @@
+// EXPECT: PASS
+
+// Vector input as a symbolic value — each lane independent. Validates
+// the codegen path for symbolic vector operands (the C backend must
+// emit one extern per lane and the SMT model treats each lane as its
+// own constant).
+// INTERP_ARGS: --sym %?v=1,2,3,4
+// COMPILER_ARGS: --sym %?v=1,2,3,4
+fun @main() : i32 {
+  sym %?v: value <4> i32;
+  let mut %sq: <4> i32 = 0;
+^entry:
+  %sq = %?v * %?v;
+  ret %sq[0] + %sq[1] + %sq[2] + %sq[3];   // 1+4+9+16 = 30
+}

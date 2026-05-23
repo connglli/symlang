@@ -1,0 +1,9 @@
+// EXPECT: FAIL:StaticError
+
+// `ptr <N> T` is not a well-formed type (§6.8.1).
+fun @main() : i32 {
+  let mut %v: <4> i32 = 0;
+  let %p: ptr <4> i32 = null;   // StaticError: vector is not a valid pointee
+^entry:
+  ret 0;
+}

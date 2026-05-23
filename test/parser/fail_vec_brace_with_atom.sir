@@ -1,0 +1,12 @@
+// EXPECT: FAIL:ParseError
+
+// Inside a BraceInit, elements must be ScalarInit | null | undef | nested
+// BraceInit — atom-form initializers are NOT permitted inside braces. Here
+// `addr %x` is an Atom, so the brace init must be rejected by the parser.
+fun @main() : i32 {
+  let mut %x: i32 = 0;
+  let mut %y: i32 = 0;
+  let %v: <2> i32 = {addr %x, addr %y};   // ParseError: atom inside brace
+^entry:
+  ret 0;
+}

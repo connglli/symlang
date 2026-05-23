@@ -1,0 +1,14 @@
+// EXPECT: PASS
+
+// Vector parameter (pass by value) and vector return type.
+fun @double_vec(%v: <4> i32) : <4> i32 {
+  let mut %r: <4> i32 = 0;
+^entry:
+  %r = %v + %v;
+  ret %r;
+}
+
+fun @main() : i32 {
+^entry:
+  ret 0;
+}

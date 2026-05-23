@@ -1,0 +1,15 @@
+// EXPECT: PASS
+
+// BraceElem includes SymId, so brace-init with symbolic lanes is allowed
+// (§3.4.2 vector initialization note). Each lane is independently solved.
+fun @main() : i32 {
+  sym %?a: value i32 in [0, 100];
+  sym %?b: value i32 in [0, 100];
+  sym %?c: value i32 in [0, 100];
+  sym %?d: value i32 in [0, 100];
+  let %v: <4> i32 = {%?a, %?b, %?c, %?d};
+  let mut %s: i32 = 0;
+^entry:
+  %s = %v[0] + %v[1] + %v[2] + %v[3];
+  ret %s;
+}

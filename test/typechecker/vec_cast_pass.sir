@@ -1,0 +1,13 @@
+// EXPECT: PASS
+
+// Lane-wise cast: <N> U as <N> V is well-typed when U as V is a valid
+// scalar cast (and the widths match).
+fun @main() : i32 {
+  let %a: <4> i32 = {1, 2, 3, 4};
+  let mut %b: <4> f32 = 0.0;
+  let mut %c: <4> i64 = 0;
+^entry:
+  %b = %a as <4> f32;     // int-to-fp, lane-wise
+  %c = %a as <4> i64;     // widening, lane-wise
+  ret 0;
+}

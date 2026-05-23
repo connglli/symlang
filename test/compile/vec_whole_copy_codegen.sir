@@ -1,0 +1,11 @@
+// EXPECT: PASS
+
+// Whole-vector copy lowers to a single SIMD register move (`v = w;` in C
+// on the vector-extension type — legal as a struct-like value assignment).
+fun @main() : i32 {
+  let %src: <4> i32 = {10, 20, 30, 40};
+  let mut %dst: <4> i32 = 0;
+^entry:
+  %dst = %src;
+  ret %dst[0] + %dst[1] + %dst[2] + %dst[3];   // 100
+}

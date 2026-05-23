@@ -1,0 +1,12 @@
+// EXPECT: FAIL:StaticError
+
+// Mixing a scalar variable with a vector is a type error.
+// Only literals (not variables) are inferred to broadcast.
+fun @main() : i32 {
+  let %x: i32 = 7;
+  let %v: <4> i32 = 0;
+  let mut %r: <4> i32 = 0;
+^entry:
+  %r = %x * %v;   // StaticError: scalar %x cannot multiply <4> i32 %v
+  ret 0;
+}

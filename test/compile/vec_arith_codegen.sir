@@ -1,0 +1,12 @@
+// EXPECT: PASS
+
+// Codegen for lane-wise arithmetic must produce C / WASM that agrees
+// with the interpreter. Returns sum of lanes for cross-runner check.
+fun @main() : i32 {
+  let %a: <4> i32 = {1, 2, 3, 4};
+  let %b: <4> i32 = {5, 6, 7, 8};
+  let mut %c: <4> i32 = 0;
+^entry:
+  %c = %a + %b;            // {6, 8, 10, 12}
+  ret %c[0] + %c[1] + %c[2] + %c[3];
+}

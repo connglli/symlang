@@ -1,0 +1,18 @@
+// EXPECT: PASS
+
+// Lane-wise bitwise AND, OR, XOR on integer vectors.
+fun @main() : i32 {
+  let %a: <4> i32 = {0xff, 0x0f, 0xaa, 0x55};
+  let %b: <4> i32 = {0x0f, 0xff, 0xff, 0xff};
+  let mut %and: <4> i32 = 0;
+  let mut %or:  <4> i32 = 0;
+  let mut %xor: <4> i32 = 0;
+^entry:
+  %and = %a & %b;        // {0x0f, 0x0f, 0xaa, 0x55}
+  %or  = %a | %b;        // {0xff, 0xff, 0xff, 0xff}
+  %xor = %a ^ %b;        // {0xf0, 0xf0, 0x55, 0xaa}
+  require %and[0] == 0x0f, "and";
+  require %or[1]  == 0xff, "or";
+  require %xor[2] == 0x55, "xor";
+  ret 0;
+}

@@ -1,0 +1,15 @@
+// EXPECT: PASS
+
+// Lane-wise cast lowers to per-lane scalar cast in C.
+// SymIR has no parentheses (§2.4); cast atoms compose in an Expr's
+// flat +/- chain. `%f[2] as i32 + %b[3] as i32` parses as
+// `CastAtom + CastAtom`.
+fun @main() : i32 {
+  let %i: <4> i32 = {1, 2, 3, 4};
+  let mut %f: <4> f32 = 0.0;
+  let mut %b: <4> i64 = 0;
+^entry:
+  %f = %i as <4> f32;
+  %b = %i as <4> i64;
+  ret %f[2] as i32 + %b[3] as i32;       // 3 + 4 = 7
+}

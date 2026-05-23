@@ -1,0 +1,9 @@
+// EXPECT: FAIL:ParseError
+
+// Malformed vector type: missing closing `>` of <N>. The parser sees
+// `< 4 i32` and cannot complete the VecType production.
+fun @main() : i32 {
+  let %v: <4 i32 = 0;
+^entry:
+  ret 0;
+}

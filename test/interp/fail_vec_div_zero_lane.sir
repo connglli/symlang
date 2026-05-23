@@ -1,0 +1,12 @@
+// EXPECT: FAIL:UndefinedBehavior
+
+// Rule 21 (lane-wise scalar UB lift): if any single lane of a vector
+// division has a zero divisor, the whole path is UB.
+fun @main() : i32 {
+  let %a: <4> i32 = {10, 20, 30, 40};
+  let %b: <4> i32 = {1, 2, 0, 4};   // lane 2 = 0
+  let mut %r: <4> i32 = 0;
+^entry:
+  %r = %a / %b;     // UB at lane 2
+  ret 0;
+}

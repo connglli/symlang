@@ -1,0 +1,12 @@
+// EXPECT: FAIL:UndefinedBehavior
+
+// Rule 21 lifted to FP rule 6: any lane producing ±∞ is UB. Here lane 0
+// divides by 0.0 producing +∞.
+fun @main() : f32 {
+  let %a: <4> f32 = {1.0, 2.0, 3.0, 4.0};
+  let %b: <4> f32 = {0.0, 1.0, 1.0, 1.0};
+  let mut %r: <4> f32 = 0.0;
+^entry:
+  %r = %a / %b;     // UB at lane 0 (1.0/0.0 = +inf)
+  ret %r[0];
+}

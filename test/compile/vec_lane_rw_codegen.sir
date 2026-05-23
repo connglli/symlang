@@ -1,0 +1,12 @@
+// EXPECT: PASS
+
+// Lane subscript lowers to the C subscript on the GCC vector-extension
+// type (`v[i]` on `int32 __attribute__((vector_size(16)))`). Same for
+// the write path.
+fun @main() : i32 {
+  let mut %v: <4> i32 = {10, 20, 30, 40};
+^entry:
+  %v[1] = 99;
+  %v[3] = %v[0];           // 10
+  ret %v[1] + %v[3];       // 99 + 10 = 109
+}

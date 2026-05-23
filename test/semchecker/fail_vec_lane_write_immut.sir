@@ -1,0 +1,11 @@
+// EXPECT: FAIL
+
+// Lane-write on an immutable `let` binding is rejected. §6.9.5: a lane
+// write semantically rebinds the vector to a new value, so immutability
+// of the binding forbids it (same logic as a whole-vector assignment).
+fun @main() : i32 {
+  let %v: <4> i32 = {1, 2, 3, 4};
+^entry:
+  %v[1] = 99;   // FAIL: %v is not `let mut`
+  ret 0;
+}

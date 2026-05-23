@@ -1,0 +1,12 @@
+// EXPECT: FAIL:UndefinedBehavior
+
+// Rule 21 lifted to FP rule 7: any lane producing NaN is UB. Here lane 1
+// computes 0.0/0.0 = NaN.
+fun @main() : f64 {
+  let %a: <4> f64 = {1.0, 0.0, 2.0, 3.0};
+  let %b: <4> f64 = {1.0, 0.0, 1.0, 1.0};
+  let mut %r: <4> f64 = 0.0;
+^entry:
+  %r = %a / %b;     // UB at lane 1
+  ret %r[1];
+}

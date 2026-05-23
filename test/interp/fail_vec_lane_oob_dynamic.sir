@@ -1,0 +1,13 @@
+// EXPECT: FAIL:UndefinedBehavior
+// INTERP_ARGS: --sym %?i=5
+
+// Rule 20: out-of-bounds vector lane access via a dynamic index. Sym
+// %?i is set to 5, which is >= N = 4, so the lane read is UB.
+fun @main() : i32 {
+  sym %?i: index i32 in [0, 100];
+  let %v: <4> i32 = {1, 2, 3, 4};
+  let mut %x: i32 = 0;
+^entry:
+  %x = %v[%?i];     // UB if %?i out of [0, 4)
+  ret %x;
+}

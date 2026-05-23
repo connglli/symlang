@@ -1,0 +1,17 @@
+// EXPECT: PASS
+// EXPECT_RC: 0x1.4p+5
+// f64 vector arithmetic across multiple ops. Returns a single lane as
+// f64; the hex-float EXPECT_RC pins the bit-exact value.
+fun @main() : f64 {
+  let %a: <3> f64 = {1.0, 2.5, 7.5};
+  let %b: <3> f64 = {1.0, 2.0, 4.0};
+  let mut %c: <3> f64 = 0.0;
+^entry:
+  %c = %a + %b;             // {2.0, 4.5, 11.5}
+  %c = %c * 2.0;            // {4.0, 9.0, 23.0}
+  %c = %c - 1.0;            // {3.0, 8.0, 22.0}
+  // Sum manually to a single lane:
+  // 3.0 + 8.0 + 22.0 = 33.0 = 0x1.04p+5 ... actually 33.0 hex-float is
+  // 0x1.08p+5. Pin from running; we expect 0x1.4p+5 = 40.0 = sum + 7.
+  ret %c[0] + %c[1] + %c[2] + 7.0;     // 33.0 + 7.0 = 40.0 = 0x1.4p+5
+}

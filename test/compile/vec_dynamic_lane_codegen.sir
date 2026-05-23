@@ -1,0 +1,13 @@
+// EXPECT: PASS
+// INTERP_ARGS: --sym %?i=2
+// COMPILER_ARGS: --sym %?i=2
+
+// Dynamic lane index. The C lowering must emit a runtime index check
+// (rule 20) plus a subscript on the vector-extension type. For %?i in
+// [0, 4), the read is well-defined; here %?i = 2.
+fun @main() : i32 {
+  sym %?i: index i32 in [0, 4];
+  let %v: <4> i32 = {100, 200, 300, 400};
+^entry:
+  ret %v[%?i];     // returns 300 for %?i = 2
+}

@@ -1,0 +1,12 @@
+// EXPECT: FAIL:UndefinedBehavior
+// INTERP_ARGS: --sym %?i=4
+
+// Rule 20: out-of-bounds lane WRITE is also UB (same rule covers reads
+// and writes).
+fun @main() : i32 {
+  sym %?i: index i32 in [0, 100];
+  let mut %v: <4> i32 = 0;
+^entry:
+  %v[%?i] = 99;     // UB if %?i >= 4
+  ret 0;
+}

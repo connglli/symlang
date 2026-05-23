@@ -1,0 +1,12 @@
+// EXPECT: PASS
+
+// Lane subscript syntax — both read and write positions for vectors.
+// Same syntax as array indexing; the type checker resolves which.
+fun @main() : i32 {
+  let mut %v: <4> i32 = {1, 2, 3, 4};
+  let mut %x: i32 = 0;
+^entry:
+  %x = %v[2];        // lane read (RValue position)
+  %v[1] = 99;        // lane write (LValue position)
+  ret %x;
+}

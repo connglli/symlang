@@ -1,0 +1,8 @@
+// EXPECT: FAIL:StaticError
+
+// Vector width must be N >= 2 (§3.2 / §6.9.1).
+fun @main() : i32 {
+  let %v: <0> i32 = 0;   // StaticError: N must be >= 2
+^entry:
+  ret 0;
+}

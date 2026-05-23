@@ -1,0 +1,15 @@
+// EXPECT: PASS
+
+// All basic vector operations are well-typed.
+fun @main() : i32 {
+  let %a: <4> i32 = {1, 2, 3, 4};
+  let %b: <4> i32 = {5, 6, 7, 8};
+  let mut %c: <4> i32 = 0;
+  let mut %x: i32 = 0;
+^entry:
+  %c = %a + %b;
+  %c = %c * 2;          // literal-broadcast in OpAtom
+  %x = %c[1];           // lane read -> i32
+  %c[3] = %x;           // lane write
+  ret %x;
+}

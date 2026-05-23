@@ -1,0 +1,14 @@
+// EXPECT: PASS
+// EXPECT_RC: 35
+// Clamp negative values to 0 using `cmp` + mask-based `select`,
+// then sum the lanes.
+fun @main() : i32 {
+  let %v: <4> i32 = {10, -5, 20, -3};
+  let %zero: <4> i32 = 0;
+  let mut %mask: <4> i1 = 0;
+  let mut %r: <4> i32 = 0;
+^entry:
+  %mask = cmp >= %v, %zero;            // {1, 0, 1, 0}
+  %r    = select %mask, %v, %zero;     // {10, 0, 20, 0}
+  ret %r[0] + %r[1] + %r[2] + %r[3] + 5;   // 30 + 5 = 35
+}

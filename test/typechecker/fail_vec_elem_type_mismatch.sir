@@ -1,0 +1,11 @@
+// EXPECT: FAIL:StaticError
+
+// Vector arithmetic requires matching element type.
+fun @main() : i32 {
+  let %a: <4> i32 = 0;
+  let %b: <4> f32 = 0.0;
+  let mut %c: <4> i32 = 0;
+^entry:
+  %c = %a + %b;   // StaticError: <4> i32 vs <4> f32
+  ret 0;
+}

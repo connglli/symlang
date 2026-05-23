@@ -1,0 +1,9 @@
+// EXPECT: FAIL:StaticError
+
+// Width N = 1 is also rejected (§6.9.1: N >= 2). A 1-lane vector
+// is just a scalar and would only blur the surface.
+fun @main() : i32 {
+  let %v: <1> i32 = 0;   // StaticError
+^entry:
+  ret 0;
+}

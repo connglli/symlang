@@ -1,0 +1,21 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path '^entry'
+
+// Find a per-lane coefficient vector %?c so that %?c * %input
+// equals %target. Each lane solved independently.
+//   input  = {2, 3, 4, 5}
+//   target = {4, 9, 16, 25}
+// One satisfying %?c: {2, 3, 4, 5}.
+fun @main() : i32 {
+  sym %?c: coef <4> i32 in [-10, 10];
+  let %input:  <4> i32 = {2, 3, 4, 5};
+  let %target: <4> i32 = {4, 9, 16, 25};
+  let mut %r:  <4> i32 = 0;
+^entry:
+  %r = %?c * %input;
+  require %r[0] == %target[0], "lane 0";
+  require %r[1] == %target[1], "lane 1";
+  require %r[2] == %target[2], "lane 2";
+  require %r[3] == %target[3], "lane 3";
+  ret 0;
+}

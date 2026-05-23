@@ -1,0 +1,17 @@
+// EXPECT: PASS
+
+// Widening (sign-extend) and narrowing (truncate) int casts, lane-wise.
+// Narrowing is well-defined (modulo 2^N truncation); no UB.
+fun @main() : i32 {
+  let %i16: <4> i16 = {-1, 256, 32767, -32768};
+  let mut %i32: <4> i32 = 0;
+  let %big32: <4> i32 = {0x10000, 0x100, 0x7f, -1};
+  let mut %i8:  <4> i8 = 0;
+^entry:
+  %i32 = %i16 as <4> i32;     // sign-extend
+  %i8  = %big32 as <4> i8;    // truncate
+  require %i32[0] == -1,      "i16(-1) -> i32(-1)";
+  require %i32[3] == -32768,  "i16 INT16_MIN -> i32";
+  require %i8[2]  == 0x7f,    "low byte preserved";
+  ret 0;
+}

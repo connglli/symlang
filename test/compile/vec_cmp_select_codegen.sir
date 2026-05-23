@@ -1,0 +1,14 @@
+// EXPECT: PASS
+
+// `cmp` lowers to a SIMD compare producing all-ones/all-zeros lanes;
+// mask-based `select` lowers to a SIMD blend (or `?:` on vector type).
+fun @main() : i32 {
+  let %a: <4> i32 = { 5, -3, 7, -1};
+  let %z: <4> i32 = 0;
+  let mut %mask: <4> i1 = 0;
+  let mut %r: <4> i32 = 0;
+^entry:
+  %mask = cmp >= %a, %z;             // {1, 0, 1, 0}
+  %r    = select %mask, %a, %z;       // clamp negative to 0
+  ret %r[0] + %r[1] + %r[2] + %r[3]; // 5 + 0 + 7 + 0 = 12
+}

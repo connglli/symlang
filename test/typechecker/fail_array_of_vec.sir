@@ -1,0 +1,8 @@
+// EXPECT: FAIL:StaticError
+
+// Arrays of vectors are not well-formed (§3.2: vectors cannot be nested).
+fun @main() : i32 {
+  let mut %arr: [3] <4> i32 = 0;   // StaticError: array element is vector
+^entry:
+  ret 0;
+}

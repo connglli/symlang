@@ -1,0 +1,24 @@
+// EXPECT: PASS
+
+// Lane-wise shifts (`<<`, `>>`, `>>>`) and unary `~`. Shift amount is a
+// vector of the same shape; per-lane overshift is UB (rule 5) — here
+// all shifts are in range.
+fun @main() : i32 {
+  let %a:  <4> i32 = {1, 1, 1, 1};
+  let %sh: <4> i32 = {0, 1, 2, 3};
+  let %s:  <4> i32 = {-1, -2, -4, -8};
+  let %u:  <4> i32 = {0xf0f0f0f0, 0, 0, 0};
+  let mut %shl: <4> i32 = 0;
+  let mut %shr: <4> i32 = 0;
+  let mut %ushr:<4> i32 = 0;
+  let mut %inv: <4> i32 = 0;
+^entry:
+  %shl = %a << %sh;       // {1, 2, 4, 8}
+  %shr = %s >> %sh;       // {-1, -1, -1, -1}   (arith shift)
+  %ushr = %u >>> %sh;     // top lane unsigned-shift; others 0
+  %inv = ~%a;             // {-2, -2, -2, -2}
+  require %shl[3] == 8, "shl3";
+  require %shr[3] == -1, "shr3";
+  require %inv[0] == -2, "not0";
+  ret 0;
+}

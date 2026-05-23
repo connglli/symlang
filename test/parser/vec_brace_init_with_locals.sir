@@ -1,0 +1,14 @@
+// EXPECT: PASS
+
+// Brace init using locals (BraceElem ::= ScalarInit | "null" | "undef" | BraceInit).
+// ScalarInit includes IntLit / FloatLit / SymId / LocalId — so locals are OK
+// inside braces.
+fun @main() : i32 {
+  let %a: i32 = 11;
+  let %b: i32 = 22;
+  let %c: i32 = 33;
+  let %d: i32 = 44;
+  let %v: <4> i32 = {%a, %b, %c, %d};
+^entry:
+  ret 0;
+}

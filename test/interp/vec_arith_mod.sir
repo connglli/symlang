@@ -1,0 +1,16 @@
+// EXPECT: PASS
+
+// Lane-wise modulo: integer % truncates toward zero, so the sign of the
+// result follows the dividend (§8.1).
+fun @main() : i32 {
+  let %a: <4> i32 = {7, -7, 10, -10};
+  let %b: <4> i32 = {3, 3, -4, -4};
+  let mut %m: <4> i32 = 0;
+^entry:
+  %m = %a % %b;          // { 1, -1, 2, -2 }
+  require %m[0] == 1,  "pos pos";
+  require %m[1] == -1, "neg pos";
+  require %m[2] == 2,  "pos neg";
+  require %m[3] == -2, "neg neg";
+  ret 0;
+}

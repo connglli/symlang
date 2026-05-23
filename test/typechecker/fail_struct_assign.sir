@@ -1,0 +1,14 @@
+// EXPECT: FAIL:StaticError
+
+// Whole-aggregate assignment is NOT supported (§6.6). Structs and arrays
+// have no single value-level bitwidth. This must still be rejected in
+// v0.2.1 even though vectors became copyable.
+struct @S { x: i32; y: i32; }
+
+fun @main() : i32 {
+  let mut %s: @S = {0, 0};
+  let mut %t: @S = {1, 2};
+^entry:
+  %s = %t;   // StaticError: whole-struct copy
+  ret 0;
+}

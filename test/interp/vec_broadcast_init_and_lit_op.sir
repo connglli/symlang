@@ -1,0 +1,14 @@
+// EXPECT: PASS
+
+// (a) Broadcast init `let %v: <4> i32 = 5;` fills all lanes with 5.
+// (b) A literal in an OpAtom broadcasts to a vector in vector context
+//     (§6.11). `2 * %v` is `<4> i32` with lit broadcast.
+fun @main() : i32 {
+  let %v: <4> i32 = 5;
+  let mut %r: <4> i32 = 0;
+^entry:
+  %r = 2 * %v;             // {10, 10, 10, 10}
+  require %r[0] == 10, "lane0";
+  require %r[3] == 10, "lane3";
+  ret 0;
+}

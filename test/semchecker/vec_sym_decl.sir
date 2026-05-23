@@ -1,0 +1,11 @@
+// EXPECT: PASS
+
+// sym of vector type — each lane is an independent symbolic variable.
+// Domain applies per-lane (§3.4.1).
+fun @main() : i32 {
+  sym %?v: value <4> i32 in [0, 10];
+  let mut %sum: i32 = 0;
+^entry:
+  %sum = %sum + %?v[0] + %?v[1] + %?v[2] + %?v[3];
+  ret %sum;
+}

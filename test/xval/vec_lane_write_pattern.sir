@@ -1,0 +1,17 @@
+// EXPECT: PASS
+// EXPECT_RC: 30
+// Lane writes interleaved with whole-vector ops. Tests that the
+// SMT/interpreter "rebind to new tuple" semantics matches the C
+// backend's in-place subscript-update semantics — they give the
+// same observable result.
+fun @main() : i32 {
+  let mut %v: <4> i32 = 0;
+^entry:
+  %v[0] = 1;
+  %v[1] = 2;
+  %v[2] = 3;
+  %v[3] = 4;
+  %v = %v * 2;             // {2, 4, 6, 8}
+  %v[1] = %v[0] + %v[2];   // 8
+  ret %v[0] + %v[1] + %v[2] + %v[3] + 6;   // 2+8+6+8+6 = 30
+}

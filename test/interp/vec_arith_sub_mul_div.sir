@@ -1,0 +1,19 @@
+// EXPECT: PASS
+
+// Lane-wise subtraction, multiplication, and signed division (truncation
+// toward zero, per §2.5).
+fun @main() : i32 {
+  let %a: <4> i32 = {10, 20, 30, 40};
+  let %b: <4> i32 = { 1,  2,  3,  4};
+  let mut %s: <4> i32 = 0;
+  let mut %p: <4> i32 = 0;
+  let mut %q: <4> i32 = 0;
+^entry:
+  %s = %a - %b;          // { 9, 18, 27, 36}
+  %p = %a * %b;          // {10, 40, 90,160}
+  %q = %a / %b;          // {10, 10, 10, 10}
+  require %s[2] == 27, "sub";
+  require %p[3] == 160, "mul";
+  require %q[0] == 10, "div";
+  ret 0;
+}

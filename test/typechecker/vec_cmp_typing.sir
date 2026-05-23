@@ -1,0 +1,21 @@
+// EXPECT: PASS
+
+// Scalar `cmp` returns i1; vector `cmp` returns <N> i1.
+// Mask-based select with <N> i1 mask: arms must be <N> T; result <N> T.
+// Mask-based select with i1: arms can be any uniform type.
+fun @main() : i32 {
+  let %x: i32 = 1;
+  let %y: i32 = 2;
+  let %va: <4> i32 = 0;
+  let %vb: <4> i32 = 0;
+  let mut %s_flag: i1 = 0;
+  let mut %v_mask: <4> i1 = 0;
+  let mut %r1: i32 = 0;
+  let mut %r2: <4> i32 = 0;
+^entry:
+  %s_flag = cmp < %x, %y;        // scalar -> i1
+  %v_mask = cmp < %va, %vb;       // vector -> <4> i1
+  %r1     = select %s_flag, %x, %y;          // scalar i1 mask, scalar arms
+  %r2     = select %v_mask, %va, %vb;        // <4> i1 mask, <4> i32 arms
+  ret %r1;
+}

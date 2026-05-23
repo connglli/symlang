@@ -1,0 +1,10 @@
+// EXPECT: FAIL:StaticError
+
+// Vector cast must preserve N (lane count).
+fun @main() : i32 {
+  let %a: <4> i32 = 0;
+  let mut %b: <8> i32 = 0;
+^entry:
+  %b = %a as <8> i32;   // StaticError: N changed in cast
+  ret 0;
+}

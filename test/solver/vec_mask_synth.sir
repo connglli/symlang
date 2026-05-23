@@ -1,0 +1,19 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path '^entry'
+
+// Synthesise a 4-lane mask so that a mask-based select between two
+// concrete vectors yields a specific target. Equivalent to "find
+// which lanes to take from %a vs %b". One satisfying mask: {1,0,1,0}.
+fun @main() : i32 {
+  sym %?m: value <4> i1;
+  let %a: <4> i32 = {10, 11, 12, 13};
+  let %b: <4> i32 = {20, 21, 22, 23};
+  let mut %r: <4> i32 = 0;
+^entry:
+  %r = select %?m, %a, %b;
+  require %r[0] == 10, "lane 0 from a";
+  require %r[1] == 21, "lane 1 from b";
+  require %r[2] == 12, "lane 2 from a";
+  require %r[3] == 23, "lane 3 from b";
+  ret 0;
+}

@@ -1,0 +1,11 @@
+// EXPECT: FAIL:StaticError
+
+// A vector lane has no independent address (§6.8.2: addr is forbidden
+// if the access path traverses a vector type).
+fun @main() : i32 {
+  let mut %v: <4> i32 = {0, 0, 0, 0};
+  let mut %p: ptr i32 = null;
+^entry:
+  %p = addr %v[1];   // StaticError: addr of vector lane
+  ret 0;
+}

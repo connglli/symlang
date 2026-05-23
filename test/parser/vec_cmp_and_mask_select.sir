@@ -1,0 +1,15 @@
+// EXPECT: PASS
+
+// cmp atom in vector and scalar forms; mask-based select.
+fun @main() : i32 {
+  let %a: <4> i32 = {1, 2, 3, 4};
+  let %b: <4> i32 = {2, 2, 2, 2};
+  let mut %mask: <4> i1 = 0;
+  let mut %out: <4> i32 = 0;
+  let mut %sflag: i1 = 0;
+^entry:
+  %sflag = cmp < 1, 2;             // scalar cmp -> i1
+  %mask  = cmp < %a, %b;           // vector cmp -> <4> i1
+  %out   = select %mask, %a, %b;   // mask-based per-lane blend
+  ret 0;
+}

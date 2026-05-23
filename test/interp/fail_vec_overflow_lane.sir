@@ -1,0 +1,12 @@
+// EXPECT: FAIL:UndefinedBehavior
+
+// Rule 21: lane-wise signed overflow. Lane 3 multiplies INT32_MAX by 2
+// which overflows; the path is UB.
+fun @main() : i32 {
+  let %a: <4> i32 = {1, 2, 3, 2147483647};
+  let %b: <4> i32 = {1, 2, 3, 2};
+  let mut %r: <4> i32 = 0;
+^entry:
+  %r = %a * %b;     // UB at lane 3
+  ret 0;
+}
