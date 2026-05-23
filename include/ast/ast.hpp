@@ -128,6 +128,7 @@ namespace symir {
 
   struct ArrayType;
   struct PtrType;
+  struct VecType;
   struct Type;
   using TypePtr = std::shared_ptr<Type>;
 
@@ -150,10 +151,22 @@ namespace symir {
   };
 
   /**
+   * [v0.2.1] Fixed-width SIMD vector type: <N> T.
+   * T must be a scalar (iN, f32, f64). N >= 2. The bitwidth is
+   * N * bitwidth(T); vectors are register-shaped value types and not
+   * addressable (no `ptr <N> T`). Lane access uses LValue subscript.
+   */
+  struct VecType {
+    std::uint64_t size = 0; // N (lane count)
+    TypePtr elem;           // lane scalar type
+    SourceSpan span;
+  };
+
+  /**
    * Wrapper for all possible types in SymIR.
    */
   struct Type {
-    using Variant = std::variant<IntType, FloatType, StructType, ArrayType, PtrType>;
+    using Variant = std::variant<IntType, FloatType, StructType, ArrayType, PtrType, VecType>;
     Variant v;
     SourceSpan span;
   };

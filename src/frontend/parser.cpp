@@ -119,7 +119,18 @@ namespace symir {
           PtrType{std::move(pointee), SourceSpan{b, prevEnd()}}, SourceSpan{b, prevEnd()}
       );
     }
-    errorHere("Expected a type (iN, f32/f64, array type, struct type @Name, or ptr T)");
+    // [v0.2.1] vector type: <N> ScalarType. N is parsed as IntLit; the
+    // typechecker enforces N >= 2 and the elem-is-scalar restriction.
+    if (tryConsume(TokenKind::Lt)) {
+      Token t = consume(TokenKind::IntLit, "vector lane count N");
+      std::size_t size = std::stoull(t.lexeme);
+      consume(TokenKind::Gt, "'>' after vector lane count");
+      TypePtr elem = parseType();
+      return std::make_shared<Type>(
+          VecType{size, std::move(elem), SourceSpan{b, prevEnd()}}, SourceSpan{b, prevEnd()}
+      );
+    }
+    errorHere("Expected a type (iN, f32/f64, array type, struct type @Name, ptr T, or <N> T)");
   }
 
   SourcePos Parser::prevEnd() const {

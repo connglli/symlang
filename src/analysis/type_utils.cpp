@@ -15,6 +15,10 @@ namespace symir {
           return it->bits.value_or(0);
       }
     }
+    // Note: getBitWidth deliberately returns nullopt for floats/ptrs/vectors —
+    // the typechecker treats this as "is this an integer type?" because float
+    // and pointer assignments take dedicated paths. Vector assignment also
+    // needs a dedicated path (see typechecker.cpp AssignInstr handling).
     return std::nullopt;
   }
 
@@ -49,6 +53,10 @@ namespace symir {
       auto pb = std::get_if<PtrType>(&b->v);
       return areTypesEqual(pa->pointee, pb->pointee);
     }
+    if (auto va = std::get_if<VecType>(&a->v)) {
+      auto vb = std::get_if<VecType>(&b->v);
+      return va->size == vb->size && areTypesEqual(va->elem, vb->elem);
+    }
     return false;
   }
 
@@ -65,5 +73,11 @@ namespace symir {
   bool TypeUtils::isStruct(const TypePtr &t) {
     return t && std::holds_alternative<StructType>(t->v);
   }
+
+  const VecType *TypeUtils::asVec(const TypePtr &t) {
+    return t ? std::get_if<VecType>(&t->v) : nullptr;
+  }
+
+  bool TypeUtils::isVec(const TypePtr &t) { return t && std::holds_alternative<VecType>(t->v); }
 
 } // namespace symir
