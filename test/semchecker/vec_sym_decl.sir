@@ -1,11 +1,15 @@
 // EXPECT: PASS
 
 // sym of vector type — each lane is an independent symbolic variable.
-// Domain applies per-lane (§3.4.1).
+// Domain applies per-lane (§3.4.1). LValue.base is restricted to LocalId
+// (spec §5.1), so subscripting a sym requires staging through a let mut
+// local first.
 fun @main() : i32 {
   sym %?v: value <4> i32 in [0, 10];
+  let mut %tmp: <4> i32 = 0;
   let mut %sum: i32 = 0;
 ^entry:
-  %sum = %sum + %?v[0] + %?v[1] + %?v[2] + %?v[3];
+  %tmp = %?v;
+  %sum = %sum + %tmp[0] + %tmp[1] + %tmp[2] + %tmp[3];
   ret %sum;
 }

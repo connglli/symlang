@@ -612,13 +612,24 @@ namespace symir {
 
     if (is(TokenKind::KwSelect)) {
       consume(TokenKind::KwSelect, "'select'");
-      Cond c = parseCond();
+      // [v0.2.1] Two select forms. Parse the first Expr, then dispatch on
+      // the next token: RelOp → Cond form; Comma → mask form.
+      SourcePos sb = peek().span.begin;
+      Expr first = parseExpr();
+      SelectAtom sa;
+      if (is(TokenKind::EqEq) || is(TokenKind::NotEq) || is(TokenKind::Lt) || is(TokenKind::Le) ||
+          is(TokenKind::Gt) || is(TokenKind::Ge)) {
+        RelOp op = parseRelOp();
+        Expr rhs = parseExpr();
+        Cond c{std::move(first), op, std::move(rhs), SourceSpan{sb, prevEnd()}};
+        sa.cond = std::make_unique<Cond>(std::move(c));
+      } else {
+        sa.maskExpr = std::make_unique<Expr>(std::move(first));
+      }
       consume(TokenKind::Comma, "','");
       SelectVal t = parseSelectVal();
       consume(TokenKind::Comma, "','");
       SelectVal f = parseSelectVal();
-      SelectAtom sa;
-      sa.cond = std::make_unique<Cond>(std::move(c));
       sa.vtrue = std::move(t);
       sa.vfalse = std::move(f);
       sa.span = SourceSpan{b, prevEnd()};

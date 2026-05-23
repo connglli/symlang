@@ -249,9 +249,19 @@ namespace symir {
 
   /**
    * Ternary select expression (lazy evaluation).
+   *
+   * Two forms (spec §5.3):
+   *   - Cond form:  `select Cond, vt, vf` — scalar boolean predicate.
+   *   - Mask form:  `select Expr, vt, vf` — Expr of type i1 or <N> i1.
+   *
+   * Exactly one of `cond` and `maskExpr` is non-null. The parser
+   * disambiguates by lookahead: after parsing the first Expr, if the
+   * next token is a RelOp the form is Cond; if it is `,` the form is
+   * mask.
    */
   struct SelectAtom {
-    std::unique_ptr<Cond> cond;
+    std::unique_ptr<Cond> cond;     // Cond form
+    std::unique_ptr<Expr> maskExpr; // mask form [v0.2.1]
     SelectVal vtrue;
     SelectVal vfalse;
     SourceSpan span;

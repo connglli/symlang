@@ -601,11 +601,41 @@ namespace symir {
             diags.error("Unary op not supported for float", arg.span);
             return Ty{std::monostate{}};
           } else if constexpr (std::is_same_v<T, SelectAtom>) {
-            checkCond(*arg.cond, vars, syms, ann, diags);
+            // [v0.2.1] Two forms. cond=Cond form; maskExpr=mask form.
+            bool maskIsVec = false;
+            if (arg.cond) {
+              checkCond(*arg.cond, vars, syms, ann, diags);
+            } else if (arg.maskExpr) {
+              auto mt = typeOfExpr(*arg.maskExpr, vars, syms, ann, diags, std::nullopt);
+              if (mt.isVec()) {
+                // Mask must be <N> i1.
+                auto vt = std::get_if<VecType>(&mt.vecType()->v);
+                bool ok = vt && vt->elem && std::holds_alternative<IntType>(vt->elem->v) &&
+                          (std::get<IntType>(vt->elem->v).kind == IntType::Kind::ICustom) &&
+                          (std::get<IntType>(vt->elem->v).bits.value_or(0) == 1);
+                if (!ok)
+                  diags.error("Mask-based select requires <N> i1 mask", arg.span);
+                maskIsVec = true;
+              } else if (mt.isBV()) {
+                if (mt.bvBits() != 1)
+                  diags.error("Mask-based select scalar mask must be i1", arg.span);
+              } else {
+                diags.error("Mask-based select: mask must be i1 or <N> i1", arg.span);
+              }
+            }
             auto t1 = typeOfSelectVal(arg.vtrue, vars, syms, ann, diags, expectedBits, ptrCtx);
             auto t2 = typeOfSelectVal(
                 arg.vfalse, vars, syms, ann, diags, expectedBits, t1.isPtr() ? t1.ptrType() : ptrCtx
             );
+            // Mask-form with <N> i1: arms must be matching <N> T.
+            if (maskIsVec) {
+              if (!t1.isVec() || !t2.isVec() ||
+                  !TypeUtils::areTypesEqual(t1.vecType(), t2.vecType()))
+                diags.error(
+                    "Mask-based select with <N> i1 mask requires matching <N> T arms", arg.span
+                );
+              return t1;
+            }
             // Resolve null arm using sibling's type
             if (t1.isPtr() && !t2.isPtr())
               diags.error("Select arm type mismatch (pointer vs non-pointer)", arg.span);
@@ -615,6 +645,8 @@ namespace symir {
               diags.error("Select width mismatch", arg.span);
             if (t1.isFloat() && t2.isFloat() && t1.floatBits() != t2.floatBits())
               diags.error("Select float width mismatch", arg.span);
+            if (t1.isVec() && t2.isVec() && !TypeUtils::areTypesEqual(t1.vecType(), t2.vecType()))
+              diags.error("Select vector type mismatch", arg.span);
             if ((t1.isBV() || t1.isFloat()) &&
                 (t2.isBV() != t1.isBV() || t2.isFloat() != t1.isFloat()))
               diags.error("Select type mismatch", arg.span);
@@ -631,6 +663,11 @@ namespace symir {
               };
             if (std::holds_alternative<PtrType>(ct->v))
               return Ty{Ty::PtrTy{ct}};
+            // [v0.2.1] Sym of vector type: a CoefAtom referencing a
+            // vector sym yields a vector value (used to stage sym
+            // vectors into a local before lane subscripting).
+            if (std::holds_alternative<VecType>(ct->v))
+              return Ty{Ty::VecTy{ct}};
             return Ty{std::monostate{}};
           } else if constexpr (std::is_same_v<T, RValueAtom>) {
             auto rt = typeOfLValue(arg.rval, vars, syms, diags);
@@ -872,6 +909,9 @@ namespace symir {
     }
     if (std::holds_alternative<PtrType>(t->v))
       return Ty{Ty::PtrTy{t}};
+    // [v0.2.1] Vector arms of `select` (Cond form or mask form).
+    if (std::holds_alternative<VecType>(t->v))
+      return Ty{Ty::VecTy{t}};
     return Ty{std::monostate{}};
   }
 

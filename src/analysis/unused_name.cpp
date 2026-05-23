@@ -28,24 +28,38 @@ namespace symir {
                 }
                 collectLValue(arg.rval);
               } else if constexpr (std::is_same_v<T, SelectAtom>) {
-                self(arg.cond->lhs, self);
-                self(arg.cond->rhs, self);
-                if (auto rv = std::get_if<RValue>(&arg.vtrue)) {
-                  collectLValue(*rv);
-                } else {
-                  const auto &coef = std::get<Coef>(arg.vtrue);
-                  if (auto lsid = std::get_if<LocalOrSymId>(&coef)) {
-                    std::visit([&](auto &&id) { used.insert(id.name); }, *lsid);
-                  }
+                // [v0.2.1] Two forms: cond=Cond form; maskExpr=mask form.
+                if (arg.cond) {
+                  self(arg.cond->lhs, self);
+                  self(arg.cond->rhs, self);
+                } else if (arg.maskExpr) {
+                  self(*arg.maskExpr, self);
                 }
-                if (auto rv = std::get_if<RValue>(&arg.vfalse)) {
-                  collectLValue(*rv);
-                } else {
-                  const auto &coef = std::get<Coef>(arg.vfalse);
-                  if (auto lsid = std::get_if<LocalOrSymId>(&coef)) {
-                    std::visit([&](auto &&id) { used.insert(id.name); }, *lsid);
+                auto handleSv = [&](const SelectVal &sv) {
+                  if (auto rv = std::get_if<RValue>(&sv)) {
+                    collectLValue(*rv);
+                  } else {
+                    const auto &coef = std::get<Coef>(sv);
+                    if (auto lsid = std::get_if<LocalOrSymId>(&coef)) {
+                      std::visit([&](auto &&id) { used.insert(id.name); }, *lsid);
+                    }
                   }
-                }
+                };
+                handleSv(arg.vtrue);
+                handleSv(arg.vfalse);
+              } else if constexpr (std::is_same_v<T, CmpAtom>) {
+                // [v0.2.1] cmp: walk both SelectVal operands.
+                auto handleSv = [&](const SelectVal &sv) {
+                  if (auto rv = std::get_if<RValue>(&sv)) {
+                    collectLValue(*rv);
+                  } else if (auto cf = std::get_if<Coef>(&sv)) {
+                    if (auto lsid = std::get_if<LocalOrSymId>(cf)) {
+                      std::visit([&](auto &&id) { used.insert(id.name); }, *lsid);
+                    }
+                  }
+                };
+                handleSv(arg.lhs);
+                handleSv(arg.rhs);
               } else if constexpr (std::is_same_v<T, CoefAtom>) {
                 if (auto lsid = std::get_if<LocalOrSymId>(&arg.coef)) {
                   std::visit([&](auto &&id) { used.insert(id.name); }, *lsid);

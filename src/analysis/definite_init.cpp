@@ -84,8 +84,33 @@ namespace symir {
                 }
                 checkLValue(arg.rval);
               } else if constexpr (std::is_same_v<T, SelectAtom>) {
-                self(arg.cond->lhs, self);
-                self(arg.cond->rhs, self);
+                // [v0.2.1] Two forms: Cond form has arg.cond; mask form has
+                // arg.maskExpr. The selectvals themselves are checked
+                // separately by selectVal walking below.
+                if (arg.cond) {
+                  self(arg.cond->lhs, self);
+                  self(arg.cond->rhs, self);
+                } else if (arg.maskExpr) {
+                  self(*arg.maskExpr, self);
+                }
+              } else if constexpr (std::is_same_v<T, CmpAtom>) {
+                // [v0.2.1] cmp <relop> lhs, rhs: walk both SelectVal operands.
+                auto checkSv = [&](const SelectVal &sv) {
+                  if (auto rv = std::get_if<RValue>(&sv))
+                    checkLValue(*rv);
+                  else if (auto cf = std::get_if<Coef>(&sv)) {
+                    if (auto lsid = std::get_if<LocalOrSymId>(cf)) {
+                      if (auto lid = std::get_if<LocalId>(lsid)) {
+                        if (state.count(lid->name) && !state.at(lid->name))
+                          diags_.error(
+                              "Read of uninitialized local in cmp: " + lid->name, lid->span
+                          );
+                      }
+                    }
+                  }
+                };
+                checkSv(arg.lhs);
+                checkSv(arg.rhs);
               } else if constexpr (std::is_same_v<T, RValueAtom>) {
                 checkLValue(arg.rval);
               } else if constexpr (std::is_same_v<T, CoefAtom>) {
