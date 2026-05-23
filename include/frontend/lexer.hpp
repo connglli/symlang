@@ -77,6 +77,7 @@ namespace symir {
     KwLoad,  // "load"  [v0.2.0]
     KwStore, // "store" [v0.2.0]
     KwNull,  // "null"  [v0.2.0]
+    KwCmp,   // "cmp"   [v0.2.1]
   };
 
   /**

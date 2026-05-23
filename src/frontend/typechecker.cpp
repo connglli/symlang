@@ -13,11 +13,60 @@ namespace symir {
     return diags.hasErrors() ? symir::PassResult::Error : symir::PassResult::Success;
   }
 
-  void TypeChecker::collectStructs(const Program &prog, [[maybe_unused]] DiagBag &diags) {
+  // [v0.2.1] Recursive well-formedness check on type usages. Catches the
+  // structural restrictions §3.2 and §6.9.1: no vector of non-scalar, no
+  // ptr to vector, no vector with N<2, no vector as struct field, no array
+  // of vector.
+  static void validateTypeWF(
+      const TypePtr &t, DiagBag &diags, bool insideVec = false, bool insideField = false,
+      bool insideArray = false
+  ) {
+    if (!t)
+      return;
+    std::visit(
+        [&](auto &&x) {
+          using X = std::decay_t<decltype(x)>;
+          if constexpr (std::is_same_v<X, VecType>) {
+            if (insideVec)
+              diags.error("Vectors cannot be nested (<N> <M> T)", t->span);
+            if (insideField)
+              diags.error("Vectors cannot appear as struct fields", t->span);
+            if (insideArray)
+              diags.error("Arrays of vectors are not supported", t->span);
+            if (x.size < 2)
+              diags.error("Vector lane count must be >= 2; got " + std::to_string(x.size), t->span);
+            // The lane element must itself be scalar (Int or Float). Recurse
+            // with insideVec=true so the recursion catches nested vectors;
+            // PtrType / StructType / ArrayType / VecType inside a vector
+            // is rejected by the recursive call (or by the explicit branches
+            // below).
+            if (x.elem && !std::holds_alternative<IntType>(x.elem->v) &&
+                !std::holds_alternative<FloatType>(x.elem->v)) {
+              diags.error("Vector lane type must be a scalar (iN, f32, f64)", t->span);
+            }
+            validateTypeWF(x.elem, diags, true, false, false);
+          } else if constexpr (std::is_same_v<X, PtrType>) {
+            // ptr <N> T is forbidden (§6.8.1).
+            if (x.pointee && std::holds_alternative<VecType>(x.pointee->v))
+              diags.error("Pointer to vector (ptr <N> T) is not supported", t->span);
+            validateTypeWF(x.pointee, diags, false, false, false);
+          } else if constexpr (std::is_same_v<X, ArrayType>) {
+            validateTypeWF(x.elem, diags, false, false, true);
+          }
+          // StructType: validated separately in collectStructs.
+        },
+        t->v
+    );
+  }
+
+  void TypeChecker::collectStructs(const Program &prog, DiagBag &diags) {
     for (const auto &sd: prog.structs) {
       StructInfo si;
       si.declSpan = sd.span;
       for (const auto &fd: sd.fields) {
+        // [v0.2.1] Validate per-field type: in particular reject vector
+        // fields explicitly with insideField=true.
+        validateTypeWF(fd.type, diags, false, true, false);
         si.fields[fd.name] = fd.type;
         si.fieldList.push_back({fd.name, fd.type});
       }
@@ -41,6 +90,7 @@ namespace symir {
 
     auto at = TypeUtils::asArray(targetType);
     auto st = TypeUtils::asStruct(targetType);
+    auto vt = TypeUtils::asVec(targetType);
 
     if (iv.kind == InitVal::Kind::Aggregate) {
       const auto &elements = std::get<std::vector<InitValPtr>>(iv.value);
@@ -72,6 +122,21 @@ namespace symir {
         for (size_t i = 0; i < elements.size(); ++i) {
           checkInitVal(*elements[i], sit->second.fieldList[i].second, vars, syms, diags);
         }
+      } else if (vt) {
+        // [v0.2.1] Vector brace init: exactly N lane initializers, each of
+        // the lane scalar type. BraceElem restrictions (no atom-form inside
+        // a brace) are enforced syntactically by the parser.
+        if (elements.size() != vt->size) {
+          diags.error(
+              "Vector initializer lane count mismatch: expected " + std::to_string(vt->size) +
+                  ", got " + std::to_string(elements.size()),
+              iv.span
+          );
+          return;
+        }
+        for (const auto &elem: elements) {
+          checkInitVal(*elem, vt->elem, vars, syms, diags);
+        }
       } else {
         diags.error("Aggregate initializer for non-aggregate type", iv.span);
       }
@@ -90,6 +155,11 @@ namespace symir {
           for (const auto &fld: sit->second.fieldList)
             collect(fld.second);
         }
+      } else if (auto inner_vt = TypeUtils::asVec(t)) {
+        // [v0.2.1] Vector broadcast: scalar init type must match the lane
+        // scalar type. Recursing on `elem` lets the existing leaf-check
+        // reject `let %v: <4> i32 = 1.5;` etc.
+        collect(inner_vt->elem);
       } else {
         targetLeaves.push_back(t);
       }
@@ -142,7 +212,11 @@ namespace symir {
     std::unordered_map<std::string, VarInfo> vars;
     std::unordered_map<std::string, SymInfo> syms;
 
+    // [v0.2.1] Up-front type validation so structural errors fire before
+    // any expression check that would also touch the type.
+    validateTypeWF(f.retType, diags);
     for (const auto &p: f.params) {
+      validateTypeWF(p.type, diags);
       vars[p.name.name] = VarInfo{p.type, false, true, p.span};
     }
     for (const auto &s: f.syms) {
@@ -151,12 +225,14 @@ namespace symir {
       if (s.type && std::holds_alternative<PtrType>(s.type->v)) {
         diags.error("sym of pointer type is not allowed in v0.2.0: " + s.name.name, s.span);
       }
+      validateTypeWF(s.type, diags);
       syms[s.name.name] = SymInfo{s.type, s.kind, s.span};
     }
     for (const auto &l: f.lets) {
       if (vars.count(l.name.name)) {
         diags.error("Duplicate name: " + l.name.name, l.span);
       }
+      validateTypeWF(l.type, diags);
       vars[l.name.name] = VarInfo{l.type, l.isMutable, false, l.span};
       if (l.init) {
         checkInitVal(*l.init, l.type, vars, syms, diags);
@@ -168,9 +244,10 @@ namespace symir {
     auto retBits = TypeUtils::getBitWidth(f.retType);
     bool isRetFloat = f.retType && std::holds_alternative<FloatType>(f.retType->v);
     bool isRetPtr = f.retType && std::holds_alternative<PtrType>(f.retType->v);
+    bool isRetVec = f.retType && std::holds_alternative<VecType>(f.retType->v); // [v0.2.1]
 
-    if (!retBits && !isRetFloat && !isRetPtr)
-      diags.error("Return type must be a scalar or pointer type", f.span);
+    if (!retBits && !isRetFloat && !isRetPtr && !isRetVec)
+      diags.error("Return type must be a scalar, pointer, or vector type", f.span);
 
     for (const auto &b: f.blocks) {
       for (const auto &ins: b.instrs) {
@@ -193,6 +270,21 @@ namespace symir {
                       );
                     else if (!TypeUtils::areTypesEqual(rhsTy.ptrType(), lt))
                       diags.error("Pointer type mismatch in assignment", arg.rhs.span);
+                  } else if (auto lvt = TypeUtils::asVec(lt)) {
+                    // [v0.2.1] Vector assignment: whole-vector copy or lane
+                    // write. For lane write (LHS has a trailing [i] access
+                    // and i resolves to a vector lane), the LHS lt is the
+                    // lane element type — which is handled by the integer/
+                    // float branch below. So this branch only fires when
+                    // the LHS is a whole vector lvalue. RHS must be the
+                    // same vector type (literal broadcast is handled by
+                    // typeOfExpr's `expected` plumbing).
+                    Ty rhsTy = typeOfExpr(arg.rhs, vars, syms, ann, diags, std::nullopt, lt);
+                    if (!rhsTy.isVec())
+                      diags.error("Expected vector expression on RHS", arg.rhs.span);
+                    else if (!TypeUtils::areTypesEqual(rhsTy.vecType(), lt))
+                      diags.error("Vector type mismatch in assignment", arg.rhs.span);
+                    (void) lvt;
                   } else {
                     std::optional<uint32_t> expected;
                     bool isFloat = false;
@@ -287,6 +379,13 @@ namespace symir {
                     diags.error("Expected pointer return value", arg.value->span);
                   else if (!TypeUtils::areTypesEqual(rhsTy.ptrType(), f.retType))
                     diags.error("Return pointer type mismatch", arg.value->span);
+                } else if (isRetVec) {
+                  // [v0.2.1] Vector return: RHS must be the same vector type.
+                  rhsTy = typeOfExpr(*arg.value, vars, syms, ann, diags, std::nullopt, f.retType);
+                  if (!rhsTy.isVec())
+                    diags.error("Expected vector return value", arg.value->span);
+                  else if (!TypeUtils::areTypesEqual(rhsTy.vecType(), f.retType))
+                    diags.error("Return vector type mismatch", arg.value->span);
                 }
               } else if (!arg.value) {
                 diags.error("Missing return value", arg.span);
@@ -310,6 +409,24 @@ namespace symir {
     TypePtr cur = it->second.type;
     for (const auto &acc: lv.accesses) {
       if (auto ai = std::get_if<AccessIndex>(&acc)) {
+        if (auto vt = TypeUtils::asVec(cur)) {
+          // [v0.2.1] Vector lane access: lv[i] : T_elem. Bounds-check
+          // constant index now (§7.6 rule 20 statically); dynamic index
+          // bounds are runtime UB.
+          if (auto il = std::get_if<IntLit>(&ai->index)) {
+            if (il->value < 0 || static_cast<std::uint64_t>(il->value) >= vt->size) {
+              diags.error(
+                  "Vector lane index " + std::to_string(il->value) + " out of bounds for <" +
+                      std::to_string(vt->size) + "> vector",
+                  ai->span
+              );
+              return nullptr;
+            }
+          }
+          checkIndex(ai->index, vars, syms, diags);
+          cur = vt->elem;
+          continue;
+        }
         auto at = TypeUtils::asArray(cur);
         if (!at) {
           diags.error("Indexing non-array", ai->span);
@@ -393,6 +510,12 @@ namespace symir {
             : t.isFloat() ? std::optional(t.floatBits())
                           : expectedBits
         );
+        // [v0.2.1] Vector chain: both atoms must have the same vector type.
+        if (t.isVec() || ti.isVec()) {
+          if (!t.isVec() || !ti.isVec() || !TypeUtils::areTypesEqual(t.vecType(), ti.vecType()))
+            diags.error("Vector arithmetic type mismatch", tail.span);
+          continue;
+        }
         if (t.isBV() && ti.isBV() && t.bvBits() != ti.bvBits())
           diags.error("Bitwidth mismatch", tail.span);
         if (t.isFloat() && ti.isFloat() && t.floatBits() != ti.floatBits())
@@ -415,6 +538,30 @@ namespace symir {
           if constexpr (std::is_same_v<T, OpAtom>) {
             auto rt = typeOfLValue(arg.rval, vars, syms, diags);
             auto rb = TypeUtils::getBitWidth(rt);
+
+            // [v0.2.1] Vector OpAtom: Coef can be a vector LValue of the
+            // same type, or a literal that broadcasts to the vector.
+            if (auto vt = TypeUtils::asVec(rt)) {
+              if (auto lsid = std::get_if<LocalOrSymId>(&arg.coef)) {
+                // Vector coef must match rval's vector type exactly.
+                std::string nm = std::visit([](auto &&v) { return v.name; }, *lsid);
+                TypePtr ct;
+                if (std::holds_alternative<LocalId>(*lsid)) {
+                  auto vit = vars.find(nm);
+                  if (vit != vars.end())
+                    ct = vit->second.type;
+                } else {
+                  auto sit = syms.find(nm);
+                  if (sit != syms.end())
+                    ct = sit->second.type;
+                }
+                if (!TypeUtils::areTypesEqual(ct, rt))
+                  diags.error("Vector op: coefficient type must match", arg.span);
+              }
+              // Literal coef (IntLit/FloatLit): broadcasts to vector. No
+              // type check needed beyond elem-kind being plausible.
+              return Ty{Ty::VecTy{rt}};
+            }
 
             if (rb) {
               // Integer case
@@ -495,7 +642,33 @@ namespace symir {
               };
             if (rt && std::holds_alternative<PtrType>(rt->v))
               return Ty{Ty::PtrTy{rt}};
+            if (rt && std::holds_alternative<VecType>(rt->v))
+              return Ty{Ty::VecTy{rt}};
             return Ty{std::monostate{}};
+          } else if constexpr (std::is_same_v<T, CmpAtom>) {
+            // [v0.2.1] cmp: result is i1 (scalar) or <N> i1 (vector).
+            // Both operands must have the same type; we infer from lhs.
+            auto t1 = typeOfSelectVal(arg.lhs, vars, syms, ann, diags, std::nullopt);
+            auto t2 = typeOfSelectVal(arg.rhs, vars, syms, ann, diags, std::nullopt);
+            if (t1.isVec()) {
+              if (!t2.isVec() || !TypeUtils::areTypesEqual(t1.vecType(), t2.vecType())) {
+                diags.error("cmp: vector operand type mismatch", arg.span);
+                return Ty{std::monostate{}};
+              }
+              // Result type: <N> i1
+              auto vt = std::get_if<VecType>(&t1.vecType()->v);
+              auto i1 = std::make_shared<Type>();
+              i1->v = IntType{IntType::Kind::ICustom, 1, {}};
+              auto resVec = std::make_shared<Type>();
+              resVec->v = VecType{vt->size, i1, {}};
+              return Ty{Ty::VecTy{resVec}};
+            }
+            // Scalar cmp: both operands must agree (BV/Float/Ptr); result i1
+            if (t1.isBV() && t2.isBV() && t1.bvBits() != t2.bvBits())
+              diags.error("cmp: integer width mismatch", arg.span);
+            else if (t1.isFloat() && t2.isFloat() && t1.floatBits() != t2.floatBits())
+              diags.error("cmp: float width mismatch", arg.span);
+            return Ty{Ty::BVTy{1}};
           } else if constexpr (std::is_same_v<T, CastAtom>) {
             // 'as' can cast between Int and Float or Int resizing
             TypePtr srcType = nullptr;
@@ -518,8 +691,18 @@ namespace symir {
               }};
             } else if (auto ft = std::get_if<FloatType>(&arg.dstType->v)) {
               return Ty{Ty::FloatTy{ft->kind == FloatType::Kind::F32 ? 32u : 64u}};
+            } else if (auto vt = std::get_if<VecType>(&arg.dstType->v)) {
+              // [v0.2.1] Vector cast: src must be a vector of matching N.
+              // The cast applies lane-wise; the elem-cast must be valid by
+              // the scalar rules above (we don't re-check here).
+              if (srcType) {
+                auto svt = std::get_if<VecType>(&srcType->v);
+                if (!svt || svt->size != vt->size)
+                  diags.error("Vector cast: lane count must match", arg.span);
+              }
+              return Ty{Ty::VecTy{arg.dstType}};
             }
-            diags.error("Destination of 'as' must be scalar", arg.dstType->span);
+            diags.error("Destination of 'as' must be scalar or vector", arg.dstType->span);
             return Ty{std::monostate{}};
           } else if constexpr (std::is_same_v<T, AddrAtom>) {
             // addr <lv> : result is ptr T where T = type(lv)
@@ -535,6 +718,40 @@ namespace symir {
                       (it->second.isParam ? "a parameter" : "immutable"),
                   arg.span
               );
+            }
+            // [v0.2.1] §6.8.2: addr is forbidden on vector-typed lvalues
+            // (whole vector or any lane). Walk the access chain looking for
+            // any traversal through a vector.
+            if (it != vars.end()) {
+              TypePtr curT = it->second.type;
+              for (const auto &acc: arg.lv.accesses) {
+                if (curT && std::holds_alternative<VecType>(curT->v)) {
+                  diags.error(
+                      "addr is forbidden on a vector lane (vectors are not addressable)", arg.span
+                  );
+                  break;
+                }
+                if (auto ai_ = std::get_if<AccessIndex>(&acc)) {
+                  (void) ai_;
+                  if (auto at = TypeUtils::asArray(curT))
+                    curT = at->elem;
+                  else if (auto vt = TypeUtils::asVec(curT))
+                    curT = vt->elem;
+                  else
+                    curT = nullptr;
+                } else if (auto af_ = std::get_if<AccessField>(&acc)) {
+                  if (auto st = TypeUtils::asStruct(curT)) {
+                    auto sit = structs_.find(st->name.name);
+                    if (sit != structs_.end()) {
+                      auto fit = sit->second.fields.find(af_->field);
+                      curT = (fit != sit->second.fields.end()) ? fit->second : nullptr;
+                    }
+                  } else
+                    curT = nullptr;
+                }
+              }
+              if (curT && std::holds_alternative<VecType>(curT->v))
+                diags.error("addr is forbidden on a vector-typed lvalue (§2.11)", arg.span);
             }
             auto ptrNode = std::make_shared<Type>(PtrType{lvTy, arg.span}, arg.span);
             return Ty{Ty::PtrTy{ptrNode}};

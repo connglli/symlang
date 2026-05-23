@@ -625,6 +625,18 @@ namespace symir {
       return Atom{std::move(sa), sa.span};
     }
 
+    // [v0.2.1] cmp atom: cmp <RelOp> <lhs>, <rhs>
+    // Produces i1 for scalar operands, <N> i1 for vector operands.
+    if (is(TokenKind::KwCmp)) {
+      consume(TokenKind::KwCmp, "'cmp'");
+      RelOp op = parseRelOp();
+      SelectVal lhs = parseSelectVal();
+      consume(TokenKind::Comma, "','");
+      SelectVal rhs = parseSelectVal();
+      CmpAtom ca{op, std::move(lhs), std::move(rhs), SourceSpan{b, prevEnd()}};
+      return Atom{std::move(ca), ca.span};
+    }
+
     if (tryConsume(TokenKind::Tilde)) {
       RValue rv = parseLValue();
       UnaryAtom ua{UnaryOpKind::Not, std::move(rv), SourceSpan{b, prevEnd()}};

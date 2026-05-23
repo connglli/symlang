@@ -328,11 +328,23 @@ namespace symir {
   };
 
   /**
+   * [v0.2.1] Reified comparison: cmp <relop> <lhs>, <rhs>.
+   * Produces i1 for scalar operands or <N> i1 for vector operands.
+   * lhs/rhs are SelectVal (RValue | Coef) so literals are admitted.
+   */
+  struct CmpAtom {
+    RelOp op;
+    SelectVal lhs;
+    SelectVal rhs;
+    SourceSpan span;
+  };
+
+  /**
    * The fundamental building block of expressions.
    */
   struct Atom {
     using Variant = std::variant<
-        OpAtom, SelectAtom, CoefAtom, RValueAtom, CastAtom, UnaryAtom, AddrAtom, LoadAtom>;
+        OpAtom, SelectAtom, CoefAtom, RValueAtom, CastAtom, UnaryAtom, AddrAtom, LoadAtom, CmpAtom>;
     Variant v;
     SourceSpan span;
   };

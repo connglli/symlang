@@ -381,6 +381,8 @@ namespace symir {
         return make(TokenKind::KwStore, name, b, pos());
       if (name == "null")
         return make(TokenKind::KwNull, name, b, pos());
+      if (name == "cmp")
+        return make(TokenKind::KwCmp, name, b, pos());
 
       if (name.size() >= 2 && name[0] == 'i' && std::isdigit(static_cast<unsigned char>(name[1]))) {
         bool allDigits = true;
