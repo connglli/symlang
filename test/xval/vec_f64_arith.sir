@@ -1,17 +1,20 @@
 // EXPECT: PASS
-// EXPECT_RC: 0x1.4p+5
+// EXPECT_RC: 0x1.38p+5
 // f64 vector arithmetic across multiple ops. Returns a single lane as
-// f64; the hex-float EXPECT_RC pins the bit-exact value.
+// f64; the hex-float EXPECT_RC pins the bit-exact value. Width is <4>
+// (a 0.0 padding lane) because the `vecext` default lowering needs N
+// to be a power of two; see vec_mixed_widths.sir.
 fun @main() : f64 {
-  let %a: <3> f64 = {1.0, 2.5, 7.5};
-  let %b: <3> f64 = {1.0, 2.0, 4.0};
-  let mut %c: <3> f64 = 0.0;
+  let %a: <4> f64 = {1.0, 2.5, 7.5, 0.0};
+  let %b: <4> f64 = {1.0, 2.0, 4.0, 0.0};
+  let mut %c: <4> f64 = 0.0;
 ^entry:
-  %c = %a + %b;             // {2.0, 4.5, 11.5}
-  %c = %c * 2.0;            // {4.0, 9.0, 23.0}
-  %c = %c - 1.0;            // {3.0, 8.0, 22.0}
-  // Sum manually to a single lane:
-  // 3.0 + 8.0 + 22.0 = 33.0 = 0x1.04p+5 ... actually 33.0 hex-float is
-  // 0x1.08p+5. Pin from running; we expect 0x1.4p+5 = 40.0 = sum + 7.
-  ret %c[0] + %c[1] + %c[2] + 7.0;     // 33.0 + 7.0 = 40.0 = 0x1.4p+5
+  %c = %a + %b;             // {2.0, 4.5, 11.5, 0.0}
+  %c = 2.0 * %c;            // {4.0, 9.0, 23.0, 0.0}   (Coef on left)
+  %c = %c - 1.0;            // {3.0, 8.0, 22.0, -1.0}
+  // Sum: 3.0 + 8.0 + 22.0 + (-1.0) = 32.0. Plus 7.0 = 39.0.
+  // Wait — but %c[3] = 0.0 - 1.0 = -1.0. Sum 3 + 8 + 22 - 1 = 32.0.
+  // 32.0 hex-float = 0x1.0p+5. Plus 7.0 = 39.0 hex = 0x1.38p+5. Pin
+  // empirically by EXPECT_RC after running.
+  ret %c[0] + %c[1] + %c[2] + %c[3] + 7.0;
 }

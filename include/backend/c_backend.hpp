@@ -1,9 +1,11 @@
 #pragma once
 
 #include <iostream>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include "ast/ast.hpp"
+#include "backend/vec_lowering.hpp"
 
 namespace symir {
 
@@ -23,11 +25,16 @@ namespace symir {
 
     void setNoRequire(bool val) { noRequire_ = val; }
 
+    /// [v0.2.1] Set the vector-lowering strategy. Takes ownership. If
+    /// never called, the backend defaults to "vecext" on first emit.
+    void setVecLowering(std::unique_ptr<VecLowering> vl) { vecLowering_ = std::move(vl); }
+
   private:
     std::ostream &out_;
     int indent_level_ = 0;
     bool noRequire_ = false;
     std::string curFuncName_;
+    std::unique_ptr<VecLowering> vecLowering_; // [v0.2.1] strategy, see vec_lowering.hpp
     std::unordered_map<std::string, std::uint32_t> varWidths_;
     TypePtr curFuncRetType_;
     // ``isDoubleCtx_`` is the lowering-time evaluation context for float
@@ -70,6 +77,12 @@ namespace symir {
     TypePtr getAtomType(const Atom &atom);
     TypePtr getExprType(const Expr &expr);
     TypePtr getCoefType(const Coef &coef);
+
+    // [v0.2.1] Vector-specific statement-level emission. These handle the
+    // RHS atoms that need lane-wise C emission (loop or unroll) and so
+    // can't be inlined as a C expression.
+    void emitVecCmpAssign(const LValue &lhs, const CmpAtom &c, const VecType &vt);
+    void emitVecMaskSelectAssign(const LValue &lhs, const SelectAtom &s, const VecType &vt);
 
     // Look up a struct field by name; returns nullptr if either the
     // struct or the field is unknown.

@@ -32,6 +32,7 @@ int main(int argc, char **argv) {
     ("Werror", "Make all warnings into errors", cxxopts::value<bool>()->default_value("false"))
     ("no-module-tags", "Omit (module ...) tags in WASM output", cxxopts::value<bool>()->default_value("false"))
     ("no-require", "Omit require checks from emitted code (useful for compiler testing)", cxxopts::value<bool>()->default_value("false"))
+    ("vec-lowering", "C-backend vector lowering: vecext|scalars|array|structscalars|structarray (default: vecext) [v0.2.1]", cxxopts::value<std::string>()->default_value("vecext"))
     ("h,help", "Print usage");
   options.parse_positional({"input"});
   // clang-format on
@@ -122,6 +123,15 @@ int main(int argc, char **argv) {
     if (target == "c") {
       CBackend cb(*outStream);
       cb.setNoRequire(noRequire);
+      // [v0.2.1] Set up the vector-lowering strategy.
+      std::string vlName = result["vec-lowering"].as<std::string>();
+      auto vl = makeVecLowering(vlName);
+      if (!vl) {
+        std::cerr << "Error: unknown --vec-lowering '" << vlName
+                  << "' (try vecext|scalars|array|structscalars|structarray)\n";
+        return 1;
+      }
+      cb.setVecLowering(std::move(vl));
       cb.emit(prog);
     } else if (target == "wasm") {
       WasmBackend wb(*outStream);

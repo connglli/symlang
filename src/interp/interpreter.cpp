@@ -622,9 +622,25 @@ namespace symir {
     RuntimeValue v = evalAtom(e.first, store);
     for (const auto &tail: e.rest) {
       RuntimeValue right = evalAtom(tail.atom, store);
-      // [v0.2.1] Vector chain: lane-wise +/-. Both operands must be Vec of
-      // the same lane count and lane kind. We synthesize a one-tail Expr per
-      // lane so all scalar UB checks (overflow, FP overflow) fire per lane.
+      // [v0.2.1] Vector chain: lane-wise +/-. The other operand may be
+      // another Vec OR a scalar literal that broadcasts (matches the
+      // typechecker rule allowing literal broadcast in vec chains).
+      if (v.kind == RuntimeValue::Kind::Vec &&
+          (right.kind == RuntimeValue::Kind::Int || right.kind == RuntimeValue::Kind::Float)) {
+        RuntimeValue bvec;
+        bvec.kind = RuntimeValue::Kind::Vec;
+        bvec.arrayVal.reserve(v.arrayVal.size());
+        for (auto &laneL: v.arrayVal) {
+          RuntimeValue lane = right;
+          lane.bits = laneL.bits;
+          if (lane.kind == RuntimeValue::Kind::Int)
+            lane.intVal = canonicalize(lane.intVal, lane.bits);
+          else if (lane.bits == 32)
+            lane.floatVal = static_cast<double>(static_cast<float>(lane.floatVal));
+          bvec.arrayVal.push_back(std::move(lane));
+        }
+        right = std::move(bvec);
+      }
       if (v.kind == RuntimeValue::Kind::Vec && right.kind == RuntimeValue::Kind::Vec) {
         if (v.arrayVal.size() != right.arrayVal.size())
           throw std::runtime_error("Vector lane count mismatch in +/-");

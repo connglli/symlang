@@ -510,10 +510,30 @@ namespace symir {
             : t.isFloat() ? std::optional(t.floatBits())
                           : expectedBits
         );
-        // [v0.2.1] Vector chain: both atoms must have the same vector type.
+        // [v0.2.1] Vector chain: both atoms must agree on vector type, but
+        // a scalar literal atom (`CoefAtom` of IntLit/FloatLit) broadcasts
+        // to the running vector type, mirroring §6.11.
         if (t.isVec() || ti.isVec()) {
-          if (!t.isVec() || !ti.isVec() || !TypeUtils::areTypesEqual(t.vecType(), ti.vecType()))
+          bool tIsLitScalar =
+              (t.isBV() || t.isFloat()) && std::holds_alternative<CoefAtom>(e.first.v) &&
+              (std::holds_alternative<IntLit>(std::get<CoefAtom>(e.first.v).coef) ||
+               std::holds_alternative<FloatLit>(std::get<CoefAtom>(e.first.v).coef));
+          bool tiIsLitScalar =
+              (ti.isBV() || ti.isFloat()) && std::holds_alternative<CoefAtom>(tail.atom.v) &&
+              (std::holds_alternative<IntLit>(std::get<CoefAtom>(tail.atom.v).coef) ||
+               std::holds_alternative<FloatLit>(std::get<CoefAtom>(tail.atom.v).coef));
+          if (t.isVec() && ti.isVec()) {
+            if (!TypeUtils::areTypesEqual(t.vecType(), ti.vecType()))
+              diags.error("Vector arithmetic type mismatch", tail.span);
+          } else if (t.isVec() && tiIsLitScalar) {
+            // Literal broadcasts; chain stays vector. Carry t forward.
+          } else if (ti.isVec() && tIsLitScalar) {
+            // Symmetric — but we'd need to convert t to the vector type;
+            // simpler to require Coef on the left for literal broadcast.
+            diags.error("Vector arithmetic: literal must appear on the left", tail.span);
+          } else {
             diags.error("Vector arithmetic type mismatch", tail.span);
+          }
           continue;
         }
         if (t.isBV() && ti.isBV() && t.bvBits() != ti.bvBits())
