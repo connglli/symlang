@@ -478,11 +478,56 @@ namespace symir {
                         }
                       }
                     }
-                    if (vecLowering_->needsLaneUnroll()) {
+                    // [v0.2.1] Logical right shift (LShr) is the only OpAtom
+                    // that can't be expressed inline on a vec-ext type — the
+                    // signed-to-unsigned reinterpret is illegal on GCC vector
+                    // types. Force lane-unroll for that op regardless of
+                    // strategy.
+                    bool isVecLShr = false;
+                    if (arg.rhs.rest.empty()) {
+                      if (auto op = std::get_if<OpAtom>(&arg.rhs.first.v))
+                        isVecLShr = (op->op == AtomOpKind::LShr);
+                    }
+                    if (vecLowering_->needsLaneUnroll() || isVecLShr) {
                       emitVecAssign(arg.lhs, arg.rhs, vt);
                       return;
                     }
                     // vecext: fall through to the inline expression path.
+                  }
+                  // [v0.2.1] Scalar `cmp` assignment: emit `(l op r) ? 1 : 0`.
+                  // CmpAtom can't lower as an inline expression (see emitAtom),
+                  // so we special-case it at AssignInstr level for scalars too.
+                  if (arg.rhs.rest.empty()) {
+                    if (auto cmpA = std::get_if<CmpAtom>(&arg.rhs.first.v)) {
+                      emitLValue(arg.lhs);
+                      out_ << " = ((";
+                      emitSelectVal(cmpA->lhs);
+                      const char *op = "==";
+                      switch (cmpA->op) {
+                        case RelOp::EQ:
+                          op = "==";
+                          break;
+                        case RelOp::NE:
+                          op = "!=";
+                          break;
+                        case RelOp::LT:
+                          op = "<";
+                          break;
+                        case RelOp::LE:
+                          op = "<=";
+                          break;
+                        case RelOp::GT:
+                          op = ">";
+                          break;
+                        case RelOp::GE:
+                          op = ">=";
+                          break;
+                      }
+                      out_ << ") " << op << " (";
+                      emitSelectVal(cmpA->rhs);
+                      out_ << ")) ? 1 : 0;\n";
+                      return;
+                    }
                   }
                   emitLValue(arg.lhs);
                   out_ << " = ";
@@ -674,22 +719,36 @@ namespace symir {
               emitLValue(arg.rval);
             }
           } else if constexpr (std::is_same_v<T, SelectAtom>) {
-            // [v0.2.1] Only the Cond form has a direct expression-position
-            // lowering (`?:`). The mask form requires per-lane emission and
-            // is special-cased at AssignInstr level (see emitVecAtomAssign).
-            if (!arg.cond) {
-              throw std::runtime_error(
-                  "mask-form select must be the RHS of an assignment "
-                  "(inline use not yet supported in this codegen)"
-              );
+            // [v0.2.1] Cond form lowers to C's `?:` directly. The mask form
+            // with a vector mask requires per-lane emission, special-cased
+            // at AssignInstr level; with a scalar i1 mask it lowers to the
+            // same `?:` after a `!= 0` predicate (so we don't depend on the
+            // mask producing an exact `1` bit pattern).
+            if (arg.cond) {
+              out_ << "(";
+              emitCond(*arg.cond);
+              out_ << " ? ";
+              emitSelectVal(arg.vtrue);
+              out_ << " : ";
+              emitSelectVal(arg.vfalse);
+              out_ << ")";
+            } else {
+              // Mask form. Vector masks are out of expression-position scope.
+              auto maskTy = getExprType(*arg.maskExpr);
+              if (maskTy && std::holds_alternative<VecType>(maskTy->v)) {
+                throw std::runtime_error(
+                    "vector mask-form select must be the RHS of an assignment "
+                    "(inline use not yet supported in this codegen)"
+                );
+              }
+              out_ << "((";
+              emitExpr(*arg.maskExpr);
+              out_ << ") != 0 ? ";
+              emitSelectVal(arg.vtrue);
+              out_ << " : ";
+              emitSelectVal(arg.vfalse);
+              out_ << ")";
             }
-            out_ << "(";
-            emitCond(*arg.cond);
-            out_ << " ? ";
-            emitSelectVal(arg.vtrue);
-            out_ << " : ";
-            emitSelectVal(arg.vfalse);
-            out_ << ")";
           } else if constexpr (std::is_same_v<T, CmpAtom>) {
             // [v0.2.1] Same restriction: cmp returns a vector value that
             // needs lane-wise emission, handled at AssignInstr level.
@@ -1000,8 +1059,22 @@ namespace symir {
               return std::string(fn) + "((" + coefLane + "), (" + rvalLane + "))";
             }
             if (arg.op == AtomOpKind::LShr) {
-              // Logical (unsigned) right-shift: cast lane to unsigned.
-              return "((unsigned long long)(" + coefLane + ") >> (" + rvalLane + "))";
+              // Logical (unsigned) right-shift: cast lane to unsigned at
+              // the lane's actual bit width so we don't accidentally
+              // sign-extend through a wider unsigned type.
+              const char *u = "uint32_t";
+              if (auto it = std::get_if<IntType>(&vt.elem->v)) {
+                int bits = it->bits.value_or(it->kind == IntType::Kind::I32 ? 32 : 64);
+                if (bits <= 8)
+                  u = "uint8_t";
+                else if (bits <= 16)
+                  u = "uint16_t";
+                else if (bits <= 32)
+                  u = "uint32_t";
+                else
+                  u = "uint64_t";
+              }
+              return std::string("((") + u + ")(" + coefLane + ") >> (" + rvalLane + "))";
             }
             return "((" + coefLane + ") " + op + " (" + rvalLane + "))";
           } else if constexpr (std::is_same_v<T, UnaryAtom>) {
@@ -1125,20 +1198,28 @@ namespace symir {
         auto baseTy = getLValueType(LValue{lv.base, {}, lv.span});
         if (baseTy && std::holds_alternative<VecType>(baseTy->v)) {
           auto &vt = std::get<VecType>(baseTy->v);
-          std::ostringstream idxStream;
-          {
-            std::ostream &saved =
-                const_cast<std::ostream &>(static_cast<const std::ostream &>(out_));
-            (void) saved;
-          }
           // Render the index into a string; reuse emitIndex via a tmp stream.
           std::ostringstream tmp;
-          std::ostream &orig = out_; // emitIndex writes to out_; rebind temporarily.
-          // Trick: temporarily swap rdbuf.
+          std::ostream &orig = out_;
           std::streambuf *origBuf = orig.rdbuf(tmp.rdbuf());
           emitIndex(ai->index);
           orig.rdbuf(origBuf);
-          out_ << vecLowering_->emitLaneRead(mangleName(lv.base.name), vt, tmp.str());
+          std::string idxStr = tmp.str();
+          // [v0.2.1] Dynamic lane indices need a runtime bounds check —
+          // GCC vec-ext lane access doesn't trap on OOB by itself. For
+          // an IntLit index the parser already pinned it, so skip the
+          // check (the typechecker may also have rejected it).
+          bool isLit = std::holds_alternative<IntLit>(ai->index);
+          if (!isLit) {
+            // Wrap with a GCC statement-expression: evaluate idx once,
+            // trap if out of bounds, then read the lane.
+            std::string wrapped = "({ int64_t _vi = (" + idxStr +
+                                  "); if ((uint64_t)_vi >= (uint64_t)" + std::to_string(vt.size) +
+                                  "ull) __builtin_trap(); _vi; })";
+            out_ << vecLowering_->emitLaneRead(mangleName(lv.base.name), vt, wrapped);
+          } else {
+            out_ << vecLowering_->emitLaneRead(mangleName(lv.base.name), vt, idxStr);
+          }
           return;
         }
       }

@@ -1129,12 +1129,19 @@ namespace symir {
             }
           } else if constexpr (std::is_same_v<T, AddrAtom>) {
             // addr %v — encode as a BV64 tag identifying the target local.
-            // Only whole-local addresses are currently supported; struct/array
-            // field addressing (spec rule 15) is left to a future revision.
-            if (!arg.lv.accesses.empty())
+            // `addr %arr[0]` is equivalent to `addr %arr` (same first-element
+            // address). Other element indices and field paths require true
+            // offset tracking and are still left to a future revision.
+            for (const auto &acc: arg.lv.accesses) {
+              if (auto ai = std::get_if<AccessIndex>(&acc)) {
+                auto il = std::get_if<IntLit>(&ai->index);
+                if (il && il->value == 0)
+                  continue; // benign: same as base address
+              }
               throw std::runtime_error(
-                  "'addr' with field/index accesses not yet supported in solver"
+                  "'addr' with non-zero field/index accesses not yet supported in solver"
               );
+            }
             const std::string targetName = arg.lv.base.name;
             return solver.make_bv_value_int64(
                 solver.make_bv_sort(kPtrBits), static_cast<int64_t>(tagOfLocal(targetName))
@@ -1211,11 +1218,6 @@ namespace symir {
       const Expr &e, const VecType &vt, smt::ISolver &solver, SymbolicStore &store,
       std::vector<smt::Term> &pc
   ) {
-    if (!e.rest.empty())
-      throw std::runtime_error(
-          "Solver: chained +/- on vector RHS not yet supported (single-atom only)"
-      );
-
     auto buildVec = [&](std::vector<SymbolicValue> lanes) {
       SymbolicValue r;
       r.kind = SymbolicValue::Kind::Vec;
@@ -1223,6 +1225,68 @@ namespace symir {
       return r;
     };
 
+    auto laneSort = getSort(vt.elem, solver);
+
+    // Fast path: chained +/- on vector lanes. We resolve each atom to its
+    // N per-lane terms by lowering as a single-atom Expr — the dispatcher
+    // below handles the supported atom kinds.
+    if (!e.rest.empty()) {
+      bool fpLane = solver.is_fp_sort(laneSort);
+      // Atom isn't copy-assignable (SelectAtom holds unique_ptr), so we
+      // call into the single-atom dispatcher in place via a tiny helper
+      // that reuses the existing branch by visiting the Atom variant.
+      auto evalAtomToLanes = [&](const Atom &a, auto &dispatch) -> std::vector<smt::Term> {
+        SymbolicValue v = dispatch(a);
+        std::vector<smt::Term> out(vt.size);
+        if (v.kind == SymbolicValue::Kind::Vec) {
+          for (std::uint64_t k = 0; k < vt.size; ++k)
+            out[k] = v.arrayVal[k].term;
+        } else {
+          for (std::uint64_t k = 0; k < vt.size; ++k)
+            out[k] = v.term;
+        }
+        return out;
+      };
+      // Recurse into evalVecExprAtom (declared below) for each atom in the
+      // chain. We dispatch by constructing a one-atom view through the
+      // overloaded helper.
+      auto dispatchAtom = [&](const Atom &a) -> SymbolicValue {
+        return evalVecExprAtom(a, vt, solver, store, pc);
+      };
+      auto rmRNE = fpLane ? solver.make_rm_value(smt::RoundingMode::RNE) : smt::Term();
+      std::vector<smt::Term> acc = evalAtomToLanes(e.first, dispatchAtom);
+      for (const auto &term: e.rest) {
+        auto next = evalAtomToLanes(term.atom, dispatchAtom);
+        for (std::uint64_t k = 0; k < vt.size; ++k) {
+          smt::Kind opK;
+          if (fpLane)
+            opK = term.op == AddOp::Plus ? smt::Kind::FP_ADD : smt::Kind::FP_SUB;
+          else
+            opK = term.op == AddOp::Plus ? smt::Kind::BV_ADD : smt::Kind::BV_SUB;
+          acc[k] = fpLane ? solver.make_term(opK, {rmRNE, acc[k], next[k]})
+                          : solver.make_term(opK, {acc[k], next[k]});
+        }
+      }
+      std::vector<SymbolicValue> lanes;
+      lanes.reserve(vt.size);
+      for (std::uint64_t k = 0; k < vt.size; ++k)
+        lanes.emplace_back(SymbolicValue::Kind::Int, acc[k], solver.make_true());
+      return buildVec(std::move(lanes));
+    }
+
+    return evalVecExprAtom(e.first, vt, solver, store, pc);
+  }
+
+  SymbolicExecutor::SymbolicValue SymbolicExecutor::evalVecExprAtom(
+      const Atom &a, const VecType &vt, smt::ISolver &solver, SymbolicStore &store,
+      std::vector<smt::Term> &pc
+  ) {
+    auto buildVec = [&](std::vector<SymbolicValue> lanes) {
+      SymbolicValue r;
+      r.kind = SymbolicValue::Kind::Vec;
+      r.arrayVal = std::move(lanes);
+      return r;
+    };
     return std::visit(
         [&](auto &&arg) -> SymbolicValue {
           using T = std::decay_t<decltype(arg)>;
@@ -1272,6 +1336,14 @@ namespace symir {
             smt::Sort i1 = solver.make_bv_sort(1);
             smt::Term one = solver.make_bv_value(i1, "1", 10);
             smt::Term zero = solver.make_bv_value(i1, "0", 10);
+            // Detect FP lanes — BV_SLT/etc only work on BV sorts; for FP
+            // operands we need FP_LT/FP_LEQ/FP_GT/FP_GEQ. The CmpAtom's
+            // result type is i1 (so `vt.elem` is i1 here, an integer),
+            // so we have to probe the *operand* sort to pick the right
+            // SMT op. EQUAL/DISTINCT are polymorphic across both
+            // theories.
+            bool fpLane =
+                !lhsV.arrayVal.empty() && solver.is_fp_sort(solver.get_sort(lhsV.arrayVal[0].term));
             for (std::uint64_t k = 0; k < vt.size; ++k) {
               const auto &l = lhsV.arrayVal[k].term;
               const auto &r = rhsV.arrayVal[k].term;
@@ -1284,16 +1356,16 @@ namespace symir {
                   opKind = smt::Kind::DISTINCT;
                   break;
                 case RelOp::LT:
-                  opKind = smt::Kind::BV_SLT;
+                  opKind = fpLane ? smt::Kind::FP_LT : smt::Kind::BV_SLT;
                   break;
                 case RelOp::LE:
-                  opKind = smt::Kind::BV_SLE;
+                  opKind = fpLane ? smt::Kind::FP_LEQ : smt::Kind::BV_SLE;
                   break;
                 case RelOp::GT:
-                  opKind = smt::Kind::BV_SGT;
+                  opKind = fpLane ? smt::Kind::FP_GT : smt::Kind::BV_SGT;
                   break;
                 case RelOp::GE:
-                  opKind = smt::Kind::BV_SGE;
+                  opKind = fpLane ? smt::Kind::FP_GEQ : smt::Kind::BV_SGE;
                   break;
               }
               smt::Term cond = solver.make_term(opKind, {l, r});
@@ -1360,20 +1432,33 @@ namespace symir {
           } else if constexpr (std::is_same_v<T, OpAtom>) {
             // Per-lane scalar op with coef broadcast or coef-as-vector.
             std::vector<smt::Term> coefLanes;
+            auto laneSort = getSort(vt.elem, solver);
             // Resolve coef as a per-lane sequence.
             if (auto i = std::get_if<IntLit>(&arg.coef)) {
-              smt::Term bv =
-                  solver.make_bv_value(getSort(vt.elem, solver), std::to_string(i->value), 10);
+              smt::Term bv = solver.make_bv_value(laneSort, std::to_string(i->value), 10);
               for (std::uint64_t k = 0; k < vt.size; ++k)
                 coefLanes.push_back(bv);
+            } else if (auto fl = std::get_if<FloatLit>(&arg.coef)) {
+              if (!solver.is_fp_sort(laneSort))
+                throw std::runtime_error(
+                    "Vec OpAtom: float-literal coef on non-FP vector lane sort"
+                );
+              smt::Term fp =
+                  solver.make_fp_value(laneSort, std::to_string(fl->value), smt::RoundingMode::RNE);
+              for (std::uint64_t k = 0; k < vt.size; ++k)
+                coefLanes.push_back(fp);
             } else if (auto id = std::get_if<LocalOrSymId>(&arg.coef)) {
               std::string nm = std::visit([](auto &&x) { return x.name; }, *id);
               auto it = store.find(nm);
-              if (it != store.end() && it->second.kind == SymbolicValue::Kind::Vec) {
+              if (it == store.end())
+                throw std::runtime_error("Vec OpAtom: coef name not in store: " + nm);
+              if (it->second.kind == SymbolicValue::Kind::Vec) {
                 for (std::uint64_t k = 0; k < vt.size; ++k)
                   coefLanes.push_back(it->second.arrayVal[k].term);
               } else {
-                throw std::runtime_error("Vec OpAtom: coef must be vector sym/local");
+                // Scalar local/sym → broadcast.
+                for (std::uint64_t k = 0; k < vt.size; ++k)
+                  coefLanes.push_back(it->second.term);
               }
             } else {
               throw std::runtime_error("Vec OpAtom: unsupported coef shape");
@@ -1382,48 +1467,139 @@ namespace symir {
             SymbolicValue rvalV = evalLValue(arg.rval, solver, store, pc);
             std::vector<SymbolicValue> lanes;
             lanes.reserve(vt.size);
+            bool fpLane = solver.is_fp_sort(laneSort);
+            auto rmRNE = fpLane ? solver.make_rm_value(smt::RoundingMode::RNE) : smt::Term();
             for (std::uint64_t k = 0; k < vt.size; ++k) {
               smt::Term c = coefLanes[k];
               smt::Term r = rvalV.arrayVal[k].term;
               smt::Term out;
-              switch (arg.op) {
-                case AtomOpKind::Mul: {
-                  auto ov = solver.make_term(smt::Kind::BV_SMUL_OVERFLOW, {c, r});
-                  pc.push_back(solver.make_term(smt::Kind::NOT, {ov}));
-                  out = solver.make_term(smt::Kind::BV_MUL, {c, r});
-                  break;
+              if (fpLane) {
+                // Float lanes: SMT-LIB FP theory.
+                switch (arg.op) {
+                  case AtomOpKind::Mul:
+                    out = solver.make_term(smt::Kind::FP_MUL, {rmRNE, c, r});
+                    break;
+                  case AtomOpKind::Div:
+                    out = solver.make_term(smt::Kind::FP_DIV, {rmRNE, c, r});
+                    break;
+                  default:
+                    throw std::runtime_error("Vec FP OpAtom: only mul/div supported on FP lanes");
                 }
-                case AtomOpKind::Div: {
-                  auto zero = solver.make_bv_zero(solver.get_sort(r));
-                  pc.push_back(solver.make_term(smt::Kind::DISTINCT, {r, zero}));
-                  out = solver.make_term(smt::Kind::BV_SDIV, {c, r});
-                  break;
+              } else {
+                switch (arg.op) {
+                  case AtomOpKind::Mul: {
+                    auto ov = solver.make_term(smt::Kind::BV_SMUL_OVERFLOW, {c, r});
+                    pc.push_back(solver.make_term(smt::Kind::NOT, {ov}));
+                    out = solver.make_term(smt::Kind::BV_MUL, {c, r});
+                    break;
+                  }
+                  case AtomOpKind::Div: {
+                    auto zero = solver.make_bv_zero(solver.get_sort(r));
+                    pc.push_back(solver.make_term(smt::Kind::DISTINCT, {r, zero}));
+                    out = solver.make_term(smt::Kind::BV_SDIV, {c, r});
+                    break;
+                  }
+                  case AtomOpKind::Mod: {
+                    auto zero = solver.make_bv_zero(solver.get_sort(r));
+                    pc.push_back(solver.make_term(smt::Kind::DISTINCT, {r, zero}));
+                    out = solver.make_term(smt::Kind::BV_SREM, {c, r});
+                    break;
+                  }
+                  case AtomOpKind::And:
+                    out = solver.make_term(smt::Kind::BV_AND, {c, r});
+                    break;
+                  case AtomOpKind::Or:
+                    out = solver.make_term(smt::Kind::BV_OR, {c, r});
+                    break;
+                  case AtomOpKind::Xor:
+                    out = solver.make_term(smt::Kind::BV_XOR, {c, r});
+                    break;
+                  case AtomOpKind::Shl:
+                    out = solver.make_term(smt::Kind::BV_SHL, {c, r});
+                    break;
+                  case AtomOpKind::Shr:
+                    out = solver.make_term(smt::Kind::BV_ASHR, {c, r});
+                    break;
+                  case AtomOpKind::LShr:
+                    out = solver.make_term(smt::Kind::BV_SHR, {c, r});
+                    break;
                 }
-                case AtomOpKind::Mod: {
-                  auto zero = solver.make_bv_zero(solver.get_sort(r));
-                  pc.push_back(solver.make_term(smt::Kind::DISTINCT, {r, zero}));
-                  out = solver.make_term(smt::Kind::BV_SREM, {c, r});
-                  break;
-                }
-                case AtomOpKind::And:
-                  out = solver.make_term(smt::Kind::BV_AND, {c, r});
-                  break;
-                case AtomOpKind::Or:
-                  out = solver.make_term(smt::Kind::BV_OR, {c, r});
-                  break;
-                case AtomOpKind::Xor:
-                  out = solver.make_term(smt::Kind::BV_XOR, {c, r});
-                  break;
-                case AtomOpKind::Shl:
-                  out = solver.make_term(smt::Kind::BV_SHL, {c, r});
-                  break;
-                case AtomOpKind::Shr:
-                  out = solver.make_term(smt::Kind::BV_ASHR, {c, r});
-                  break;
-                case AtomOpKind::LShr:
-                  out = solver.make_term(smt::Kind::BV_SHR, {c, r});
-                  break;
               }
+              lanes.emplace_back(SymbolicValue::Kind::Int, out, solver.make_true());
+            }
+            return buildVec(std::move(lanes));
+          } else if constexpr (std::is_same_v<T, CastAtom>) {
+            // Per-lane cast. Src is a vector lvalue or sym; dst is the
+            // outer vt (already known to be vector by AssignInstr).
+            SymbolicValue srcV;
+            std::visit(
+                [&](auto &&s) {
+                  using S = std::decay_t<decltype(s)>;
+                  if constexpr (std::is_same_v<S, LValue>)
+                    srcV = evalLValue(s, solver, store, pc);
+                  else if constexpr (std::is_same_v<S, SymId>) {
+                    auto it = store.find(s.name);
+                    if (it != store.end())
+                      srcV = it->second;
+                  } else {
+                    throw std::runtime_error("Vec cast: unsupported src kind");
+                  }
+                },
+                arg.src
+            );
+            if (srcV.kind != SymbolicValue::Kind::Vec)
+              throw std::runtime_error("Vec cast: src must be a vector value");
+            auto dstSort = getSort(vt.elem, solver);
+            bool dstIsFp = solver.is_fp_sort(dstSort);
+            std::vector<SymbolicValue> lanes;
+            lanes.reserve(vt.size);
+            for (std::uint64_t k = 0; k < vt.size; ++k) {
+              smt::Term lane = srcV.arrayVal[k].term;
+              auto srcSort = solver.get_sort(lane);
+              bool srcIsFp = solver.is_fp_sort(srcSort);
+              smt::Term out;
+              if (srcIsFp && !dstIsFp) { // FP -> BV (RTZ + range check per lane)
+                uint32_t width = solver.get_bv_width(dstSort);
+                assertFPFinite(lane, solver, pc);
+                double lo = -std::ldexp(1.0, static_cast<int>(width) - 1);
+                double hi = std::ldexp(1.0, static_cast<int>(width) - 1);
+                auto loFp = solver.make_fp_value_from_real(srcSort, lo, smt::RoundingMode::RNE);
+                auto hiFp = solver.make_fp_value_from_real(srcSort, hi, smt::RoundingMode::RNE);
+                pc.push_back(solver.make_term(smt::Kind::FP_GEQ, {lane, loFp}));
+                pc.push_back(solver.make_term(smt::Kind::FP_LT, {lane, hiFp}));
+                auto rmRTZ = solver.make_rm_value(smt::RoundingMode::RTZ);
+                out = solver.make_term(smt::Kind::FP_TO_SBV, {rmRTZ, lane}, {width});
+              } else if (!srcIsFp && dstIsFp) {
+                auto [exp, sig] = solver.get_fp_dims(dstSort);
+                auto rmRNE = solver.make_rm_value(smt::RoundingMode::RNE);
+                out = solver.make_term(smt::Kind::FP_TO_FP_FROM_SBV, {rmRNE, lane}, {exp, sig});
+              } else if (srcIsFp && dstIsFp) {
+                auto [exp, sig] = solver.get_fp_dims(dstSort);
+                auto rmRNE = solver.make_rm_value(smt::RoundingMode::RNE);
+                out = solver.make_term(smt::Kind::FP_TO_FP_FROM_FP, {rmRNE, lane}, {exp, sig});
+              } else { // BV -> BV
+                uint32_t sw = solver.get_bv_width(srcSort);
+                uint32_t dw = solver.get_bv_width(dstSort);
+                if (sw == dw)
+                  out = lane;
+                else if (sw < dw)
+                  out = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {lane}, {dw - sw});
+                else
+                  out = solver.make_term(smt::Kind::BV_EXTRACT, {lane}, {dw - 1, 0});
+              }
+              lanes.emplace_back(SymbolicValue::Kind::Int, out, solver.make_true());
+            }
+            return buildVec(std::move(lanes));
+          } else if constexpr (std::is_same_v<T, UnaryAtom>) {
+            // Per-lane bitwise NOT for vector operand.
+            SymbolicValue srcV = evalLValue(arg.rval, solver, store, pc);
+            if (srcV.kind != SymbolicValue::Kind::Vec)
+              throw std::runtime_error("Vec UnaryAtom: src must be vector");
+            std::vector<SymbolicValue> lanes;
+            lanes.reserve(vt.size);
+            for (std::uint64_t k = 0; k < vt.size; ++k) {
+              smt::Term lane = srcV.arrayVal[k].term;
+              smt::Term out = solver.make_term(smt::Kind::BV_NOT, {lane});
               lanes.emplace_back(SymbolicValue::Kind::Int, out, solver.make_true());
             }
             return buildVec(std::move(lanes));
@@ -1431,7 +1607,7 @@ namespace symir {
             throw std::runtime_error("Solver: this vector RHS atom kind isn't yet lowered");
           }
         },
-        e.first.v
+        a.v
     );
   }
 

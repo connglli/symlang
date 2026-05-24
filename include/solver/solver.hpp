@@ -116,6 +116,14 @@ namespace symir {
         std::vector<smt::Term> &pc
     );
 
+    // [v0.2.1] Per-atom evaluator for vector RHS. Pulled out so the
+    // chain-application loop in evalVecExpr can lower each atom without
+    // round-tripping through Expr (which is not copy-assignable).
+    SymbolicValue evalVecExprAtom(
+        const Atom &a, const VecType &vt, smt::ISolver &solver, SymbolicStore &store,
+        std::vector<smt::Term> &pc
+    );
+
     smt::Term evalExpr(
         const Expr &e, smt::ISolver &solver, SymbolicStore &store, std::vector<smt::Term> &pc,
         std::optional<smt::Sort> expectedSort = std::nullopt

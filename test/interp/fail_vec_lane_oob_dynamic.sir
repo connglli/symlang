@@ -1,5 +1,6 @@
 // EXPECT: FAIL:UndefinedBehavior
 // INTERP_ARGS: --sym %?i=5
+// COMPILER_ARGS: --sym %?i=5
 
 // Rule 20: out-of-bounds vector lane access via a dynamic index. Sym
 // %?i is set to 5, which is >= N = 4, so the lane read is UB.
