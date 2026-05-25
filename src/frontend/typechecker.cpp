@@ -199,6 +199,12 @@ namespace symir {
     }
 
     if (initType) {
+      // [v0.2.1] Whole-vector / whole-pointer init: if initType matches
+      // the target type exactly, accept without descending. This covers
+      // `let %w: <4> i32 = %v;` and `let %p: ptr T = %q;` where the
+      // RHS is itself a value of the target's aggregate-shaped type.
+      if (TypeUtils::areTypesEqual(targetType, initType))
+        return;
       for (const auto &leaf: targetLeaves) {
         if (!TypeUtils::areTypesEqual(leaf, initType)) {
           diags.error("Type mismatch in initializer", iv.span);

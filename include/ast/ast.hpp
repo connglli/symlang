@@ -540,12 +540,32 @@ namespace symir {
   struct InitVal;
   using InitValPtr = std::shared_ptr<InitVal>;
 
+  // Forward-declare Atom so InitVal can carry one without dragging the
+  // full Atom definition above this point in the header.
+  struct Atom;
+  using AtomPtr = std::shared_ptr<Atom>;
+
   /**
    * Initializer value for variables.
+   *
+   * [v0.2.1] §3.4.2: a non-aggregate target may use any `Atom` as its
+   * initializer (e.g. `let %p: ptr i32 = addr %x;`,
+   * `let %v: i32 = load %p;`, `let %m: i1 = cmp < %a, %b;`,
+   * `let %lane: i32 = %v[0];`). For aggregate targets the spec still
+   * restricts to BraceInit / literals / names / undef / null.
    */
   struct InitVal {
-    enum class Kind { Int, Float, Sym, Local, Undef, Aggregate, Null } kind;
-    std::variant<IntLit, FloatLit, SymId, LocalId, std::vector<InitValPtr>> value;
+    enum class Kind {
+      Int,
+      Float,
+      Sym,
+      Local,
+      Undef,
+      Aggregate,
+      Null,
+      Atom, // [v0.2.1] atom-form init: load/addr/cmp/ptrindex/lvalue-with-accesses/etc.
+    } kind;
+    std::variant<IntLit, FloatLit, SymId, LocalId, std::vector<InitValPtr>, AtomPtr> value;
     SourceSpan span;
   };
 

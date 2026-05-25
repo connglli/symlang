@@ -456,6 +456,9 @@ namespace symir {
         out_ << "}";
         break;
       }
+      case InitVal::Kind::Atom:
+        printAtom(*std::get<AtomPtr>(iv.value));
+        break;
     }
   }
 

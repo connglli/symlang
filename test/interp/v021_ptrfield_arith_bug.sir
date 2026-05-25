@@ -1,0 +1,17 @@
+// EXPECT: PASS
+struct @Point { x: i32; y: i32; }
+fun @main(): i32 {
+    let mut %arr: [2] @Point = {{1, 2}, {3, 4}};
+    let mut %p: ptr @Point = null;
+    let mut %fx: ptr i32 = null;
+    let mut %val: i32 = 0;
+
+    ^entry:
+        %p = addr %arr[0];
+        %p = %p + 1; // points to {3, 4}
+        %fx = ptrfield %p, x; // should be arr[1].x = 3
+        %val = load %fx;
+        // Currently buggy interpreter returns arr[0].x = 1
+        // because it uses obj->base instead of ptrRv.ptrVal.
+        ret %val;
+}

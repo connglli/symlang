@@ -912,29 +912,6 @@ namespace symir {
     return "symir_" + name.substr(start);
   }
 
-  static std::string sirSelectValToC(const SelectVal &sv) {
-    if (auto rv = std::get_if<RValue>(&sv)) {
-      // The vector-mask/select arms in the v0.2.1 test set are bare
-      // locals (no .field or [i] accesses); we cover that case here.
-      return sirMangle(rv->base.name);
-    }
-    if (auto cf = std::get_if<Coef>(&sv)) {
-      if (auto i = std::get_if<IntLit>(cf))
-        return std::to_string(i->value);
-      if (auto f = std::get_if<FloatLit>(cf)) {
-        std::ostringstream os;
-        os.precision(17);
-        os << f->value;
-        return os.str();
-      }
-      if (auto id = std::get_if<LocalOrSymId>(cf)) {
-        std::string nm = std::visit([](auto &&x) { return x.name; }, *id);
-        return sirMangle(nm);
-      }
-    }
-    return "/*?*/";
-  }
-
   // [v0.2.1] Per-lane C expression for a SelectVal. Delegates lane access
   // to the active VecLowering so each strategy picks its lane syntax.
   std::string
@@ -1417,6 +1394,13 @@ namespace symir {
             out_ << ", ";
         }
         out_ << "}";
+        break;
+      }
+      case InitVal::Kind::Atom: {
+        // [v0.2.1] §3.4.2 atom-form init — emit the atom inline (the
+        // typechecker has already verified the atom's type matches the
+        // target).
+        emitAtom(*std::get<AtomPtr>(iv.value));
         break;
       }
     }

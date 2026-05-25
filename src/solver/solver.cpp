@@ -1138,38 +1138,74 @@ namespace symir {
     TypePtr ptrPointee;
     std::string ptrSourceName;
     if (!e.rest.empty() && currentFun_) {
-      auto resolveBase = [&]() -> std::string {
-        if (auto ca = std::get_if<CoefAtom>(&e.first.v))
+      // Resolve `%name` or `%base.f...` style ptr-typed LValue, walking
+      // accesses to get the leaf type. Returns (key, leaf-type) where
+      // key is the path used in ptrProv_.
+      auto resolveBase = [&]() -> std::pair<std::string, TypePtr> {
+        const LValue *lv = nullptr;
+        if (auto rv = std::get_if<RValueAtom>(&e.first.v))
+          lv = &rv->rval;
+        std::string key;
+        TypePtr ty;
+        if (auto ca = std::get_if<CoefAtom>(&e.first.v)) {
           if (auto id = std::get_if<LocalOrSymId>(&ca->coef))
             if (auto lid = std::get_if<LocalId>(id))
-              return lid->name;
-        if (auto rv = std::get_if<RValueAtom>(&e.first.v))
-          if (rv->rval.accesses.empty())
-            return rv->rval.base.name;
-        return {};
-      };
-      std::string src = resolveBase();
-      if (!src.empty()) {
-        TypePtr ty;
+              key = lid->name;
+        } else if (lv) {
+          key = lv->base.name;
+        } else {
+          return {};
+        }
+        // Look up the base local's type.
         for (const auto &l: currentFun_->lets)
-          if (l.name.name == src) {
+          if (l.name.name == key) {
             ty = l.type;
             break;
           }
         if (!ty)
           for (const auto &p: currentFun_->params)
-            if (p.name.name == src) {
+            if (p.name.name == key) {
               ty = p.type;
               break;
             }
-        if (ty)
-          if (auto pt = std::get_if<PtrType>(&ty->v)) {
-            ptrPointee = pt->pointee;
-            ptrSourceName = src;
-            // Step size in BV-tag units matches the addr / load
-            // candidate enumeration's scalar-leaf granularity.
-            ptrStep = sizeofTagUnits(ptrPointee, structs_);
+        // Walk struct-field accesses (we don't yet track per-element
+        // array-of-ptr provenance).
+        if (lv) {
+          for (const auto &acc: lv->accesses) {
+            auto af = std::get_if<AccessField>(&acc);
+            if (!af)
+              return {}; // bail on dynamic indices for provenance
+            if (!ty)
+              return {};
+            auto st = std::get_if<StructType>(&ty->v);
+            if (!st)
+              return {};
+            auto sIt = structs_.find(st->name.name);
+            if (sIt == structs_.end())
+              return {};
+            TypePtr fieldTy;
+            for (const auto &f: sIt->second->fields)
+              if (f.name == af->field) {
+                fieldTy = f.type;
+                break;
+              }
+            if (!fieldTy)
+              return {};
+            ty = fieldTy;
+            key += "." + af->field;
           }
+        }
+        return {key, ty};
+      };
+      auto [src, ty] = resolveBase();
+      if (!src.empty() && ty) {
+        if (auto pt = std::get_if<PtrType>(&ty->v)) {
+          ptrPointee = pt->pointee;
+          ptrSourceName = src;
+          // Step size in BV-tag units matches the addr / load
+          // candidate enumeration's scalar-leaf granularity.
+          ptrStep = sizeofTagUnits(ptrPointee, structs_);
+        }
       }
     }
 

@@ -168,10 +168,25 @@ namespace symir {
                 out_ << "i" << (arg.bits ? std::to_string(*arg.bits) : "?");
                 break;
             }
+          } else if constexpr (std::is_same_v<T, FloatType>) {
+            switch (arg.kind) {
+              case FloatType::Kind::F32:
+                out_ << "f32";
+                break;
+              case FloatType::Kind::F64:
+                out_ << "f64";
+                break;
+            }
           } else if constexpr (std::is_same_v<T, StructType>) {
             out_ << arg.name.name;
           } else if constexpr (std::is_same_v<T, ArrayType>) {
             out_ << "[" << arg.size << "] ";
+            dumpType(arg.elem);
+          } else if constexpr (std::is_same_v<T, PtrType>) {
+            out_ << "ptr ";
+            dumpType(arg.pointee);
+          } else if constexpr (std::is_same_v<T, VecType>) {
+            out_ << "<" << arg.size << "> ";
             dumpType(arg.elem);
           }
         },
@@ -199,7 +214,10 @@ namespace symir {
             dumpLValue(arg.rval);
           } else if constexpr (std::is_same_v<T, SelectAtom>) {
             out_ << "select ";
-            dumpCond(*arg.cond);
+            if (arg.cond)
+              dumpCond(*arg.cond);
+            else if (arg.maskExpr)
+              dumpExpr(*arg.maskExpr);
             out_ << ", ";
             dumpSelectVal(arg.vtrue);
             out_ << ", ";
@@ -231,6 +249,26 @@ namespace symir {
             );
             out_ << " as ";
             dumpType(arg.dstType);
+          } else if constexpr (std::is_same_v<T, AddrAtom>) {
+            out_ << "addr ";
+            dumpLValue(arg.lv);
+          } else if constexpr (std::is_same_v<T, LoadAtom>) {
+            out_ << "load ";
+            dumpLValue(arg.rval);
+          } else if constexpr (std::is_same_v<T, CmpAtom>) {
+            out_ << "cmp " << relOpToString(arg.op) << " ";
+            dumpSelectVal(arg.lhs);
+            out_ << ", ";
+            dumpSelectVal(arg.rhs);
+          } else if constexpr (std::is_same_v<T, PtrIndexAtom>) {
+            out_ << "ptrindex ";
+            dumpLValue(arg.rval);
+            out_ << ", ";
+            dumpIndex(arg.index);
+          } else if constexpr (std::is_same_v<T, PtrFieldAtom>) {
+            out_ << "ptrfield ";
+            dumpLValue(arg.rval);
+            out_ << ", " << arg.field;
           }
         },
         a.v
@@ -348,6 +386,9 @@ namespace symir {
         out_ << "}";
         break;
       }
+      case InitVal::Kind::Atom:
+        dumpAtom(*std::get<AtomPtr>(iv.value));
+        break;
     }
   }
 

@@ -1,0 +1,9 @@
+// EXPECT: PASS
+fun @main(): i32 {
+    let mut %v: <4> i32 = {1, 2, 3, 4};
+    // v0.2.1 §6.6: Vector assignment/copy is supported.
+    // Currently typechecker incorrectly flags this as mismatch in initializer.
+    let mut %w: <4> i32 = %v;
+    ^entry:
+        ret 0;
+}

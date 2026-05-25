@@ -44,7 +44,11 @@ namespace symir {
     std::optional<Domain> parseOptionalDomain();
     SymDecl parseSymDecl();
     LetDecl parseLetDecl();
-    InitVal parseInitVal();
+    // [v0.2.1] `allowAtom` is true at the top of `let mut x: T = …;`
+    // — atom forms like `addr %x` are spec §3.4.2 valid. Inside
+    // aggregate braces it's false: BraceInit restricts elements to
+    // literals / names / null / undef / nested braces.
+    InitVal parseInitVal(bool allowAtom = true);
 
     Block parseBlock();
     bool isStartOfInstr() const;

@@ -1,0 +1,13 @@
+// EXPECT: FAIL:UndefinedBehavior
+struct @S { p: ptr [4] i32; }
+fun @main(): i32 {
+    let mut %arr: [4] i32 = {1, 2, 3, 4};
+    let mut %s: @S = undef;
+    let mut %elem: ptr i32 = null;
+    ^entry:
+        %s.p = addr %arr;
+        // Solver fails to resolve the type of %s.p because it ignores the
+        // access chain. It misses Rule 16 bounds checks and uses wrong scaling.
+        %elem = ptrindex %s.p, 5; // UB: index 5 > 4
+        ret 0;
+}

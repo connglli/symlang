@@ -1,0 +1,20 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: INTERPRETER, COMPILER
+//
+// Solver-only: the interpreter would catch the OOB at the assignment
+// via per-object bounds tracking, but it isn't currently routed through
+// struct-field pointer storage. The C backend can't detect the OOB
+// without runtime provenance metadata (UBSan's `-fsanitize=undefined`
+// doesn't catch a non-dereferenced pointer past an array end).
+struct @S { p: ptr i32; }
+fun @main(): i32 {
+    let mut %arr: [4] i32 = {1, 2, 3, 4};
+    let mut %s: @S = undef;
+    let mut %elem: ptr i32 = null;
+    ^entry:
+        %s.p = addr %arr[0];
+        // Solver fails to resolve the type of %s.p because it ignores the
+        // access chain. It misses Rule 10 OOB checks for pointer arithmetic.
+        %elem = %s.p + 5; // UB: index 5 > 4
+        ret 0;
+}

@@ -1,0 +1,10 @@
+// EXPECT: PASS
+struct @Point { x: i32; y: i32; }
+fun @main(): i32 {
+    let mut %pt: @Point = {10, 20};
+    // v0.2.1 §3.4.2: InitVal now permits any Atom for non-aggregate types,
+    // including addr expressions. Currently fails to parse in symiri.
+    let mut %p: ptr @Point = addr %pt;
+    ^entry:
+        ret 0;
+}

@@ -286,7 +286,7 @@ namespace symir {
     return LetDecl{isMut, id, ty, init, SourceSpan{b, prevEnd()}};
   }
 
-  InitVal Parser::parseInitVal() {
+  InitVal Parser::parseInitVal(bool allowAtom) {
     SourcePos b = peek().span.begin;
 
     if (tryConsume(TokenKind::LBrace)) {
@@ -295,7 +295,8 @@ namespace symir {
         throw ParseError("Empty brace initializers '{}' are disallowed", peek().span);
       }
       while (true) {
-        elements.push_back(std::make_shared<InitVal>(parseInitVal()));
+        // Inside braces: forbid atom-form (spec §3.4.2).
+        elements.push_back(std::make_shared<InitVal>(parseInitVal(/*allowAtom=*/false)));
         if (!tryConsume(TokenKind::Comma))
           break;
       }
@@ -353,15 +354,51 @@ namespace symir {
     }
 
     if (is(TokenKind::LocalId)) {
-      LocalId lid = parseLocalId();
+      // Parse as LValue first; if there are no accesses, treat as a
+      // simple Local init. Otherwise, fall through to the atom-form
+      // path so `%v[1]` / `%s.f` work as initializers (§3.4.2 v0.2.1).
+      LValue lv = parseLValue();
+      if (lv.accesses.empty()) {
+        InitVal iv;
+        iv.kind = InitVal::Kind::Local;
+        iv.value = lv.base;
+        iv.span = SourceSpan{b, prevEnd()};
+        return iv;
+      }
+      if (!allowAtom)
+        errorHere(
+            "Atom-form initializer (LValue with accesses) is not permitted inside "
+            "aggregate braces (§3.4.2)"
+        );
+      RValueAtom ra{std::move(lv), SourceSpan{b, prevEnd()}};
+      Atom atom{std::move(ra), ra.span};
       InitVal iv;
-      iv.kind = InitVal::Kind::Local;
-      iv.value = lid;
+      iv.kind = InitVal::Kind::Atom;
+      iv.value = std::make_shared<Atom>(std::move(atom));
       iv.span = SourceSpan{b, prevEnd()};
       return iv;
     }
 
-    errorHere("Expected initializer: IntLit, SymId, LocalId, 'undef', 'null', or '{...}'");
+    // [v0.2.1] §3.4.2: an atom (addr / load / cmp / ptrindex / ptrfield /
+    // select / cast / unary / op) is a valid initializer for a non-
+    // aggregate target. Forbidden inside aggregate braces.
+    if (is(TokenKind::KwAddr) || is(TokenKind::KwLoad) || is(TokenKind::KwCmp) ||
+        is(TokenKind::KwPtrIndex) || is(TokenKind::KwPtrField) || is(TokenKind::KwSelect) ||
+        is(TokenKind::Tilde)) {
+      if (!allowAtom)
+        errorHere("Atom-form initializer is not permitted inside aggregate braces (§3.4.2)");
+      Atom atom = parseAtom();
+      InitVal iv;
+      iv.kind = InitVal::Kind::Atom;
+      iv.value = std::make_shared<Atom>(std::move(atom));
+      iv.span = SourceSpan{b, prevEnd()};
+      return iv;
+    }
+
+    errorHere(
+        "Expected initializer: IntLit, SymId, LocalId, atom (addr/load/cmp/ptrindex/"
+        "ptrfield/select), 'undef', 'null', or '{...}'"
+    );
   }
 
   Block Parser::parseBlock() {

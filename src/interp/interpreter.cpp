@@ -403,6 +403,11 @@ namespace symir {
       v.floatVal = std::get<FloatLit>(iv.value).value;
     } else if (iv.kind == InitVal::Kind::Sym) {
       v = store.at(std::get<SymId>(iv.value).name);
+    } else if (iv.kind == InitVal::Kind::Atom) {
+      // [v0.2.1] §3.4.2 atom-form init — evaluate the atom against the
+      // partially-built store. Inits are processed in declaration order
+      // so any local the atom references must already be in the store.
+      v = evalAtom(*std::get<AtomPtr>(iv.value), store);
     } else {
       v = store.at(std::get<LocalId>(iv.value).name);
     }
