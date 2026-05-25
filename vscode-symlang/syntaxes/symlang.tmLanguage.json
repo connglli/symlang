@@ -55,9 +55,9 @@
           "match": "\\b(assume|require)\\b"
         },
         {
-          "comment": "Memory and pointer operations (v0.2.0)",
+          "comment": "Memory and pointer operations (v0.2.1)",
           "name": "keyword.control.symlang",
-          "match": "\\b(addr|load|store)\\b"
+          "match": "\\b(addr|load|store|ptrindex|ptrfield)\\b"
         },
         {
           "comment": "Expression keywords",
