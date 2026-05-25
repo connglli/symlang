@@ -26,6 +26,14 @@ namespace symir::reify {
     return result;
   }
 
+  std::vector<const VarEntry *> VarCatalogue::vecsOf(const TypePtr &t) const {
+    std::vector<const VarEntry *> result;
+    for (const auto &v: vars)
+      if (isVecType(v.type) && typeEquals(v.type, t))
+        result.push_back(&v);
+    return result;
+  }
+
   std::vector<const VarEntry *> VarCatalogue::ptrsOf(const TypePtr &pointeeT) const {
     std::vector<const VarEntry *> result;
     for (const auto &v: vars)
@@ -91,6 +99,7 @@ namespace symir::reify {
     int structIdx = 0;
     int scalarIdx = 0;
     int arrayIdx = 0;
+    int vecIdx = 0;
     int ptrIdx = 0;
     int ptrPtrIdx = 0;
 
@@ -143,8 +152,11 @@ namespace symir::reify {
       TypePtr t = genRandomType(rng, tcfg, 0);
 
       // If we drew a ptr type at depth 0, convert to scalar fallback
-      // (ptr handling is reserved for phases 2/3)
+      // (ptr handling is reserved for phases 2/3). Same for vec if disabled.
       if (isPtrType(t)) {
+        t = genScalarType(rng, tcfg.enableFp);
+      }
+      if (isVecType(t) && !tcfg.enableVec) {
         t = genScalarType(rng, tcfg.enableFp);
       }
 
@@ -153,6 +165,9 @@ namespace symir::reify {
 
       if (isScalarType(t)) {
         v.name = "%v" + std::to_string(scalarIdx++);
+      } else if (isVecType(t)) {
+        // [v0.2.1] Vec var — named %vec0, %vec1, etc.
+        v.name = "%vec" + std::to_string(vecIdx++);
       } else if (std::holds_alternative<ArrayType>(t->v)) {
         auto at = std::get<ArrayType>(t->v);
         // If element is a struct placeholder, resolve it to a real struct decl

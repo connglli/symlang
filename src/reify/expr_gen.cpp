@@ -571,7 +571,7 @@ namespace symir::reify {
         // [v0.2.1] Vec expression: pick a same-typed vec var as RValueAtom
         // (whole-vec copy). If none available, fall back to a broadcast
         // literal (the typechecker accepts scalar init for vec targets).
-        auto vecs = vars.scalarsOf(targetType);
+        auto vecs = vars.vecsOf(targetType);
         if (!vecs.empty()) {
           std::uniform_int_distribution<int> vd(0, (int) vecs.size() - 1);
           auto *v = vecs[vd(rng)];

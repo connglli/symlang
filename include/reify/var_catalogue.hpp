@@ -27,6 +27,8 @@ namespace symir::reify {
     std::vector<const VarEntry *> scalarsOf(const TypePtr &t) const;
     // all int or fp vars
     std::vector<const VarEntry *> allScalars() const;
+    // [v0.2.1] vec vars of exact type
+    std::vector<const VarEntry *> vecsOf(const TypePtr &t) const;
     // ptr T vars
     std::vector<const VarEntry *> ptrsOf(const TypePtr &pointeeT) const;
     // ptr ptr T vars (any T)
