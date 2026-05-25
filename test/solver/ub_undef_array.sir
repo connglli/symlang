@@ -1,6 +1,6 @@
 // EXPECT: FAIL:UndefinedBehavior
 // SKIP: COMPILER
-// SKIP: SOLVER
+//
 // SOLVER_ARGS: --main @main --path ^entry
 
 // Reading an 'undef' element from an array is strict UB and should fail.

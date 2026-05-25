@@ -430,7 +430,8 @@ namespace symir {
             [&](auto &&arg) {
               using T = std::decay_t<decltype(arg)>;
               if constexpr (std::is_same_v<T, AssignInstr>) {
-                auto lhsVal = evalLValue(arg.lhs, solver, store, pathConstraints);
+                auto lhsVal =
+                    evalLValue(arg.lhs, solver, store, pathConstraints, /*forWrite=*/true);
                 // [v0.2.1] Vector LHS: evaluate RHS as a SymbolicValue::Vec.
                 if (lhsVal.kind == SymbolicValue::Kind::Vec && arg.lhs.accesses.empty()) {
                   // Find the LHS local's declared VecType.
@@ -727,7 +728,8 @@ namespace symir {
   }
 
   SymbolicExecutor::SymbolicValue SymbolicExecutor::evalLValue(
-      const LValue &lv, smt::ISolver &solver, SymbolicStore &store, std::vector<smt::Term> &pc
+      const LValue &lv, smt::ISolver &solver, SymbolicStore &store, std::vector<smt::Term> &pc,
+      bool forWrite
   ) {
     SymbolicValue res = store.at(lv.base.name);
     for (const auto &acc: lv.accesses) {
@@ -764,6 +766,11 @@ namespace symir {
         res = std::move(next);
       }
     }
+    // [v0.2.1] Strict UB rule 3: reading an `undef` scalar is UB. Add
+    // is_defined as a path constraint. Suppressed on the LHS-eval of
+    // an AssignInstr (the caller is about to overwrite the value).
+    if (!forWrite && res.kind == SymbolicValue::Kind::Int && res.is_defined.internal)
+      pc.push_back(res.is_defined);
     return res;
   }
 

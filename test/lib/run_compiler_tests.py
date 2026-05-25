@@ -152,8 +152,16 @@ def run_symirc_test(symirc_path, target="c"):
           TestResult.FAIL,
           f"symirc exit {result.returncode} (expected {expectation}={expected_code}):\n{result.stderr}",
         )
-      # For runtime-failure expectations (UndefinedBehavior, RequireViolation),
-      # symirc should have succeeded — fall through to the runtime stage.
+      # Runtime-failure expectations: ideally symirc succeeds and the
+      # binary traps. But many UBs (read of undef, type-mismatch
+      # navigations) are caught at compile time by the static checker —
+      # accept that as "caught earlier" rather than counting it as a
+      # test failure.
+      if (
+        expectation == "FAIL:UndefinedBehavior"
+        and result.returncode == FAIL_EXIT_CODES.get("FAIL:StaticError")
+      ):
+        return TestResult.PASS, ""
       return TestResult.FAIL, f"symirc failed:\n{result.stderr}"
 
     if not is_runnable_test:

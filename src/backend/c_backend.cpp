@@ -533,6 +533,24 @@ namespace symir {
                   out_ << " = ";
                   emitExpr(arg.rhs);
                   out_ << ";\n";
+                  // [v0.2.1] FP vector lanes: per-lane finite check (rule 21
+                  // lifted to FP rules 6/7 — any lane producing ±∞ or NaN
+                  // is UB). The native vec-ext division won't trap on its
+                  // own and UBSan doesn't catch SIMD div-by-zero, so we
+                  // emit an explicit check.
+                  if (lhsTy && std::holds_alternative<VecType>(lhsTy->v) &&
+                      arg.lhs.accesses.empty()) {
+                    auto &vtFp = std::get<VecType>(lhsTy->v);
+                    if (vtFp.elem && std::holds_alternative<FloatType>(vtFp.elem->v)) {
+                      std::string base = mangleName(arg.lhs.base.name);
+                      for (std::uint64_t k = 0; k < vtFp.size; ++k) {
+                        indent();
+                        std::string lane =
+                            vecLowering_->emitLaneRead(base, vtFp, std::to_string(k));
+                        out_ << "if (!__builtin_isfinite(" << lane << ")) __builtin_trap();\n";
+                      }
+                    }
+                  }
                 } else if constexpr (std::is_same_v<T, AssumeInstr>) {
                   out_ << "// assume ";
                   emitCond(arg.cond);

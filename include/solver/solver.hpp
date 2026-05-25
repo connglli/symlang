@@ -142,7 +142,8 @@ namespace symir {
     );
 
     SymbolicValue evalLValue(
-        const LValue &lv, smt::ISolver &solver, SymbolicStore &store, std::vector<smt::Term> &pc
+        const LValue &lv, smt::ISolver &solver, SymbolicStore &store, std::vector<smt::Term> &pc,
+        bool forWrite = false
     );
     void setLValue(
         const LValue &lv, const SymbolicValue &val, smt::ISolver &solver, SymbolicStore &store,
