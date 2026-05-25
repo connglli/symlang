@@ -546,6 +546,10 @@ namespace symir::reify {
     if (isFpType(targetType) && nAtoms > 2) {
       nAtoms = 2;
     }
+    // [v0.2.1] Vec types: single atom for now (whole-vec copy or broadcast).
+    if (isVecType(targetType)) {
+      nAtoms = 1;
+    }
 
     for (int i = 0; i < nAtoms; i++) {
       Atom a;
@@ -563,6 +567,23 @@ namespace symir::reify {
         }
       } else if (isPtrType(targetType)) {
         a = genPtrAtom(rng, vars, targetType);
+      } else if (isVecType(targetType)) {
+        // [v0.2.1] Vec expression: pick a same-typed vec var as RValueAtom
+        // (whole-vec copy). If none available, fall back to a broadcast
+        // literal (the typechecker accepts scalar init for vec targets).
+        auto vecs = vars.scalarsOf(targetType);
+        if (!vecs.empty()) {
+          std::uniform_int_distribution<int> vd(0, (int) vecs.size() - 1);
+          auto *v = vecs[vd(rng)];
+          RValueAtom ra;
+          ra.rval = LValue{LocalId{v->name, {}}, {}, {}};
+          a = Atom{std::move(ra), {}};
+        } else {
+          // Broadcast: use 0 literal (valid for any vec type).
+          CoefAtom ca;
+          ca.coef = IntLit{0, {}};
+          a = Atom{std::move(ca), {}};
+        }
       } else {
         // Unknown type (e.g. struct) — fallback to i32 concrete atom
         a = genConcreteIntAtom(rng, makeI32());

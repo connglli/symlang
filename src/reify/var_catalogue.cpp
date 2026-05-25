@@ -201,7 +201,7 @@ namespace symir::reify {
 
       std::vector<TargetInfo> addressableTargets;
       for (const auto &v: cat.vars)
-        if (!isPtrType(v.type) && !isAggType(v.type))
+        if (!isPtrType(v.type) && !isAggType(v.type) && !isVecType(v.type))
           addressableTargets.push_back({v.name, v.type});
 
       for (int i = 0; i < nPtr1 && !addressableTargets.empty(); i++) {

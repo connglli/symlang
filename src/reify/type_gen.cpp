@@ -129,6 +129,19 @@ namespace symir::reify {
     return std::make_shared<Type>(Type{ft, {}});
   }
 
+  TypePtr genVecType(std::mt19937 &rng, bool enableFp) {
+    static const uint64_t lanes[] = {2, 4, 8};
+    std::uniform_int_distribution<int> ld(0, 2);
+    uint64_t N = lanes[ld(rng)];
+    TypePtr elem = genScalarType(rng, enableFp);
+    VecType vt;
+    vt.size = N;
+    vt.elem = elem;
+    return std::make_shared<Type>(Type{vt, {}});
+  }
+
+  bool isVecType(const TypePtr &t) { return t && std::holds_alternative<VecType>(t->v); }
+
   TypePtr genRandomType(std::mt19937 &rng, const TypeGenConfig &cfg, int depth) {
     // Type-kind probability buckets — see hp::kPType*. Aggregates are zeroed
     // past maxAggNesting and pointers past maxPtrDepth, then renormalized.
@@ -136,11 +149,12 @@ namespace symir::reify {
     double pArray = (depth >= cfg.maxAggNesting) ? 0.0 : hp::kPTypeArray;
     double pStruct = (depth >= cfg.maxAggNesting) ? 0.0 : hp::kPTypeStruct;
     double pPtr = (depth >= cfg.maxPtrDepth) ? 0.0 : hp::kPTypePtr;
+    // [v0.2.1] Vectors only at depth 0 (no nested vec, no vec in arrays/structs).
+    double pVec = (depth == 0 && cfg.enableVec) ? hp::kPTypeVec : 0.0;
 
     // Renormalize
-    double total = pScalar + pArray + pStruct + pPtr;
+    double total = pScalar + pArray + pStruct + pPtr + pVec;
     if (total <= 0.0) {
-      // Only scalar left
       return genScalarType(rng, cfg.enableFp);
     }
 
@@ -163,19 +177,24 @@ namespace symir::reify {
     }
     r -= pArray;
     if (r < pStruct) {
-      // Struct: return a placeholder StructType — the name will be filled in
-      // by VarCatalogue. We just mark it as struct-typed here; the actual struct
-      // declaration is created during catalogue generation.
-      // For now, generate a sentinel StructType with an empty name.
       StructType st;
       st.name = GlobalId{"@_pending_struct", {}};
       return std::make_shared<Type>(Type{st, {}});
     }
+    r -= pStruct;
+    if (r < pVec) {
+      return genVecType(rng, cfg.enableFp);
+    }
+    r -= pVec;
     // Pointer
     TypePtr pointee = genRandomType(rng, cfg, depth + 1);
-    // Pointers can only point to scalar or another pointer (SymIR v0.2.0 spec)
-    // If the generated pointee is agg, fall back to scalar
-    if (isAggType(pointee)) {
+    // [v0.2.1] If enableAggPtr, allow aggregate pointees (ptr [N] T, ptr @S).
+    // Otherwise fall back to scalar (v0.2.0 behavior).
+    // Pointer to vector (ptr <N> T) is always forbidden (§6.8.1).
+    if (isVecType(pointee)) {
+      pointee = genScalarType(rng, cfg.enableFp);
+    }
+    if (!cfg.enableAggPtr && isAggType(pointee)) {
       pointee = genScalarType(rng, cfg.enableFp);
     }
     PtrType pt;

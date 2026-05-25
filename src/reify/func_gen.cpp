@@ -81,6 +81,18 @@ namespace symir::reify {
         return iv;
       }
     }
+    // [v0.2.1] VecType: brace-init with N scalar elements.
+    if (std::holds_alternative<VecType>(t->v)) {
+      const auto &vt = std::get<VecType>(t->v);
+      std::vector<InitValPtr> children;
+      for (uint64_t i = 0; i < vt.size; i++) {
+        children.push_back(std::make_shared<InitVal>(makeInitVal(vt.elem, structDecls)));
+      }
+      InitVal iv;
+      iv.kind = InitVal::Kind::Aggregate;
+      iv.value = std::move(children);
+      return iv;
+    }
     InitVal iv;
     iv.kind = InitVal::Kind::Undef;
     return iv;
@@ -161,6 +173,18 @@ namespace symir::reify {
               flv.accesses.push_back(AccessField{f.name, {}});
               emitScalarLV(std::move(flv), f.type);
             }
+          }
+        }
+
+        // [v0.2.1] Vec: unroll lanes into the checksum.
+      } else if (std::holds_alternative<VecType>(v.type->v)) {
+        const auto &vt = std::get<VecType>(v.type->v);
+        if (isScalarType(vt.elem)) {
+          for (uint64_t i = 0; i < vt.size; i++) {
+            LValue laneLV;
+            laneLV.base = LocalId{v.name, {}};
+            laneLV.accesses.push_back(AccessIndex{Index{IntLit{(int64_t) i, {}}}, {}});
+            emitScalarLV(std::move(laneLV), vt.elem);
           }
         }
 

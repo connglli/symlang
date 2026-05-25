@@ -78,6 +78,14 @@ namespace symir::reify::hp {
   inline constexpr double kPTypeStruct = 0.15;
   inline constexpr double kPTypePtr = 0.15;
 
+  // [v0.2.1] Vector type probability at depth 0. Zeroed if enableVec=false.
+  inline constexpr double kPTypeVec = 0.10;
+
+  // [v0.2.1] When generating a pointer, probability the pointee is an
+  // aggregate (array or struct) rather than a scalar. Zeroed if
+  // enableAggPtr=false.
+  inline constexpr double kPPtrAgg = 0.30;
+
   // ===========================================================================
   // Var catalogue split: fraction of cfg.nVars allocated to each phase.
   // The remainder after non-ptr + ptr1 goes to ptr-of-ptr vars.
@@ -85,6 +93,11 @@ namespace symir::reify::hp {
   inline constexpr double kFracNonPtrVars = 0.65;
   inline constexpr double kFracPtr1Vars = 0.20;
   // remainder → ptr-of-ptr vars (~15%)
+
+  // [v0.2.1] Fraction of nVars allocated to vec-typed locals.
+  inline constexpr double kFracVecVars = 0.10;
+  // [v0.2.1] Fraction of nVars allocated to aggregate-pointer locals.
+  inline constexpr double kFracAggPtrVars = 0.10;
 
   // Probability that a struct field is an array (struct-of-arrays pattern).
   inline constexpr double kPStructFieldIsArray = 0.30;
