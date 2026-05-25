@@ -1,0 +1,12 @@
+// EXPECT: FAIL:UndefinedBehavior
+// v0.2.1 Rule 17: ptrfield through a null pointer is UB.
+
+struct @Box { a: i32; b: i32; }
+
+fun @main() : i32 {
+  let mut %p_s: ptr @Box = null;
+  let mut %p_b: ptr i32 = null;
+^entry:
+  %p_b = ptrfield %p_s, b;   // null navigation: UB
+  ret 0;
+}

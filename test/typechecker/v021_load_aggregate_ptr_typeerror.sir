@@ -1,0 +1,13 @@
+// EXPECT: FAIL:StaticError
+// v0.2.1 §6.8.5: load through ptr [N] T is a type error — aggregates are
+// not loadable. Use ptrindex to navigate to a scalar element first.
+
+fun @main() : i32 {
+  let mut %arr: [4] i32 = {1, 2, 3, 4};
+  let mut %p_arr: ptr [4] i32 = null;
+  let mut %v: i32 = 0;          // scalar LHS so load's pointee check fires
+^entry:
+  %p_arr = addr %arr;
+  %v = load %p_arr;             // type error: ptr [N] T is not loadable
+  ret %v;
+}

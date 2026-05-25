@@ -285,7 +285,12 @@ def run_symirc_test(symirc_path, target="c"):
         "-o",
         exe_out,
         "-w",
-        "-fsanitize=address,undefined,float-cast-overflow",
+        # [v0.2.1] pointer-compare and pointer-subtract are AddressSanitizer
+        # add-ons that catch cross-object pointer relational / subtraction
+        # at runtime — needed for spec rule 14. ASAN_OPTIONS below also
+        # turn on detect_invalid_pointer_pairs=2 to enable the runtime
+        # check.
+        "-fsanitize=address,undefined,float-cast-overflow,pointer-compare,pointer-subtract",
         "-fno-sanitize-recover=all",
         "-g",
         "-lm",
@@ -297,7 +302,14 @@ def run_symirc_test(symirc_path, target="c"):
         return TestResult.FAIL, f"GCC error:\n{res_gcc.stderr}"
 
       # Run executable; disable LSAN so it works outside ptrace environments
-      run_cmd = ["env", "LSAN_OPTIONS=detect_leaks=0", exe_out]
+      # ASAN flag enables runtime cross-object pointer-compare / -subtract
+      # detection (paired with the -fsanitize options above) per spec rule 14.
+      run_cmd = [
+        "env",
+        "LSAN_OPTIONS=detect_leaks=0",
+        "ASAN_OPTIONS=detect_invalid_pointer_pairs=2",
+        exe_out,
+      ]
     else:
       # WASM execution
       sir_info = extract_sir_info(file_path, entry_func)

@@ -1,0 +1,14 @@
+// EXPECT: PASS
+// v0.2.1 §6.8.9: `ptrindex` navigates from `ptr [N] T` to `ptr T`.
+
+fun @main() : i32 {
+  let mut %arr: [4] i32 = {10, 20, 30, 40};
+  let mut %p_arr: ptr [4] i32 = null;
+  let mut %p_elem: ptr i32 = null;
+  let mut %v: i32 = 0;
+^entry:
+  %p_arr = addr %arr;
+  %p_elem = ptrindex %p_arr, 2;
+  %v = load %p_elem;
+  ret %v;          // expect 30
+}

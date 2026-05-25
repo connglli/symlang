@@ -84,6 +84,19 @@ namespace symir {
                 collectLValue(arg.lv);
               } else if constexpr (std::is_same_v<T, LoadAtom>) {
                 collectLValue(arg.rval);
+              } else if constexpr (std::is_same_v<T, PtrIndexAtom>) {
+                collectLValue(arg.rval);
+                std::visit(
+                    [&](auto &&iv) {
+                      using IV = std::decay_t<decltype(iv)>;
+                      if constexpr (std::is_same_v<IV, LocalOrSymId>) {
+                        std::visit([&](auto &&id) { used.insert(id.name); }, iv);
+                      }
+                    },
+                    arg.index
+                );
+              } else if constexpr (std::is_same_v<T, PtrFieldAtom>) {
+                collectLValue(arg.rval);
               }
             },
             a.v

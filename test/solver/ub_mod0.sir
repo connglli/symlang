@@ -1,5 +1,4 @@
 // EXPECT: FAIL:UndefinedBehavior
-// SKIP: SOLVER
 // SOLVER_ARGS: --main @main --path ^entry
 
 // Modulo by zero is strict UB and should fail.

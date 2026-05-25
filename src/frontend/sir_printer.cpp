@@ -301,6 +301,15 @@ namespace symir {
             printSelectVal(arg.lhs);
             out_ << ", ";
             printSelectVal(arg.rhs);
+          } else if constexpr (std::is_same_v<T, PtrIndexAtom>) {
+            out_ << "ptrindex ";
+            printLValue(arg.rval);
+            out_ << ", ";
+            printIndex(arg.index);
+          } else if constexpr (std::is_same_v<T, PtrFieldAtom>) {
+            out_ << "ptrfield ";
+            printLValue(arg.rval);
+            out_ << ", " << arg.field;
           }
         },
         a.v

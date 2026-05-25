@@ -313,6 +313,10 @@ namespace symir {
     std::vector<smt::Term> pathConstraints;
     std::vector<smt::Term> requirements;
 
+    // [v0.2.1] Reset per-solve provenance tracking. Each call to solve()
+    // walks a fresh CFG path, so prior provenance state must not leak.
+    ptrProv_.clear();
+
     // 1. Declare symbols and fix values if requested
     for (const auto &s: entry->syms) {
       auto sv = createSymbolicValue(s.type, s.name.name, solver, true);
@@ -464,6 +468,99 @@ namespace symir {
                 );
                 SymbolicValue val(SymbolicValue::Kind::Int, rhs, solver.make_true());
                 setLValue(arg.lhs, val, solver, store, pathConstraints);
+                // [v0.2.1] Track ptr provenance for cross-object and one-
+                // past-end UB checks. The LHS must be a whole-local ptr;
+                // mirror the RHS atom's provenance (addr / ptrindex /
+                // ptrfield set a known provenance, pointer arithmetic
+                // preserves it, load-derived ptrs are unknown).
+                if (arg.lhs.accesses.empty() && currentFun_) {
+                  auto isPtrLocal = [&](const std::string &n) -> bool {
+                    for (const auto &l: currentFun_->lets)
+                      if (l.name.name == n)
+                        return l.type && std::holds_alternative<PtrType>(l.type->v);
+                    for (const auto &p: currentFun_->params)
+                      if (p.name.name == n)
+                        return p.type && std::holds_alternative<PtrType>(p.type->v);
+                    return false;
+                  };
+                  if (isPtrLocal(arg.lhs.base.name)) {
+                    auto provFromName =
+                        [&](const std::string &src) -> std::optional<PtrProvenance> {
+                      auto it = ptrProv_.find(src);
+                      if (it != ptrProv_.end())
+                        return it->second;
+                      return std::nullopt;
+                    };
+                    auto compute = [&]() -> std::optional<PtrProvenance> {
+                      if (arg.rhs.rest.empty()) {
+                        const auto &a = arg.rhs.first.v;
+                        if (auto addr = std::get_if<AddrAtom>(&a)) {
+                          // Provenance = the addressed local's tag; size
+                          // depends on its declared type.
+                          uint64_t baseTag = tagOfLocal(addr->lv.base.name);
+                          uint64_t size = 1;
+                          TypePtr ty;
+                          for (const auto &l: currentFun_->lets)
+                            if (l.name.name == addr->lv.base.name) {
+                              ty = l.type;
+                              break;
+                            }
+                          if (!ty)
+                            for (const auto &p: currentFun_->params)
+                              if (p.name.name == addr->lv.base.name) {
+                                ty = p.type;
+                                break;
+                              }
+                          if (ty) {
+                            if (auto at = std::get_if<ArrayType>(&ty->v))
+                              size = at->size;
+                            else if (auto st = std::get_if<StructType>(&ty->v)) {
+                              auto sIt = structs_.find(st->name.name);
+                              if (sIt != structs_.end())
+                                size = sIt->second->fields.size();
+                            }
+                          }
+                          // For aggregate-element addressing (addr %arr[k],
+                          // addr %s.f), the provenance stays the immediate
+                          // container per spec rule 15.
+                          return PtrProvenance{baseTag, size};
+                        }
+                        if (auto pi = std::get_if<PtrIndexAtom>(&a))
+                          return provFromName(pi->rval.base.name);
+                        if (auto pf = std::get_if<PtrFieldAtom>(&a))
+                          return provFromName(pf->rval.base.name);
+                        if (auto ca = std::get_if<CoefAtom>(&a)) {
+                          if (auto id = std::get_if<LocalOrSymId>(&ca->coef))
+                            if (auto lid = std::get_if<LocalId>(id))
+                              return provFromName(lid->name);
+                        }
+                        if (auto rv = std::get_if<RValueAtom>(&a)) {
+                          if (rv->rval.accesses.empty())
+                            return provFromName(rv->rval.base.name);
+                        }
+                        // LoadAtom-derived ptrs: provenance unknown.
+                      } else {
+                        // `%p = %q + i` style: provenance carries from %q.
+                        const auto &a = arg.rhs.first.v;
+                        if (auto ca = std::get_if<CoefAtom>(&a)) {
+                          if (auto id = std::get_if<LocalOrSymId>(&ca->coef))
+                            if (auto lid = std::get_if<LocalId>(id))
+                              return provFromName(lid->name);
+                        }
+                        if (auto rv = std::get_if<RValueAtom>(&a)) {
+                          if (rv->rval.accesses.empty())
+                            return provFromName(rv->rval.base.name);
+                        }
+                      }
+                      return std::nullopt;
+                    };
+                    auto newProv = compute();
+                    if (newProv)
+                      ptrProv_[arg.lhs.base.name] = *newProv;
+                    else
+                      ptrProv_.erase(arg.lhs.base.name);
+                  }
+                }
               } else if constexpr (std::is_same_v<T, AssumeInstr>) {
                 pathConstraints.push_back(evalCond(arg.cond, solver, store, pathConstraints));
               } else if constexpr (std::is_same_v<T, RequireInstr>) {
@@ -568,35 +665,54 @@ namespace symir {
         );
       }
 
-      // Branch condition if not last block
-      if (i + 1 < path.size()) {
-        const std::string &nextLabel = path[i + 1];
-        std::visit(
-            [&](auto &&term) {
-              using T = std::decay_t<decltype(term)>;
-              if constexpr (std::is_same_v<T, BrTerm>) {
-                if (term.isConditional) {
-                  auto cond = evalCond(*term.cond, solver, store, pathConstraints);
-                  if (term.thenLabel.name == nextLabel) {
+      // Evaluate the terminator. For a conditional br on a non-final block
+      // we also pick a side (then/else) per the path; the cond is evaluated
+      // either way so that any UB triggered by computing the cond (e.g.
+      // rule 14 cross-object pointer compare) is captured as a path
+      // constraint even when the br is the final block.
+      const std::string *nextLabel = (i + 1 < path.size()) ? &path[i + 1] : nullptr;
+      std::visit(
+          [&](auto &&term) {
+            using T = std::decay_t<decltype(term)>;
+            if constexpr (std::is_same_v<T, BrTerm>) {
+              if (term.isConditional) {
+                auto cond = evalCond(*term.cond, solver, store, pathConstraints);
+                if (nextLabel) {
+                  if (term.thenLabel.name == *nextLabel) {
                     pathConstraints.push_back(cond);
-                  } else if (term.elseLabel.name == nextLabel) {
+                  } else if (term.elseLabel.name == *nextLabel) {
                     pathConstraints.push_back(solver.make_term(smt::Kind::NOT, {cond}));
                   } else {
-                    throw std::runtime_error("Path edge not in CFG: " + label + " -> " + nextLabel);
+                    throw std::runtime_error(
+                        "Path edge not in CFG: " + label + " -> " + *nextLabel
+                    );
                   }
-                } else {
-                  if (term.dest.name != nextLabel)
-                    throw std::runtime_error("Path edge not in CFG: " + label + " -> " + nextLabel);
                 }
-              } else {
+                // No next block: cond was evaluated for UB side-effects only.
+              } else if (nextLabel) {
+                if (term.dest.name != *nextLabel)
+                  throw std::runtime_error("Path edge not in CFG: " + label + " -> " + *nextLabel);
+              }
+            } else if constexpr (std::is_same_v<T, RetTerm>) {
+              if (nextLabel)
+                throw std::runtime_error(
+                    "Block " + label + " ends with ret but path has more blocks"
+                );
+              // [v0.2.1] Evaluate the return value's expression so that
+              // any UB checks it raises (div/mod by zero, signed overflow,
+              // load OOB, read of undef, etc.) become path constraints.
+              if (term.value) {
+                (void) evalExpr(*term.value, solver, store, pathConstraints);
+              }
+            } else {
+              if (nextLabel)
                 throw std::runtime_error(
                     "Block " + label + " ends with non-branch terminator but path has more blocks"
                 );
-              }
-            },
-            block.term
-        );
-      }
+            }
+          },
+          block.term
+      );
     }
 
     // 5. Solve
@@ -1320,6 +1436,102 @@ namespace symir {
               throw std::runtime_error("'addr' with this access kind not yet supported in solver");
             }
             return tag;
+          } else if constexpr (std::is_same_v<T, PtrIndexAtom>) {
+            // [v0.2.1] §6.8.9: ptrindex <ptr>, <index>. Encodes as
+            // ptr_addr + index using the existing tag+offset scheme.
+            auto bv64 = solver.make_bv_sort(kPtrBits);
+            smt::Term ptrTerm = evalLValue(arg.rval, solver, store, pc).term;
+            // Rule 17: null navigation is UB → assert ptr != 0.
+            auto nullTerm = solver.make_bv_value_int64(bv64, 0);
+            pc.push_back(solver.make_term(smt::Kind::DISTINCT, {ptrTerm, nullTerm}));
+            // Rule 19: navigation from a one-past-the-end pointer is UB.
+            // If we know the source's provenance, assert ptr != base + size.
+            auto provIt = ptrProv_.find(arg.rval.base.name);
+            if (provIt != ptrProv_.end()) {
+              auto endAddr = solver.make_bv_value_int64(
+                  bv64, static_cast<int64_t>(provIt->second.baseTag + provIt->second.size)
+              );
+              pc.push_back(solver.make_term(smt::Kind::DISTINCT, {ptrTerm, endAddr}));
+            }
+            // Index → BV64.
+            smt::Term idxT;
+            if (auto il = std::get_if<IntLit>(&arg.index)) {
+              idxT = solver.make_bv_value_int64(bv64, il->value);
+            } else if (auto id = std::get_if<LocalOrSymId>(&arg.index)) {
+              smt::Term raw = std::visit([&](auto &&v) { return store.at(v.name).term; }, *id);
+              auto rawSort = solver.get_sort(raw);
+              uint32_t rw = solver.get_bv_width(rawSort);
+              if (rw < kPtrBits)
+                raw = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {raw}, {kPtrBits - rw});
+              idxT = raw;
+            }
+            return solver.make_term(smt::Kind::BV_ADD, {ptrTerm, idxT});
+          } else if constexpr (std::is_same_v<T, PtrFieldAtom>) {
+            // [v0.2.1] §6.8.10: ptrfield <ptr>, <fld>. Field offset is the
+            // declaration-order index — matches how AddrAtom encodes
+            // struct field navigation.
+            if (!currentFun_)
+              throw std::runtime_error("ptrfield encountered without active FunDecl");
+            auto bv64 = solver.make_bv_sort(kPtrBits);
+            smt::Term ptrTerm = evalLValue(arg.rval, solver, store, pc).term;
+            // Rule 17: null navigation is UB.
+            auto nullTerm = solver.make_bv_value_int64(bv64, 0);
+            pc.push_back(solver.make_term(smt::Kind::DISTINCT, {ptrTerm, nullTerm}));
+            // Rule 19: navigation from a one-past-the-end pointer is UB.
+            {
+              auto provIt = ptrProv_.find(arg.rval.base.name);
+              if (provIt != ptrProv_.end()) {
+                auto endAddr = solver.make_bv_value_int64(
+                    bv64, static_cast<int64_t>(provIt->second.baseTag + provIt->second.size)
+                );
+                pc.push_back(solver.make_term(smt::Kind::DISTINCT, {ptrTerm, endAddr}));
+              }
+            }
+            // Resolve the pointee struct (the rval is ptr @S — find @S).
+            const std::string baseName = arg.rval.base.name;
+            TypePtr baseType;
+            for (const auto &l: currentFun_->lets)
+              if (l.name.name == baseName) {
+                baseType = l.type;
+                break;
+              }
+            if (!baseType)
+              for (const auto &p: currentFun_->params)
+                if (p.name.name == baseName) {
+                  baseType = p.type;
+                  break;
+                }
+            // Walk the rval's accesses (for chained navigation).
+            TypePtr cur = baseType;
+            for (const auto &acc: arg.rval.accesses) {
+              (void) acc;
+              cur = nullptr; // accesses on pointer rvals are unusual; bail
+              break;
+            }
+            if (!cur || !std::holds_alternative<PtrType>(cur->v))
+              throw std::runtime_error("ptrfield: rval is not pointer-typed");
+            auto &pt = std::get<PtrType>(cur->v);
+            if (!std::holds_alternative<StructType>(pt.pointee->v))
+              throw std::runtime_error("ptrfield: pointee is not a struct");
+            auto &st = std::get<StructType>(pt.pointee->v);
+            auto sIt = structs_.find(st.name.name);
+            if (sIt == structs_.end())
+              throw std::runtime_error("ptrfield: unknown struct " + st.name.name);
+            size_t fieldIdx = 0;
+            bool found = false;
+            for (const auto &f: sIt->second->fields) {
+              if (f.name == arg.field) {
+                found = true;
+                break;
+              }
+              ++fieldIdx;
+            }
+            if (!found)
+              throw std::runtime_error("ptrfield: unknown field " + arg.field);
+            if (fieldIdx == 0)
+              return ptrTerm;
+            auto off = solver.make_bv_value_int64(bv64, static_cast<int64_t>(fieldIdx));
+            return solver.make_term(smt::Kind::BV_ADD, {ptrTerm, off});
           } else if constexpr (std::is_same_v<T, LoadAtom>) {
             // load %p — dispatch over candidate targets of the pointee type.
             // Build a chain of ites: ite(p == tag_v, value_of_v, fallback).
@@ -1365,12 +1577,17 @@ namespace symir {
             }
 
             auto bv64 = solver.make_bv_sort(kPtrBits);
+            // Collect candidate-tag conditions so we can also assert that
+            // *some* tag matches — load through an address that doesn't
+            // correspond to any reachable cell is UB (rule 11 / 13).
+            std::vector<smt::Term> matchConds;
             for (const auto &l: currentFun_->lets) {
               // Scalar local of matching pointee type: tag(l) at offset 0.
               if (typeMatch(l.type, pointeeType)) {
                 auto tagTerm =
                     solver.make_bv_value_int64(bv64, static_cast<int64_t>(tagOfLocal(l.name.name)));
                 auto cond = solver.make_term(smt::Kind::EQUAL, {ptrTerm, tagTerm});
+                matchConds.push_back(cond);
                 auto &sv = store.at(l.name.name);
                 result = solver.make_term(smt::Kind::ITE, {cond, sv.term, result});
                 continue;
@@ -1384,6 +1601,7 @@ namespace symir {
                   for (size_t k = 0; k < at->size && k < sv.arrayVal.size(); ++k) {
                     auto kTag = solver.make_bv_value_int64(bv64, static_cast<int64_t>(baseTag + k));
                     auto cond = solver.make_term(smt::Kind::EQUAL, {ptrTerm, kTag});
+                    matchConds.push_back(cond);
                     result = solver.make_term(smt::Kind::ITE, {cond, sv.arrayVal[k].term, result});
                   }
                 }
@@ -1403,6 +1621,7 @@ namespace symir {
                     auto fTag =
                         solver.make_bv_value_int64(bv64, static_cast<int64_t>(baseTag + fIdx));
                     auto cond = solver.make_term(smt::Kind::EQUAL, {ptrTerm, fTag});
+                    matchConds.push_back(cond);
                     auto fIt = sv.structVal.find(f.name);
                     if (fIt != sv.structVal.end())
                       result = solver.make_term(smt::Kind::ITE, {cond, fIt->second.term, result});
@@ -1410,6 +1629,17 @@ namespace symir {
                   ++fIdx;
                 }
               }
+            }
+            // Rule 11/13: the load must land on a valid cell — otherwise
+            // UB. If we got no candidates (no local of matching pointee
+            // type), skip the constraint and let the default-zero stand —
+            // the existing tests rely on that fallback when the pointer
+            // is from a function-arg or other opaque source.
+            if (!matchConds.empty()) {
+              smt::Term anyMatch = matchConds[0];
+              for (size_t i = 1; i < matchConds.size(); ++i)
+                anyMatch = solver.make_term(smt::Kind::OR, {anyMatch, matchConds[i]});
+              pc.push_back(anyMatch);
             }
             return result;
           }
@@ -1854,6 +2084,38 @@ namespace symir {
   smt::Term SymbolicExecutor::evalCond(
       const Cond &c, smt::ISolver &solver, SymbolicStore &store, std::vector<smt::Term> &pc
   ) {
+    // [v0.2.1] Rule 14: cross-object pointer comparison. For relational
+    // compares (<, <=, >, >=), both operands must come from the same
+    // allocation. We detect this when both sides are simple ptr-local
+    // refs with a recorded provenance: if the base tags differ, the
+    // path is UB → push `false` to prune.
+    if (c.op == RelOp::LT || c.op == RelOp::LE || c.op == RelOp::GT || c.op == RelOp::GE) {
+      auto extractPtrLocal = [](const Expr &e) -> std::optional<std::string> {
+        if (!e.rest.empty())
+          return std::nullopt;
+        if (auto ca = std::get_if<CoefAtom>(&e.first.v))
+          if (auto id = std::get_if<LocalOrSymId>(&ca->coef))
+            if (auto lid = std::get_if<LocalId>(id))
+              return lid->name;
+        if (auto rv = std::get_if<RValueAtom>(&e.first.v))
+          if (rv->rval.accesses.empty())
+            return rv->rval.base.name;
+        return std::nullopt;
+      };
+      auto lhsName = extractPtrLocal(c.lhs);
+      auto rhsName = extractPtrLocal(c.rhs);
+      if (lhsName && rhsName) {
+        auto lIt = ptrProv_.find(*lhsName);
+        auto rIt = ptrProv_.find(*rhsName);
+        if (lIt != ptrProv_.end() && rIt != ptrProv_.end() &&
+            lIt->second.baseTag != rIt->second.baseTag) {
+          // Distinct provenance — relational compare is UB. Constrain
+          // the path to false so the solver returns UNSAT.
+          pc.push_back(solver.make_false());
+        }
+      }
+    }
+
     smt::Term lhs = evalExpr(c.lhs, solver, store, pc);
     smt::Term rhs = evalExpr(c.rhs, solver, store, pc, solver.get_sort(lhs));
 

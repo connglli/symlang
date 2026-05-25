@@ -1169,6 +1169,120 @@ namespace symir {
             if (hit == heap_.end())
               throw UndefinedBehaviorError("UB: Load from uninitialized memory");
             return hit->second;
+          } else if constexpr (std::is_same_v<T, PtrIndexAtom>) {
+            // [v0.2.1] §6.8.9: ptrindex <ptr>, <index> navigates a ptr [N] T
+            // to ptr T at element `index`. Strict UB at the navigation site
+            // for null (rule 17), undef (rule 18), or one-past-end (rule 19)
+            // sources, plus out-of-bounds index (rule 16, index in [0, N]).
+            RuntimeValue ptrRv = evalLValue(arg.rval, store);
+            if (ptrRv.kind == RuntimeValue::Kind::Undef)
+              throw UndefinedBehaviorError("UB: 'ptrindex' through undef pointer");
+            if (ptrRv.kind != RuntimeValue::Kind::Ptr)
+              throw std::runtime_error("ptrindex requires a pointer operand");
+            if (ptrRv.ptrVal == 0)
+              throw UndefinedBehaviorError("UB: 'ptrindex' through null pointer");
+            const ObjectInfo *obj = findObjectByBase(ptrRv.ptrBase);
+            if (!obj)
+              throw UndefinedBehaviorError("UB: 'ptrindex' on pointer to unknown object");
+            if (ptrRv.ptrVal == obj->end)
+              throw UndefinedBehaviorError("UB: 'ptrindex' from a one-past-the-end pointer");
+            // Resolve the index (literal or local/sym).
+            int64_t idx = 0;
+            if (auto il = std::get_if<IntLit>(&arg.index)) {
+              idx = il->value;
+            } else {
+              const auto &id = std::get<LocalOrSymId>(arg.index);
+              RuntimeValue idxRv = std::get_if<LocalId>(&id)
+                                       ? store.at(std::get_if<LocalId>(&id)->name)
+                                       : store.at(std::get_if<SymId>(&id)->name);
+              if (idxRv.kind == RuntimeValue::Kind::Undef)
+                throw UndefinedBehaviorError("UB: 'ptrindex' index is undef");
+              idx = idxRv.intVal;
+            }
+            // Rule 16: index in [0, N] (N is one-past-end, valid for arithmetic).
+            // obj->count is N.
+            if (idx < 0 || (uint64_t) idx > obj->count)
+              throw UndefinedBehaviorError("UB: 'ptrindex' index out of bounds");
+            RuntimeValue rv;
+            rv.kind = RuntimeValue::Kind::Ptr;
+            rv.bits = 64;
+            rv.ptrVal = obj->base + (uint64_t) idx * obj->elemSize;
+            // Provenance: arithmetic on the result roams over the array
+            // (spec rule 15, §7.5). ptrBase stays at the array's base so
+            // ptr/load checks continue to use the whole-array range.
+            rv.ptrBase = obj->base;
+            return rv;
+          } else if constexpr (std::is_same_v<T, PtrFieldAtom>) {
+            // [v0.2.1] §6.8.10: ptrfield <ptr>, <fld> navigates ptr @S to
+            // ptr FieldType at the field's static offset.
+            RuntimeValue ptrRv = evalLValue(arg.rval, store);
+            if (ptrRv.kind == RuntimeValue::Kind::Undef)
+              throw UndefinedBehaviorError("UB: 'ptrfield' through undef pointer");
+            if (ptrRv.kind != RuntimeValue::Kind::Ptr)
+              throw std::runtime_error("ptrfield requires a pointer operand");
+            if (ptrRv.ptrVal == 0)
+              throw UndefinedBehaviorError("UB: 'ptrfield' through null pointer");
+            const ObjectInfo *obj = findObjectByBase(ptrRv.ptrBase);
+            if (!obj)
+              throw UndefinedBehaviorError("UB: 'ptrfield' on pointer to unknown object");
+            if (ptrRv.ptrVal == obj->end)
+              throw UndefinedBehaviorError("UB: 'ptrfield' from a one-past-the-end pointer");
+            // Resolve the pointee struct decl. The rval is an LValue whose
+            // base must be a `ptr @S` local; chase that through typeMap_.
+            auto tit = typeMap_.find(arg.rval.base.name);
+            if (tit == typeMap_.end())
+              throw std::runtime_error("ptrfield: no type info for " + arg.rval.base.name);
+            TypePtr cur = tit->second;
+            for (const auto &acc: arg.rval.accesses) {
+              if (auto af = std::get_if<AccessField>(&acc)) {
+                if (auto st = std::get_if<StructType>(&cur->v)) {
+                  auto sit = structs_.find(st->name.name);
+                  if (sit == structs_.end())
+                    throw std::runtime_error("Unknown struct in ptrfield rval chain");
+                  bool found = false;
+                  for (const auto &f: sit->second->fields)
+                    if (f.name == af->field) {
+                      cur = f.type;
+                      found = true;
+                      break;
+                    }
+                  if (!found)
+                    throw std::runtime_error("Unknown field in ptrfield rval chain");
+                } else {
+                  cur = nullptr;
+                  break;
+                }
+              } else if (auto ai = std::get_if<AccessIndex>(&acc)) {
+                (void) ai;
+                if (auto at = std::get_if<ArrayType>(&cur->v))
+                  cur = at->elem;
+                else
+                  cur = nullptr;
+                if (!cur)
+                  break;
+              }
+            }
+            if (!cur || !std::holds_alternative<PtrType>(cur->v))
+              throw std::runtime_error("ptrfield: rval is not pointer-typed");
+            const auto &pt = std::get<PtrType>(cur->v);
+            if (!std::holds_alternative<StructType>(pt.pointee->v))
+              throw std::runtime_error("ptrfield: pointee is not a struct");
+            auto &st = std::get<StructType>(pt.pointee->v);
+            auto sit = structs_.find(st.name.name);
+            if (sit == structs_.end())
+              throw std::runtime_error("Unknown struct in ptrfield: " + st.name.name);
+            uint64_t off = fieldOffset(*sit->second, arg.field);
+            RuntimeValue rv;
+            rv.kind = RuntimeValue::Kind::Ptr;
+            rv.bits = 64;
+            rv.ptrVal = ptrRv.ptrBase + off;
+            // Provenance: field pointer's provenance is the struct (spec
+            // rule 15) — i.e., arithmetic on the result roams over the
+            // whole struct. We model that by keeping ptrBase at the
+            // struct's base; load through the result later restricts to
+            // the field cell via the type-matched ObjectInfo lookup.
+            rv.ptrBase = ptrRv.ptrBase + off;
+            return rv;
           } else if constexpr (std::is_same_v<T, CastAtom>) {
             RuntimeValue v = std::visit(
                 [&](auto &&src) -> RuntimeValue {

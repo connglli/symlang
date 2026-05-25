@@ -350,11 +350,35 @@ namespace symir {
   };
 
   /**
+   * [v0.2.1] Aggregate-pointer navigation atoms (§6.8.9, §6.8.10).
+   *
+   * `ptrindex <ptr>, <index>` navigates from `ptr [N] T` to `ptr T` at
+   * a runtime index. Strict UB rules: index in [0, N], non-null, non-
+   * undef, non-one-past-end source.
+   *
+   * `ptrfield <ptr>, <fieldname>` navigates from `ptr @S` to
+   * `ptr FieldType` at a statically-known field offset. Same source
+   * UB checks (null / undef / one-past-end) as ptrindex.
+   */
+  struct PtrIndexAtom {
+    RValue rval;
+    Index index;
+    SourceSpan span;
+  };
+
+  struct PtrFieldAtom {
+    RValue rval;
+    std::string field;
+    SourceSpan span;
+  };
+
+  /**
    * The fundamental building block of expressions.
    */
   struct Atom {
     using Variant = std::variant<
-        OpAtom, SelectAtom, CoefAtom, RValueAtom, CastAtom, UnaryAtom, AddrAtom, LoadAtom, CmpAtom>;
+        OpAtom, SelectAtom, CoefAtom, RValueAtom, CastAtom, UnaryAtom, AddrAtom, LoadAtom, CmpAtom,
+        PtrIndexAtom, PtrFieldAtom>;
     Variant v;
     SourceSpan span;
   };

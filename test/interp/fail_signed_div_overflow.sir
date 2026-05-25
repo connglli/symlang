@@ -1,5 +1,4 @@
 // EXPECT: FAIL:UndefinedBehavior
-// SKIP: COMPILER
 fun @main() : i32 {
   let %min: i32 = -2147483648;
   let %neg1: i32 = -1;

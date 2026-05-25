@@ -648,6 +648,26 @@ namespace symir {
       return Atom{std::move(ca), ca.span};
     }
 
+    // [v0.2.1] ptrindex atom: ptrindex <RValue>, <Index>
+    if (is(TokenKind::KwPtrIndex)) {
+      consume(TokenKind::KwPtrIndex, "'ptrindex'");
+      RValue rv = parseLValue();
+      consume(TokenKind::Comma, "','");
+      Index idx = parseIndex();
+      PtrIndexAtom pa{std::move(rv), std::move(idx), SourceSpan{b, prevEnd()}};
+      return Atom{std::move(pa), pa.span};
+    }
+
+    // [v0.2.1] ptrfield atom: ptrfield <RValue>, <Ident>
+    if (is(TokenKind::KwPtrField)) {
+      consume(TokenKind::KwPtrField, "'ptrfield'");
+      RValue rv = parseLValue();
+      consume(TokenKind::Comma, "','");
+      const Token &fld = consume(TokenKind::Ident, "field name");
+      PtrFieldAtom pa{std::move(rv), fld.lexeme, SourceSpan{b, prevEnd()}};
+      return Atom{std::move(pa), pa.span};
+    }
+
     if (tryConsume(TokenKind::Tilde)) {
       RValue rv = parseLValue();
       UnaryAtom ua{UnaryOpKind::Not, std::move(rv), SourceSpan{b, prevEnd()}};

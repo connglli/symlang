@@ -829,6 +829,17 @@ namespace symir {
               return Ty{std::monostate{}};
             }
             TypePtr pointee = pt->pointee;
+            // [v0.2.1] §6.8.5: aggregate / vector pointees aren't loadable.
+            if (std::holds_alternative<ArrayType>(pointee->v) ||
+                std::holds_alternative<StructType>(pointee->v) ||
+                std::holds_alternative<VecType>(pointee->v)) {
+              diags.error(
+                  "'load' pointee must be scalar or pointer (§6.8.5): aggregate / vector "
+                  "pointees aren't loadable — use 'ptrindex' or 'ptrfield' to navigate first",
+                  arg.span
+              );
+              return Ty{std::monostate{}};
+            }
             if (auto pb = TypeUtils::getBitWidth(pointee))
               return Ty{Ty::BVTy{*pb}};
             if (std::holds_alternative<FloatType>(pointee->v)) {
@@ -839,6 +850,86 @@ namespace symir {
               return Ty{Ty::PtrTy{pointee}};
             diags.error("'load' pointee type not supported", arg.span);
             return Ty{std::monostate{}};
+          } else if constexpr (std::is_same_v<T, PtrIndexAtom>) {
+            // [v0.2.1] §6.8.9: ptrindex <ptr>, <index> where ptr : ptr [N] T,
+            // index : iN, result : ptr T.
+            auto rvTy = typeOfLValue(arg.rval, vars, syms, diags);
+            if (!rvTy)
+              return Ty{std::monostate{}};
+            auto pt = std::get_if<PtrType>(&rvTy->v);
+            if (!pt) {
+              diags.error("'ptrindex' requires a pointer (ptr [N] T) operand", arg.span);
+              return Ty{std::monostate{}};
+            }
+            auto at = std::get_if<ArrayType>(&pt->pointee->v);
+            if (!at) {
+              diags.error(
+                  "'ptrindex' requires a ptr [N] T operand; got pointer to non-array", arg.span
+              );
+              return Ty{std::monostate{}};
+            }
+            // index must be integer-typed (IntLit or LocalOrSymId of int).
+            std::visit(
+                [&](auto &&iv) {
+                  using IV = std::decay_t<decltype(iv)>;
+                  if constexpr (std::is_same_v<IV, IntLit>) {
+                    // OK
+                  } else {
+                    std::visit(
+                        [&](auto &&id) {
+                          auto vit = vars.find(id.name);
+                          if (vit != vars.end()) {
+                            if (!vit->second.type ||
+                                !std::holds_alternative<IntType>(vit->second.type->v))
+                              diags.error("'ptrindex' index must be integer-typed", arg.span);
+                            return;
+                          }
+                          auto sit = syms.find(id.name);
+                          if (sit != syms.end() && sit->second.type &&
+                              !std::holds_alternative<IntType>(sit->second.type->v))
+                            diags.error("'ptrindex' index must be integer-typed", arg.span);
+                        },
+                        iv
+                    );
+                  }
+                },
+                arg.index
+            );
+            auto resultPtr = std::make_shared<Type>(PtrType{at->elem, arg.span}, arg.span);
+            return Ty{Ty::PtrTy{resultPtr}};
+          } else if constexpr (std::is_same_v<T, PtrFieldAtom>) {
+            // [v0.2.1] §6.8.10: ptrfield <ptr>, <fld> where ptr : ptr @S,
+            // result : ptr F where F is the declared type of @S.fld.
+            auto rvTy = typeOfLValue(arg.rval, vars, syms, diags);
+            if (!rvTy)
+              return Ty{std::monostate{}};
+            auto pt = std::get_if<PtrType>(&rvTy->v);
+            if (!pt) {
+              diags.error("'ptrfield' requires a pointer (ptr @S) operand", arg.span);
+              return Ty{std::monostate{}};
+            }
+            auto st = std::get_if<StructType>(&pt->pointee->v);
+            if (!st) {
+              diags.error(
+                  "'ptrfield' requires a ptr @S operand; got pointer to non-struct", arg.span
+              );
+              return Ty{std::monostate{}};
+            }
+            auto sit = structs_.find(st->name.name);
+            if (sit == structs_.end()) {
+              diags.error("'ptrfield': unknown struct " + st->name.name, arg.span);
+              return Ty{std::monostate{}};
+            }
+            auto fit = sit->second.fields.find(arg.field);
+            if (fit == sit->second.fields.end()) {
+              diags.error(
+                  "'ptrfield': struct " + st->name.name + " has no field '" + arg.field + "'",
+                  arg.span
+              );
+              return Ty{std::monostate{}};
+            }
+            auto resultPtr = std::make_shared<Type>(PtrType{fit->second, arg.span}, arg.span);
+            return Ty{Ty::PtrTy{resultPtr}};
           }
           return Ty{std::monostate{}};
         },

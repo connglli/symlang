@@ -1,0 +1,16 @@
+// EXPECT: PASS
+// v0.2.1 §6.8.10: `ptrfield` navigates from `ptr @S` to `ptr FieldType`.
+
+struct @Pair { x: i32; y: i32; }
+
+fun @main() : i32 {
+  let mut %s: @Pair = { 7, 99 };
+  let mut %p_s: ptr @Pair = null;
+  let mut %p_y: ptr i32 = null;
+  let mut %v: i32 = 0;
+^entry:
+  %p_s = addr %s;
+  %p_y = ptrfield %p_s, y;
+  %v = load %p_y;
+  ret %v;          // expect 99
+}

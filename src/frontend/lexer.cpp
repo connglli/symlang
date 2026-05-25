@@ -383,6 +383,10 @@ namespace symir {
         return make(TokenKind::KwNull, name, b, pos());
       if (name == "cmp")
         return make(TokenKind::KwCmp, name, b, pos());
+      if (name == "ptrindex")
+        return make(TokenKind::KwPtrIndex, name, b, pos());
+      if (name == "ptrfield")
+        return make(TokenKind::KwPtrField, name, b, pos());
 
       if (name.size() >= 2 && name[0] == 'i' && std::isdigit(static_cast<unsigned char>(name[1]))) {
         bool allDigits = true;

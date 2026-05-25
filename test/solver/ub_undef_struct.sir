@@ -1,6 +1,5 @@
 // EXPECT: FAIL:UndefinedBehavior
 // SKIP: COMPILER
-// SKIP: SOLVER
 // SOLVER_ARGS: --main @main --path ^entry
 
 // Reading an 'undef' field of a struct is strict UB and should fail.

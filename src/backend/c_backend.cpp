@@ -551,6 +551,17 @@ namespace symir {
                       }
                     }
                   }
+                  // [v0.2.1] Scalar FP UB: any ±∞ or NaN result is UB
+                  // (rules 6/7). UBSan catches some FP issues but not NaN
+                  // from 0.0/0.0; emit an explicit `isfinite` check after
+                  // FP assignments so the spec's semantics are enforced.
+                  if (lhsTy && std::holds_alternative<FloatType>(lhsTy->v) &&
+                      arg.lhs.accesses.empty()) {
+                    indent();
+                    out_ << "if (!__builtin_isfinite(";
+                    emitLValue(arg.lhs);
+                    out_ << ")) __builtin_trap();\n";
+                  }
                 } else if constexpr (std::is_same_v<T, AssumeInstr>) {
                   out_ << "// assume ";
                   emitCond(arg.cond);
@@ -787,6 +798,45 @@ namespace symir {
           } else if constexpr (std::is_same_v<T, LoadAtom>) {
             out_ << "*";
             emitLValue(arg.rval);
+          } else if constexpr (std::is_same_v<T, PtrIndexAtom>) {
+            // [v0.2.1] ptrindex p, i → element pointer. Rule 17 (null nav),
+            // rule 18 (undef nav — relies on UBSan), rule 16 (index bounds).
+            // We emit:  ({ if (!p) __builtin_trap();
+            //              if ((uint64_t)i > N) __builtin_trap();
+            //              p + i; })
+            // The N comes from the source pointer's array pointee.
+            uint64_t arrSize = 0;
+            auto rvTy = getLValueType(arg.rval);
+            if (rvTy) {
+              if (auto pt = std::get_if<PtrType>(&rvTy->v))
+                if (auto at = std::get_if<ArrayType>(&pt->pointee->v))
+                  arrSize = at->size;
+            }
+            out_ << "({ __typeof__(";
+            emitLValue(arg.rval);
+            out_ << ") _pi = ";
+            emitLValue(arg.rval);
+            out_ << "; int64_t _ii = (int64_t)(";
+            emitIndex(arg.index);
+            out_ << "); if (!_pi) __builtin_trap();";
+            if (arrSize > 0)
+              out_ << " if (_ii < 0 || (uint64_t)_ii > " << arrSize << "ULL) __builtin_trap();";
+            // The pointer p has C type "T *" (pointee array decayed), so
+            // (p + i) is the element-pointer of type T *.
+            out_ << " _pi + _ii; })";
+          } else if constexpr (std::is_same_v<T, PtrFieldAtom>) {
+            // [v0.2.1] ptrfield p, f → field pointer. Rule 17 (null nav)
+            // and rule 19 (one-past-end nav). The one-past-end check uses
+            // __builtin_object_size: a valid struct pointer has at least
+            // sizeof(struct) bytes of object remaining; one-past-end has
+            // zero bytes (and GCC reports 0).
+            out_ << "({ __typeof__(";
+            emitLValue(arg.rval);
+            out_ << ") _pf = ";
+            emitLValue(arg.rval);
+            out_ << "; if (!_pf) __builtin_trap();"
+                 << " if (__builtin_object_size(_pf, 0) < sizeof(*_pf)) __builtin_trap();"
+                 << " &(_pf->" << arg.field << "); })";
           } else if constexpr (std::is_same_v<T, CastAtom>) {
             // [v0.2.1] Vector cast: a C-style `(target_vec_t)(src_vec)`
             // is a *bitcast* in GCC vec-ext, not a per-lane conversion.
@@ -1477,6 +1527,39 @@ namespace symir {
             if (pt) {
               if (auto ptr = std::get_if<PtrType>(&pt->v)) {
                 return ptr->pointee;
+              }
+            }
+            return nullptr;
+          } else if constexpr (std::is_same_v<T, PtrIndexAtom>) {
+            // ptrindex p, i : ptr [N] T → ptr T
+            auto pt = getLValueType(arg.rval);
+            if (pt) {
+              if (auto ptr = std::get_if<PtrType>(&pt->v)) {
+                if (auto at = std::get_if<ArrayType>(&ptr->pointee->v)) {
+                  auto resPtr = std::make_shared<Type>();
+                  resPtr->v = PtrType{at->elem, {}};
+                  return resPtr;
+                }
+              }
+            }
+            return nullptr;
+          } else if constexpr (std::is_same_v<T, PtrFieldAtom>) {
+            // ptrfield p, f : ptr @S → ptr FieldType
+            auto pt = getLValueType(arg.rval);
+            if (pt) {
+              if (auto ptr = std::get_if<PtrType>(&pt->v)) {
+                if (auto st = std::get_if<StructType>(&ptr->pointee->v)) {
+                  auto sit = structFields_.find(st->name.name);
+                  if (sit != structFields_.end()) {
+                    for (const auto &[name, ty]: sit->second) {
+                      if (name == arg.field) {
+                        auto resPtr = std::make_shared<Type>();
+                        resPtr->v = PtrType{ty, {}};
+                        return resPtr;
+                      }
+                    }
+                  }
+                }
               }
             }
             return nullptr;

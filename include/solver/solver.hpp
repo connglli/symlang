@@ -181,6 +181,24 @@ namespace symir {
     // load/store dispatch over candidate targets, while keeping sample() safe
     // for concurrent workers.
     static thread_local const FunDecl *currentFun_;
+
+    // [v0.2.1] Provenance tracking for pointer locals (rule 14, 19).
+    // Maps a `ptr T` local name to its provenance base tag and the
+    // size (in BV64 tag units) of the addressable region:
+    //   - scalar pointee:  size = 1
+    //   - array pointee:   size = N
+    //   - struct pointee:  size = fields.size()
+    // Updated on `%p = addr %x` / `ptrindex` / `ptrfield`. Pointer
+    // arithmetic preserves the provenance. Load-derived pointers
+    // have no entry (their provenance is unknown).
+    //
+    // Per-solve state — reset at the start of each `solve()`.
+    struct PtrProvenance {
+      std::uint64_t baseTag;
+      std::uint64_t size;
+    };
+
+    std::unordered_map<std::string, PtrProvenance> ptrProv_;
   };
 
 } // namespace symir

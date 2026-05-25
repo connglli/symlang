@@ -1,0 +1,13 @@
+// EXPECT: FAIL:UndefinedBehavior
+// v0.2.1 Rule 16: ptrindex with index out of [0, N] is UB. Index 5 on a
+// 4-element array exceeds the one-past-the-end bound.
+
+fun @main() : i32 {
+  let mut %arr: [4] i32 = {1, 2, 3, 4};
+  let mut %p_arr: ptr [4] i32 = null;
+  let mut %p_elem: ptr i32 = null;
+^entry:
+  %p_arr = addr %arr;
+  %p_elem = ptrindex %p_arr, 5;   // out-of-bounds: UB
+  ret 0;
+}
