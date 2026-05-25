@@ -1,0 +1,15 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path ^entry
+// SKIP: INTERPRETER
+
+// Solver should find this infeasible if it correctly implements UB pruning for OOB vector access.
+// Or if we use it in a way that MUST trigger UB.
+
+fun @main() : i32 {
+  let mut %v: <4> i32 = {1, 2, 3, 4};
+  let mut %idx: i32 = 4; // OOB
+  let mut %res: i32 = 0;
+^entry:
+  %res = %v[%idx];
+  ret %res;
+}

@@ -1,0 +1,63 @@
+// EXPECT: FAIL:UndefinedBehavior
+// INTERP_ARGS: --sym %?key=5
+struct @FeistelContext {
+  l: i8;      // Left half of the block
+  r: i8;      // Right half of the block
+  k: i8;      // The master key
+  round: i32; // Round counter
+}
+
+fun @main() : i32 {
+  sym %?key : value i8 in [0, 15];
+
+  let mut %ctx: @FeistelContext = 0;
+
+  let mut %l_old: i8 = 0;
+  let mut %r_old: i8 = 0;
+  let mut %f_out: i8 = 0;
+  let mut %curr_round: i32 = 0;
+  let mut %res: i32 = 0;
+
+  let %ONE: i32 = 1;
+  let %ROUNDS: i32 = 4;
+  let %MASK: i8 = 15; // 0xF
+
+^entry:
+  // Initialize Context
+  %ctx.l = 10;
+  %ctx.r = 11;
+  %ctx.k = %?key;
+  %ctx.round = 0;
+
+  // UB: Signed integer overflow. Max i32 is 2147483647.
+  // 2147483647 + 1 = overflow
+  %curr_round = 2147483647;
+  %res = %curr_round + %ONE;
+
+  br ^round_cond;
+
+^round_cond:
+  %curr_round = %ctx.round;
+  br %curr_round < %ROUNDS, ^round_body, ^exit;
+
+^round_body:
+  %r_old = %ctx.r;
+  %f_out = %r_old ^ %ctx.k;
+  %f_out = %f_out & %MASK;
+
+  %l_old = %ctx.l;
+  %ctx.l = %r_old;
+  %ctx.r = %l_old ^ %f_out;
+
+  %ctx.round = %curr_round + %ONE;
+  br ^round_cond;
+
+^exit:
+  %l_old = %ctx.l;
+  %r_old = %ctx.r;
+  require %l_old == 11, "Left half target";
+  require %r_old == 4, "Right half target";
+
+  %res = %l_old as i32;
+  ret %res;
+}

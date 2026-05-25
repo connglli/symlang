@@ -1,0 +1,14 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path ^entry
+// SKIP: INTERPRETER
+
+// Testing Rule 3: Reading undef scalar in solver.
+// Suspected bug: Solver might missing 'is_defined' check for scalars too.
+
+fun @main() : i32 {
+  let mut %x: i32 = undef;
+  let mut %res: i32 = 0;
+^entry:
+  %res = %x;
+  ret %res;
+}

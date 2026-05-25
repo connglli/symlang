@@ -1,0 +1,16 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: INTERPRETER
+// COMPILER_ARGS: --vec-lowering scalars
+
+// Testing C backend 'scalars' strategy with complex lane access.
+// This strategy unrolls vectors into individual variables.
+// Rule 20: OOB vector lane access.
+
+fun @main() : i32 {
+  let mut %v: <4> i32 = {1, 2, 3, 4};
+  let mut %res: i32 = 0;
+  let mut %idx: i32 = 4; // OOB
+^entry:
+  %res = %v[%idx];
+  ret %res;
+}

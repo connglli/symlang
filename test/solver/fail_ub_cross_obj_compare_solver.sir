@@ -1,0 +1,20 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path ^entry
+// SKIP: INTERPRETER
+
+// Testing Rule 14: Cross-object pointer comparison in solver.
+// Relational compare between pointers from different allocations is UB.
+
+fun @main() : i32 {
+  let mut %a: i32 = 0;
+  let mut %b: i32 = 0;
+  let mut %pa: ptr i32 = null;
+  let mut %pb: ptr i32 = null;
+^entry:
+  %pa = addr %a;
+  %pb = addr %b;
+  // Relational compare is UB.
+  br %pa < %pb, ^exit, ^exit;
+^exit:
+  ret 0;
+}

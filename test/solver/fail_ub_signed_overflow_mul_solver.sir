@@ -1,0 +1,15 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path ^entry
+// SKIP: INTERPRETER
+
+// Testing Rule 4: Signed integer overflow (multiplication) in solver.
+
+fun @main() : i32 {
+  let mut %a: i32 = 1000000;
+  let mut %b: i32 = 1000000;
+  let mut %res: i32 = 0;
+^entry:
+  // 10^12 overflows i32
+  %res = %a * %b;
+  ret %res;
+}

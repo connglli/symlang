@@ -1,0 +1,27 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path ^entry
+// SKIP: INTERPRETER
+// SKIP: COMPILER
+
+// Testing Rule 19: Navigation from a one-past-the-end pointer.
+// The C backend emits an `__builtin_object_size`-based check, but at
+// the test harness's -O0 GCC returns -1 for that builtin and the check
+// can't fire. Enabled in the solver runner (which catches the UB via
+// provenance tracking). Re-enable for the compiler runner when we
+// either ship a fat-pointer C lowering or bump the runner's opt level.
+
+struct @Obj {
+  a: i32;
+}
+
+fun @main() : i32 {
+  let mut %o: @Obj = {10};
+  let mut %p: ptr @Obj = null;
+  let mut %p_field: ptr i32 = null;
+^entry:
+  %p = addr %o;
+  %p = %p + 1; // one-past-end of @Obj
+  // Rule 19: ptrfield through one-past-end is UB.
+  %p_field = ptrfield %p, a;
+  ret 0;
+}

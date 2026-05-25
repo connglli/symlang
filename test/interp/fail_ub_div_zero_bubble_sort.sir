@@ -1,0 +1,103 @@
+// EXPECT: FAIL:UndefinedBehavior
+// INTERP_ARGS: --sym %?missing=3
+struct @SortContext {
+  data: [4] i32;  // The array to be sorted
+  i: i32;         // Outer loop counter
+  j: i32;         // Inner loop counter
+  n: i32;         // Number of elements in the array
+  swapped: i1;    // Flag to track if a swap occurred (optional optimization)
+}
+
+fun @main() : i32 {
+  // --- 0. Symbolic Element ---
+  sym %?missing : value i32 in [0, 10];
+
+  // --- 1. State Variables ---
+  let mut %ctx: @SortContext = 0;
+
+  // Locals for coefficients and logic
+  let mut %v0: i32 = 0;
+  let mut %v1: i32 = 0;
+  let mut %j_next: i32 = 0;
+  let mut %limit: i32 = 0;
+  let mut %idx: i32 = 0;
+
+  // Constants
+  let %ONE: i32 = 1;
+  let mut %zero: i32 = 0;
+
+^entry:
+  // UB: Division by zero
+  %zero = %ctx.i;
+  %v0 = %ONE / %zero;
+
+  // Initialize Array
+  %ctx.data[0] = 4;
+  %ctx.data[1] = %?missing;
+  %ctx.data[2] = 2;
+  %ctx.data[3] = 1;
+
+  // Initialize Counters
+  %ctx.n = 4;
+  %ctx.i = 0;
+  br ^outer_cond;
+
+  // --- Outer Loop ---
+^outer_cond:
+  %v0 = %ctx.i;
+  %v1 = %ctx.n;
+  %limit = %v1 - %ONE;
+  br %v0 < %limit, ^outer_body, ^exit;
+
+^outer_body:
+  %ctx.j = 0;
+  br ^inner_cond;
+
+  // --- Inner Loop ---
+^inner_cond:
+  %v0 = %ctx.j;
+  %v1 = %ctx.n;
+  %idx = %ctx.i;
+  %limit = %v1 - %idx;
+  %limit = %limit - %ONE;
+  br %v0 < %limit, ^inner_body, ^outer_next;
+
+^inner_body:
+  // v0 = data[j], v1 = data[j+1]
+  %idx = %ctx.j;
+  %v0 = %ctx.data[%idx];
+  %idx = %idx + %ONE;
+  %v1 = %ctx.data[%idx];
+
+  br %v0 > %v1, ^swap, ^inner_next;
+
+^swap:
+  // Swap data[j] and data[j+1]
+  %idx = %ctx.j;
+  %ctx.data[%idx] = %v1;
+  %idx = %idx + %ONE;
+  %ctx.data[%idx] = %v0;
+  br ^inner_next;
+
+^inner_next:
+  %idx = %ctx.j;
+  %ctx.j = %idx + %ONE;
+  br ^inner_cond;
+
+^outer_next:
+  %idx = %ctx.i;
+  %ctx.i = %idx + %ONE;
+  br ^outer_cond;
+
+^exit:
+  %v0 = %ctx.data[0];
+  require %v0 == 1, "Elem 0 must be 1";
+  %v0 = %ctx.data[1];
+  require %v0 == 2, "Elem 1 must be 2";
+  %v0 = %ctx.data[2];
+  require %v0 == 3, "Elem 2 must be 3";
+  %v0 = %ctx.data[3];
+  require %v0 == 4, "Elem 3 must be 4";
+
+  ret %v0;
+}

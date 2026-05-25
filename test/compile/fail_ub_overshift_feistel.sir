@@ -1,0 +1,15 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: INTERPRETER
+// COMPILER_ARGS: --sym %?key=5
+
+// Mutated from feistel_cipher.sir
+// Triggers Rule 5: Overshift in compiled code.
+
+fun @main() : i32 {
+  sym %?key : value i8 in [0, 15];
+  let mut %val: i32 = 1;
+  let mut %shift: i32 = 32; // Overshift for i32
+^entry:
+  %val = %val << %shift;
+  ret %val;
+}

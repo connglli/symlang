@@ -1,0 +1,27 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: INTERPRETER
+// COMPILER_ARGS: --vec-lowering scalars
+
+// Testing vector select with 'scalars' strategy.
+// This might find bugs in how the C backend unrolls select atoms.
+
+fun @main() : i32 {
+  let mut %v1: <4> i32 = {1, 2, 3, 4};
+  let mut %v2: <4> i32 = {5, 6, 7, 8};
+  let mut %mask: <4> i1 = {1, 0, 1, 0};
+  let mut %res: <4> i32 = {0, 0, 0, 0};
+  let mut %zero: i32 = 0;
+^entry:
+  // Forced UB in one of the arms? No, let's just do a normal select
+  // and see if it compiles and runs.
+  // Actually the task is finding BUGS.
+  // Let's force a division by zero in one arm and see if it's evaluated lazily.
+  // SymIR v0.2.0 SPEC §7.1 says select is lazy.
+  // If the C backend unrolls it without ternary operator, it might not be lazy.
+  %res = select %mask, %v1, %v2;
+
+  // To make it FAIL, let's add a UB that MUST happen.
+  %zero = 0;
+  %zero = 1 / %zero;
+  ret 0;
+}

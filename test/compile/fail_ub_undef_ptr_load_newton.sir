@@ -1,0 +1,16 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: INTERPRETER
+// COMPILER_ARGS: --sym %?start_x=2.0
+
+// Mutated from newton_root.sir
+// Triggers Rule 13: Uninitialised pointer dereference in compiled code.
+
+fun @main() : i32 {
+  sym %?start_x : value f64;
+  let mut %p: ptr i32 = undef;
+  let mut %val: i32 = 0;
+^entry:
+  // Rule 13: load through undef pointer is UB.
+  %val = load %p;
+  ret %val;
+}

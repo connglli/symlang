@@ -1,0 +1,26 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path ^entry
+// SKIP: INTERPRETER
+// SKIP: COMPILER
+
+// Testing reading undef from a nested struct field in solver.
+// The C backend can't track value-level definedness (would require
+// MemorySanitizer, which is incompatible with the harness's existing
+// AddressSanitizer use). The solver runner detects this UB via the
+// is_defined path-constraint check. Re-enable for the compiler runner
+// when an MSan-only build mode is wired into the test harness.
+
+struct @Inner {
+  x: i32;
+}
+struct @Outer {
+  inner: @Inner;
+}
+
+fun @main() : i32 {
+  let mut %o: @Outer = { {undef} };
+  let mut %res: i32 = 0;
+^entry:
+  %res = %o.inner.x;
+  ret %res;
+}

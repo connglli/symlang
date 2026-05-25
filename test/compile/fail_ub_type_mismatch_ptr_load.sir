@@ -1,0 +1,26 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: INTERPRETER
+// INTERP_ARGS: --sym %?start_x=2.0
+// COMPILER_ARGS: --sym %?start_x=2.0
+
+// Mutated from newton_root.sir
+// Triggers Rule 15b: Typed-access mismatch in C backend via pointers
+// We take addr of a struct field and try to load it as a different type.
+
+struct @Data {
+  a: i64;
+  b: i64;
+}
+
+fun @main() : i32 {
+  let mut %d: @Data = {0, 0};
+  let mut %p: ptr i32 = null;
+  let mut %res: i32 = 0;
+^entry:
+  // addr %d.a gives ptr i64
+  // But we store it in ptr i32.
+  // SymIR v0.2.1 Rule 15b says loading i32 from an i64 field is UB.
+  %p = addr %d.a;
+  %res = load %p;
+  ret %res;
+}

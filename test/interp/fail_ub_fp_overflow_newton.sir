@@ -1,0 +1,90 @@
+// EXPECT: FAIL:UndefinedBehavior
+// INTERP_ARGS: --sym %?start_x=2.0
+struct @NewtonContext {
+  x: f64;     // The current estimate of the root
+  fx: f64;    // The value of the function f(x) at the current estimate
+  dfx: f64;   // The derivative f'(x) at the current estimate
+  step: f64;  // The calculated adjustment step: f(x) / f'(x)
+  diff: f64;  // The error between the current estimate and the known target
+}
+
+fun @main() : f64 {
+  sym %?start_x : value f64;
+
+  let mut %ctx: @NewtonContext = 0.0;
+
+  let mut %x_v: f64 = 0.0;
+  let mut %fx_v: f64 = 0.0;
+  let mut %dfx_v: f64 = 0.0;
+  let mut %diff_v: f64 = 0.0;
+  let mut %ret_val: f64 = 0.0;
+  let mut %zero_f: f64 = 0.0;
+
+  let %TWO: f64 = 2.0;
+  let %TARGET: f64 = 1.41421356237;
+
+^entry:
+  %ctx.x = %?start_x;
+
+  %x_v = %ctx.x;
+  assume %x_v >= 1.0;
+
+  // UB: FP Overflow (Division by 0.0 -> +inf)
+  %zero_f = 0.0;
+  %fx_v = %TWO / %zero_f;
+
+  br ^iter1;
+
+^iter1:
+  %x_v = %ctx.x;
+  %ctx.fx = %x_v * %ctx.x - %TWO;
+
+  %x_v = %ctx.x;
+  %ctx.dfx = %TWO * %x_v;
+
+  %fx_v = %ctx.fx;
+  %ctx.step = %fx_v / %ctx.dfx;
+
+  %x_v = %ctx.x;
+  %ctx.x = %x_v - %ctx.step;
+  br ^iter2;
+
+^iter2:
+  %x_v = %ctx.x;
+  %ctx.fx = %x_v * %ctx.x - %TWO;
+
+  %x_v = %ctx.x;
+  %ctx.dfx = %TWO * %x_v;
+
+  %fx_v = %ctx.fx;
+  %ctx.step = %fx_v / %ctx.dfx;
+
+  %x_v = %ctx.x;
+  %ctx.x = %x_v - %ctx.step;
+  br ^iter3;
+
+^iter3:
+  %x_v = %ctx.x;
+  %ctx.fx = %x_v * %ctx.x - %TWO;
+
+  %x_v = %ctx.x;
+  %ctx.dfx = %TWO * %x_v;
+
+  %fx_v = %ctx.fx;
+  %ctx.step = %fx_v / %ctx.dfx;
+
+  %x_v = %ctx.x;
+  %ctx.x = %x_v - %ctx.step;
+  br ^exit;
+
+^exit:
+  %x_v = %ctx.x;
+  %ctx.diff = %x_v - %TARGET;
+
+  %diff_v = %ctx.diff;
+  require %diff_v < 0.00001, "Must converge to sqrt(2)";
+  require %diff_v > -0.00001, "Must converge to sqrt(2)";
+
+  %ret_val = %ctx.x;
+  ret %ret_val;
+}

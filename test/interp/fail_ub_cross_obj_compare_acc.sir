@@ -1,0 +1,136 @@
+// EXPECT: FAIL:UndefinedBehavior
+// INTERP_ARGS: --sym %?lo_cut=0 --sym %?hi_cut=5
+struct @ChainResult {
+  acc_low:  i32;
+  acc_mid:  i32;
+  acc_high: i32;
+  routed:   i32;
+}
+
+fun @main() : i32 {
+  sym %?lo_cut : value i32 in [-5, 5];
+  sym %?hi_cut : value i32 in [0, 10];
+
+  let mut %acc_low:  i32 = 0;
+  let mut %acc_mid:  i32 = 0;
+  let mut %acc_high: i32 = 0;
+
+  let mut %i0: i32 = -3;
+  let mut %i1: i32 = 2;
+  let mut %i2: i32 = 7;
+  let mut %i3: i32 = 4;
+
+  let mut %dst: ptr i32 = null;
+  let mut %cur: i32 = 0;
+  let mut %tmp: i32 = 0;
+  let mut %routed: i32 = 0;
+
+  let mut %ptr1: ptr i32 = null;
+  let mut %ptr2: ptr i32 = null;
+  let mut %cmp_res: i1 = 0;
+
+  let %ONE: i32 = 1;
+
+  let mut %res: @ChainResult = { 0, 0, 0, 0 };
+
+^entry:
+  // UB: Cross-object pointer comparison
+  %ptr1 = addr %acc_low;
+  %ptr2 = addr %acc_mid;
+  br %ptr1 < %ptr2, ^route0, ^route0;
+
+^route0:
+  %cur = %i0;
+  br %cur < %?lo_cut, ^route0_low, ^route0_not_low;
+^route0_low:
+  %dst = addr %acc_low;
+  br ^route0_apply;
+^route0_not_low:
+  br %cur < %?hi_cut, ^route0_mid, ^route0_high;
+^route0_mid:
+  %dst = addr %acc_mid;
+  br ^route0_apply;
+^route0_high:
+  %dst = addr %acc_high;
+  br ^route0_apply;
+^route0_apply:
+  %tmp = load %dst;
+  %tmp = %tmp + %cur;
+  store %dst, %tmp;
+  %routed = %routed + %ONE;
+  br ^route1;
+
+^route1:
+  %cur = %i1;
+  br %cur < %?lo_cut, ^route1_low, ^route1_not_low;
+^route1_low:
+  %dst = addr %acc_low;
+  br ^route1_apply;
+^route1_not_low:
+  br %cur < %?hi_cut, ^route1_mid, ^route1_high;
+^route1_mid:
+  %dst = addr %acc_mid;
+  br ^route1_apply;
+^route1_high:
+  %dst = addr %acc_high;
+  br ^route1_apply;
+^route1_apply:
+  %tmp = load %dst;
+  %tmp = %tmp + %cur;
+  store %dst, %tmp;
+  %routed = %routed + %ONE;
+  br ^route2;
+
+^route2:
+  %cur = %i2;
+  br %cur < %?lo_cut, ^route2_low, ^route2_not_low;
+^route2_low:
+  %dst = addr %acc_low;
+  br ^route2_apply;
+^route2_not_low:
+  br %cur < %?hi_cut, ^route2_mid, ^route2_high;
+^route2_mid:
+  %dst = addr %acc_mid;
+  br ^route2_apply;
+^route2_high:
+  %dst = addr %acc_high;
+  br ^route2_apply;
+^route2_apply:
+  %tmp = load %dst;
+  %tmp = %tmp + %cur;
+  store %dst, %tmp;
+  %routed = %routed + %ONE;
+  br ^route3;
+
+^route3:
+  %cur = %i3;
+  br %cur < %?lo_cut, ^route3_low, ^route3_not_low;
+^route3_low:
+  %dst = addr %acc_low;
+  br ^route3_apply;
+^route3_not_low:
+  br %cur < %?hi_cut, ^route3_mid, ^route3_high;
+^route3_mid:
+  %dst = addr %acc_mid;
+  br ^route3_apply;
+^route3_high:
+  %dst = addr %acc_high;
+  br ^route3_apply;
+^route3_apply:
+  %tmp = load %dst;
+  %tmp = %tmp + %cur;
+  store %dst, %tmp;
+  %routed = %routed + %ONE;
+  br ^commit;
+
+^commit:
+  %res.acc_low  = %acc_low;
+  %res.acc_mid  = %acc_mid;
+  %res.acc_high = %acc_high;
+  %res.routed   = %routed;
+  require %res.acc_low  == -3, "low bucket holds -3";
+  require %res.acc_mid  == 6,  "mid bucket holds 6";
+  require %res.acc_high == 7,  "high bucket holds 7";
+  require %res.routed   == 4,  "all four inputs routed";
+  ret %res.routed;
+}

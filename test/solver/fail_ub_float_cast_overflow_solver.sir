@@ -1,0 +1,13 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path ^entry
+// SKIP: INTERPRETER
+
+// Testing Rule 8: Float-to-integer out-of-range in solver.
+
+fun @main() : i32 {
+  let mut %f: f32 = 1e20;
+  let mut %i: i32 = 0;
+^entry:
+  %i = %f as i32;
+  ret %i;
+}

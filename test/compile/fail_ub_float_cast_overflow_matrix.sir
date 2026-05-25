@@ -1,0 +1,16 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: INTERPRETER
+// COMPILER_ARGS: --sym %?m00=0 --sym %?m01=-1 --sym %?m10=1 --sym %?m11=0
+
+// Mutated from matrix_transform.sir
+// Triggers Rule 8: Float-to-integer out-of-range in compiled code.
+
+fun @main() : i32 {
+  sym %?m00 : value i8 in [-2, 2];
+  let mut %f: f32 = 1e20;
+  let mut %i: i32 = 0;
+^entry:
+  // 1e20 is way beyond i32 range
+  %i = %f as i32;
+  ret %i;
+}

@@ -1,0 +1,26 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path ^entry
+// SKIP: INTERPRETER
+
+// Mutated from ptr_counter.sir
+// Testing Rule 19: Navigation from a one-past-the-end pointer.
+// We use addr %o.a then increment it. It's one-past-end of 'a' but still in 'o'.
+// Wait, Rule 15 says provenance of addr %o.a is %o (the whole struct) in v0.2.1.
+// But in v0.2.0 it might be just 'a'.
+// Let's use an array to be sure.
+
+struct @Obj {
+  data: [1] i32;
+}
+
+fun @main() : i32 {
+  let mut %o: @Obj = { {10} };
+  let mut %p: ptr i32 = null;
+  let mut %res: i32 = 0;
+^entry:
+  %p = addr %o.data[0];
+  %p = %p + 1; // valid one-past-end
+  // Loading from one-past-end is UB (Rule 11)
+  %res = load %p;
+  ret %res;
+}

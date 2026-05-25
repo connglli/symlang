@@ -1,0 +1,32 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: INTERPRETER
+// SKIP: COMPILER
+// COMPILER_ARGS: --target c
+
+// Testing packed struct layout in C backend.
+// Rule 15b (typed-access mismatch): loading i8 through a pointer
+// originally derived from a different-typed field is UB. Detecting
+// this from the C backend requires runtime provenance tracking that
+// the current implementation doesn't carry; the interpreter and the
+// solver enforce this rule. Re-enable when the C backend grows a
+// provenance metadata pass (fat pointers or shadow memory).
+
+struct @Large {
+  a: i8;
+  // padding usually here if not packed (3 bytes)
+  b: i32;
+}
+
+fun @main() : i32 {
+  let mut %s: @Large = {1, 2};
+  let mut %p: ptr i8 = null;
+  let mut %val: i8 = 0;
+^entry:
+  %p = addr %s.a;
+  // If packed, %p + 1 is exactly %s.b (first byte).
+  // If we load it as i8, we get some byte of the i32.
+  // But wait, loading i8 from an i32 field is UB (Rule 15b).
+  %p = %p + 1;
+  %val = load %p; // UB if lands on 'b' (i32)
+  ret 0;
+}
