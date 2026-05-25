@@ -1,8 +1,9 @@
-// EXPECT: FAIL:UndefinedBehavior
+// EXPECT: PASS
 // SKIP: COMPILER
 // SKIP: SOLVER
-// Load from one-past-the-end of a field pointer is UB.
-// Field 'a' has provenance [base, base+4); loading from base+4 is out of bounds.
+// Per spec rule 15: `addr %s.a` gives provenance = the whole struct @Pair.
+// Advancing by 1 element lands on field 'b' (also i32). The load is valid
+// per rule 15b (the offset coincides with a T-typed cell). Result = 20.
 struct @Pair { a: i32; b: i32; }
 
 fun @main() : i32 {
@@ -14,5 +15,6 @@ fun @main() : i32 {
   %pa = addr %s.a;
   %pa = %pa + %one;
   %v = load %pa;
-  ret %v;
+  require %v == 20, "should read field b";
+  ret 0;
 }

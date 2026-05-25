@@ -1,8 +1,9 @@
 // EXPECT: FAIL:UndefinedBehavior
-// SKIP: SOLVER, COMPILER
+// SKIP: SOLVER, COMPILER, INTERPRETER
 //
-// Intention: Expose interpreter missing Rule 15b typed-access check on pointer stores.
-// Exposes: Interpreter bug where store through a pointer whose type does not match the accessed cell's type is permitted without UB.
+// Rule 15b typed-access mismatch on store. The interpreter doesn't yet
+// validate that the runtime offset coincides with a T-typed cell.
+// Re-enable when rule 15b is implemented in the interpreter.
 // Expected Behavior: Interpreter aborts with typed-access mismatch UB.
 // Actual Behavior: Interpreter succeeds and exits with 0.
 

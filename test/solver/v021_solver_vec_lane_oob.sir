@@ -1,0 +1,16 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path '^entry'
+// SKIP: INTERPRETER, COMPILER
+
+// Rule 20 + solver: dynamic vector lane access with a symbolic index
+// that is forced out of bounds by a require constraint. The solver
+// must detect that the path is infeasible (UNSAT).
+fun @main() : i32 {
+  sym %?i: index i32 in [0, 100];
+  let mut %v: <4> i32 = {1, 2, 3, 4};
+  let mut %x: i32 = 0;
+^entry:
+  %x = %v[%?i];
+  require %?i == 5, "force OOB";
+  ret %x;
+}

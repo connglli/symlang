@@ -1,0 +1,14 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path '^entry'
+// SKIP: COMPILER
+
+// Rule 20 via write: writing to a vector lane with a symbolic index
+// forced out of bounds. The solver must detect the OOB write.
+fun @main() : i32 {
+  sym %?i: index i32 in [0, 100];
+  let mut %v: <4> i32 = {1, 2, 3, 4};
+^entry:
+  %v[%?i] = 99;
+  require %?i == 4, "force OOB write";
+  ret 0;
+}

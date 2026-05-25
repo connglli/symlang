@@ -1,0 +1,17 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path '^entry'
+// SKIP: COMPILER
+
+// Rule 15b variant: store i32 through a pointer that has been advanced
+// past the i32 field into an i64 field. Same provenance violation as
+// the load case.
+struct @T { a: i32; b: i64; }
+fun @main() : i32 {
+  let mut %t: @T = {10, 20};
+  let mut %pa: ptr i32 = null;
+^entry:
+  %pa = addr %t.a;
+  %pa = %pa + 1;
+  store %pa, 42;
+  ret 0;
+}

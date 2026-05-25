@@ -1,0 +1,21 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path '^entry'
+// SKIP: COMPILER
+
+// Rule 15 positive case: ptrfield gives provenance = the whole struct.
+// Advancing the field pointer by 1 element stays within the struct's
+// range (both fields are i32), so the load is valid.
+struct @Pair { a: i32; b: i32; }
+fun @main() : i32 {
+  let mut %s: @Pair = {10, 20};
+  let mut %p: ptr @Pair = null;
+  let mut %pa: ptr i32 = null;
+  let mut %val: i32 = 0;
+^entry:
+  %p = addr %s;
+  %pa = ptrfield %p, a;
+  %pa = %pa + 1;
+  %val = load %pa;
+  require %val == 20, "should read field b";
+  ret 0;
+}

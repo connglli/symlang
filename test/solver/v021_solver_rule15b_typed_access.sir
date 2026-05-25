@@ -1,0 +1,18 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path '^entry'
+// SKIP: COMPILER
+
+// Rule 15b: load i32 through a pointer advanced past the i32 field
+// into an i64 field. The provenance of addr %t.a covers only the
+// 'a' cell; advancing by 1 element lands outside that cell → UB.
+struct @T { a: i32; b: i64; }
+fun @main() : i32 {
+  let mut %t: @T = {10, 20};
+  let mut %pa: ptr i32 = null;
+  let mut %val: i32 = 0;
+^entry:
+  %pa = addr %t.a;
+  %pa = %pa + 1;
+  %val = load %pa;
+  ret %val;
+}

@@ -655,6 +655,16 @@ namespace symir {
                 // Evaluate ptr term (BV64) and stored value term.
                 smt::Term ptrTerm = evalExpr(arg.ptr, solver, store, pathConstraints);
 
+                // [v0.2.1] Rule 9/11: store through null or OOB is UB.
+                // The evalExpr above already pushes rule-10 OOB constraints
+                // for ptr-arith expressions, but a bare `store %pa, v`
+                // where %pa was set earlier still needs a null check.
+                auto bv64Store = solver.make_bv_sort(kPtrBits);
+                auto nullStore = solver.make_bv_value_int64(bv64Store, 0);
+                pathConstraints.push_back(
+                    solver.make_term(smt::Kind::DISTINCT, {ptrTerm, nullStore})
+                );
+
                 // Determine pointee type from the ptr expression's first atom.
                 // The first atom is an RValueAtom of a ptr-typed local in the
                 // common case (rysmith generates `store %p, ...`).
@@ -695,6 +705,7 @@ namespace symir {
                 // nested aggregate — array-of-structs, struct-of-arrays.
                 std::function<void(const TypePtr &, SymbolicValue &, std::uint64_t, std::uint64_t)>
                     enumStore;
+                std::vector<smt::Term> storeMatchConds;
                 enumStore = [&](const TypePtr &ty, SymbolicValue &sv, std::uint64_t baseTag,
                                 std::uint64_t off) {
                   if (!ty)
@@ -703,6 +714,7 @@ namespace symir {
                     auto tagTerm =
                         solver.make_bv_value_int64(bv64, static_cast<int64_t>(baseTag + off));
                     auto cond = solver.make_term(smt::Kind::EQUAL, {ptrTerm, tagTerm});
+                    storeMatchConds.push_back(cond);
                     sv.term = solver.make_term(smt::Kind::ITE, {cond, valTerm, sv.term});
                     return;
                   }
@@ -729,6 +741,14 @@ namespace symir {
                 for (const auto &l: currentFun_->lets) {
                   std::uint64_t baseTag = tagOfLocal(l.name.name);
                   enumStore(l.type, store.at(l.name.name), baseTag, 0);
+                }
+                // [v0.2.1] Rule 11/15b: the store must land on a valid
+                // T-typed cell — same as load's anyMatch constraint.
+                if (!storeMatchConds.empty()) {
+                  smt::Term anyMatch = storeMatchConds[0];
+                  for (size_t j = 1; j < storeMatchConds.size(); ++j)
+                    anyMatch = solver.make_term(smt::Kind::OR, {anyMatch, storeMatchConds[j]});
+                  pathConstraints.push_back(anyMatch);
                 }
               }
             },

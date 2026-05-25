@@ -99,9 +99,18 @@ namespace symir {
         for (std::size_t i = 0; i < sv.arrayVal.size(); ++i) {
           uint64_t elemBase = base + i * elemSize;
           if (sd) {
-            // Per-element struct: materialize each field's ObjectInfo
-            // and populate heap_ at the field address.
+            // Per-element struct: create a whole-element ObjectInfo (for
+            // ptrfield provenance = the struct) plus per-field ObjectInfos.
             uint64_t off = 0;
+            uint64_t minFS = elemSize;
+            for (const auto &f: sd->fields) {
+              uint64_t fs = sizeofType(f.type);
+              if (fs < minFS)
+                minFS = fs;
+            }
+            objects_.push_back(
+                ObjectInfo{varName, "", elemBase, elemBase + elemSize, minFS, elemSize / minFS, i}
+            );
             for (const auto &f: sd->fields) {
               uint64_t fSize = sizeofType(f.type);
               objects_.push_back(
@@ -181,6 +190,20 @@ namespace symir {
     uint64_t base = nextAddr_;
     nextAddr_ += (totalSize + 7) & ~7ULL;
     addrMap_[varName] = base;
+
+    // [v0.2.1] Create a whole-struct ObjectInfo so that ptrfield-derived
+    // pointers (whose provenance = the struct per rule 15) can roam over
+    // the entire struct range. The elemSize is set to the smallest field
+    // size so ptr arith steps by the right granularity.
+    uint64_t minFieldSize = totalSize;
+    for (const auto &f: s.fields) {
+      uint64_t fs = sizeofType(f.type);
+      if (fs < minFieldSize)
+        minFieldSize = fs;
+    }
+    objects_.push_back(
+        ObjectInfo{varName, "", base, base + totalSize, minFieldSize, totalSize / minFieldSize}
+    );
 
     // Create one ObjectInfo per field and sync its value into the heap.
     uint64_t offset = 0;
@@ -1366,12 +1389,12 @@ namespace symir {
             // ptrfield %p, f`, that's `ptrVal + off`, not `ptrBase + off`
             // — ptrBase still refers to the containing array's start.
             rv.ptrVal = ptrRv.ptrVal + off;
-            // Provenance: field pointer's provenance is the struct (spec
-            // rule 15) — i.e., arithmetic on the result roams over the
-            // whole struct. We model that by keeping ptrBase at the
-            // struct's base; load through the result later restricts to
-            // the field cell via the type-matched ObjectInfo lookup.
-            rv.ptrBase = ptrRv.ptrVal + off;
+            // Provenance: field pointer's provenance is the *immediate
+            // containing struct* (spec rule 15). Arithmetic on the result
+            // can roam over the whole struct's byte range. We set ptrBase
+            // to the struct's start address so the bounds check in ptr
+            // arith / load / store uses the struct's ObjectInfo.
+            rv.ptrBase = ptrRv.ptrVal;
             return rv;
           } else if constexpr (std::is_same_v<T, CastAtom>) {
             RuntimeValue v = std::visit(

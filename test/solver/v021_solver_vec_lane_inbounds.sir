@@ -1,0 +1,16 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path '^entry'
+// SKIP: COMPILER
+
+// Rule 20 positive case: dynamic vector lane access with a symbolic
+// index that is within bounds. The solver should find a satisfying
+// assignment (SAT).
+fun @main() : i32 {
+  sym %?i: index i32 in [0, 3];
+  let mut %v: <4> i32 = {10, 20, 30, 40};
+  let mut %x: i32 = 0;
+^entry:
+  %x = %v[%?i];
+  require %x == 30, "lane 2 has value 30";
+  ret 0;
+}
