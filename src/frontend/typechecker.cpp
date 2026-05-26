@@ -718,7 +718,11 @@ namespace symir {
             // [v0.2.1] cmp: result is i1 (scalar) or <N> i1 (vector).
             // Both operands must have the same type; we infer from lhs.
             auto t1 = typeOfSelectVal(arg.lhs, vars, syms, ann, diags, std::nullopt);
-            auto t2 = typeOfSelectVal(arg.rhs, vars, syms, ann, diags, std::nullopt);
+            // [v0.2.1] Sibling pointer context: if LHS is a pointer, pass it
+            // as ptrCtx to RHS so that `cmp == %p, null` can infer null's type.
+            // This mirrors the pattern in checkCond() (line ~1047).
+            TypePtr cmpPtrCtx = t1.isPtr() ? t1.ptrType() : nullptr;
+            auto t2 = typeOfSelectVal(arg.rhs, vars, syms, ann, diags, std::nullopt, cmpPtrCtx);
             if (t1.isVec()) {
               if (!t2.isVec() || !TypeUtils::areTypesEqual(t1.vecType(), t2.vecType())) {
                 diags.error("cmp: vector operand type mismatch", arg.span);

@@ -1,0 +1,18 @@
+// EXPECT: PASS
+// Rationale: This test demonstrates that the interpreter's 'ptrindex' loses
+// the current pointer's offset and always calculates from the provenance base.
+// Expected behavior: %v should be 4 (%arr[1][0]).
+
+fun @main() : i32 {
+  let mut %arr: [2][3] i32 = {{1, 2, 3}, {4, 5, 6}};
+  let mut %p: ptr [2][3] i32 = addr %arr;
+  let mut %p1: ptr [3] i32 = null;
+  let mut %p2: ptr i32 = null;
+  let mut %v: i32 = 0;
+
+^entry:
+  %p1 = ptrindex %p, 1;      // Points to %arr[1] ({4, 5, 6})
+  %p2 = ptrindex %p1, 0;     // Should point to %arr[1][0] (4)
+  %v = load %p2;
+  ret %v;
+}

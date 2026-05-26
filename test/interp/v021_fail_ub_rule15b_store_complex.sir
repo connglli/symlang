@@ -1,0 +1,23 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: COMPILER
+// Rationale: This test demonstrates a bug in the interpreter's Rule 15b check
+// during 'store'. It fails to check typed-access when the pointer is a
+// complex expression (not a simple local reference).
+// Expected behavior: UB (Typed-access mismatch).
+// Observed behavior: PASS (Interpreter skips the check for complex exprs).
+
+struct @S {
+  f1: i32;
+  f2: i32;
+  val: i64;
+}
+
+fun @main() : i32 {
+  let mut %s: @S = {1, 2, 0};
+^entry:
+  // Complex pointer expression in 'store'.
+  // (addr %s.f1) + 2 points to %s.val (i64).
+  // But the pointer type derived from 'addr %s.f1' is 'ptr i32'.
+  store addr %s.f1 + 2, 123456789;
+  ret 0;
+}

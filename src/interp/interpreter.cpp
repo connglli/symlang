@@ -2,6 +2,7 @@
 #include <cfenv>
 #include <cmath>
 #include <cstdio>
+#include <functional>
 #include <iostream>
 #include <stdexcept>
 #include "analysis/cfg.hpp"
@@ -74,7 +75,7 @@ namespace symir {
     uint64_t elemSize =
         sizeofType(std::get_if<ArrayType>(&t->v) ? std::get<ArrayType>(t->v).elem : t);
     uint64_t count = std::get_if<ArrayType>(&t->v) ? std::get<ArrayType>(t->v).size : 1;
-    objects_.push_back(ObjectInfo{varName, "", base, base + totalSize, elemSize, count});
+    addObject(ObjectInfo{varName, "", base, base + totalSize, elemSize, count});
     addrMap_[varName] = base;
 
     // Sync current store value into heap. For arrays-of-structs the
@@ -108,12 +109,12 @@ namespace symir {
               if (fs < minFS)
                 minFS = fs;
             }
-            objects_.push_back(
+            addObject(
                 ObjectInfo{varName, "", elemBase, elemBase + elemSize, minFS, elemSize / minFS, i}
             );
             for (const auto &f: sd->fields) {
               uint64_t fSize = sizeofType(f.type);
-              objects_.push_back(
+              addObject(
                   ObjectInfo{varName, f.name, elemBase + off, elemBase + off + fSize, fSize, 1, i}
               );
               if (sv.arrayVal[i].kind == RuntimeValue::Kind::Struct) {
@@ -123,6 +124,32 @@ namespace symir {
               }
               off += fSize;
             }
+          } else if (sv.arrayVal[i].kind == RuntimeValue::Kind::Array) {
+            // [v0.2.1 fix] Nested array element (e.g., [3] i32 inside
+            // [2][3] i32): create a sub-array ObjectInfo and recursively
+            // flatten leaf elements into per-address heap entries so that
+            // ptrindex can navigate into sub-arrays and load individual
+            // elements.
+            auto subAt = elemTy ? std::get_if<ArrayType>(&elemTy->v) : nullptr;
+            uint64_t subElemSize = subAt ? sizeofType(subAt->elem) : 4;
+            uint64_t subCount = subAt ? subAt->size : sv.arrayVal[i].arrayVal.size();
+            addObject(
+                ObjectInfo{varName, "", elemBase, elemBase + elemSize, subElemSize, subCount}
+            );
+            // Recursively flatten leaves into heap.
+            std::function<void(uint64_t, const RuntimeValue &, const TypePtr &)> flattenToHeap =
+                [&](uint64_t addr, const RuntimeValue &rv, const TypePtr &ty) {
+                  if (rv.kind == RuntimeValue::Kind::Array) {
+                    auto innerAt = ty ? std::get_if<ArrayType>(&ty->v) : nullptr;
+                    auto innerElem = innerAt ? innerAt->elem : TypePtr{};
+                    uint64_t innerElemSz = innerElem ? sizeofType(innerElem) : 4;
+                    for (std::size_t j = 0; j < rv.arrayVal.size(); ++j)
+                      flattenToHeap(addr + j * innerElemSz, rv.arrayVal[j], innerElem);
+                  } else {
+                    heap_[addr] = rv;
+                  }
+                };
+            flattenToHeap(elemBase, sv.arrayVal[i], elemTy);
           } else {
             heap_[elemBase] = sv.arrayVal[i];
           }
@@ -167,12 +194,35 @@ namespace symir {
     return nullptr;
   }
 
-  // Find an ObjectInfo by exact base address — used for provenance-based lookups.
-  const Interpreter::ObjectInfo *Interpreter::findObjectByBase(std::uint64_t base) const {
+  Interpreter::ObjectInfo &Interpreter::addObject(ObjectInfo obj) {
+    obj.provId = nextProvId_++;
+    objects_.push_back(std::move(obj));
+    return objects_.back();
+  }
+
+  const Interpreter::ObjectInfo *Interpreter::findObjectByProvId(std::uint64_t provId) const {
+    for (const auto &o: objects_)
+      if (o.provId == provId)
+        return &o;
+    return nullptr;
+  }
+
+  const Interpreter::ObjectInfo *Interpreter::findObjectByBaseAddress(std::uint64_t base) const {
     for (const auto &o: objects_)
       if (o.base == base)
         return &o;
     return nullptr;
+  }
+
+  const Interpreter::ObjectInfo *
+  Interpreter::findFieldOrStructObject(std::uint64_t addr, const TypePtr &type) const {
+    uint64_t size = sizeofType(type);
+    for (const auto &o: objects_) {
+      if (o.base == addr && (o.end - o.base) == size) {
+        return &o;
+      }
+    }
+    return findObject(addr);
   }
 
   // Byte offset of named field within struct s (sequential layout, no padding).
@@ -214,28 +264,63 @@ namespace symir {
       if (fs < minFieldSize)
         minFieldSize = fs;
     }
-    objects_.push_back(
+    addObject(
         ObjectInfo{varName, "", base, base + totalSize, minFieldSize, totalSize / minFieldSize}
     );
 
     // Create one ObjectInfo per field and sync its value into the heap.
+    // [v0.2.1 fix] Recurse into nested struct fields so that Rule 15b
+    // typed-access mismatch checks can resolve nested field ObjectInfos.
     uint64_t offset = 0;
     auto sv = store.find(varName);
     for (const auto &f: s.fields) {
       uint64_t fBase = base + offset;
       uint64_t fElemSize;
       uint64_t fCount;
+      bool fieldIsStruct = false;
+      const StructDecl *fieldSD = nullptr;
       if (auto at = std::get_if<ArrayType>(&f.type->v)) {
         fCount = at->size;
         fElemSize = sizeofType(at->elem);
+      } else if (auto st = std::get_if<StructType>(&f.type->v)) {
+        // Nested struct field: create per-sub-field ObjectInfos.
+        fCount = 1;
+        fElemSize = sizeofType(f.type);
+        auto sit = structs_.find(st->name.name);
+        if (sit != structs_.end()) {
+          fieldIsStruct = true;
+          fieldSD = sit->second;
+        }
       } else {
         fCount = 1;
         fElemSize = sizeofType(f.type);
       }
       uint64_t fSize = fCount * fElemSize;
-      objects_.push_back(ObjectInfo{varName, f.name, fBase, fBase + fSize, fElemSize, fCount});
+      addObject(ObjectInfo{varName, f.name, fBase, fBase + fSize, fElemSize, fCount});
 
-      if (sv != store.end() && sv->second.kind == RuntimeValue::Kind::Struct) {
+      // [v0.2.1 fix] For nested struct fields, create sub-field ObjectInfos
+      // so that Rule 15b checks can identify typed-access mismatches inside
+      // nested structs (e.g., ptr i32 accessing an i64 field).
+      if (fieldIsStruct && fieldSD) {
+        uint64_t subOff = 0;
+        for (const auto &sf: fieldSD->fields) {
+          uint64_t sfSize = sizeofType(sf.type);
+          addObject(
+              ObjectInfo{varName, sf.name, fBase + subOff, fBase + subOff + sfSize, sfSize, 1}
+          );
+          // Sync nested struct field value into heap.
+          if (sv != store.end() && sv->second.kind == RuntimeValue::Kind::Struct) {
+            auto fit = sv->second.structVal.find(f.name);
+            if (fit != sv->second.structVal.end() &&
+                fit->second.kind == RuntimeValue::Kind::Struct) {
+              auto sfit = fit->second.structVal.find(sf.name);
+              if (sfit != fit->second.structVal.end())
+                heap_[fBase + subOff] = sfit->second;
+            }
+          }
+          subOff += sfSize;
+        }
+      } else if (sv != store.end() && sv->second.kind == RuntimeValue::Kind::Struct) {
         auto fit = sv->second.structVal.find(f.name);
         if (fit != sv->second.structVal.end()) {
           if (fit->second.kind == RuntimeValue::Kind::Array) {
@@ -479,6 +564,7 @@ namespace symir {
     addrMap_.clear();
     typeMap_.clear();
     nextAddr_ = 4096; // leave address 0 for null
+    nextProvId_ = 1;
 
     // Build name→type map for addr provenance lookups.
     for (const auto &p: f.params)
@@ -608,29 +694,67 @@ namespace symir {
                 if (ptrVal.ptrVal == 0)
                   throw UndefinedBehaviorError("UB: Null pointer dereference in store");
                 // Provenance-based bounds check.
-                const ObjectInfo *obj = findObjectByBase(ptrVal.ptrBase);
+                const ObjectInfo *obj = findObjectByProvId(ptrVal.ptrBase);
                 if (!obj)
                   throw UndefinedBehaviorError("UB: Store to unknown address");
                 if (ptrVal.ptrVal < obj->base || ptrVal.ptrVal >= obj->end)
                   throw UndefinedBehaviorError("UB: Store out of bounds");
                 // [v0.2.1] Rule 15b: typed-access mismatch on store.
+                // Derive the pointer's element size from the expression's first
+                // atom — supports AddrAtom, RValueAtom, LoadAtom, PtrIndexAtom,
+                // PtrFieldAtom, etc., not just simple RValueAtom locals.
                 const ObjectInfo *cellObj = findObject(ptrVal.ptrVal);
                 if (cellObj && cellObj->fieldName.size() > 0) {
-                  auto tit = typeMap_.find(
-                      std::get_if<RValueAtom>(&i.ptr.first.v)
-                          ? std::get_if<RValueAtom>(&i.ptr.first.v)->rval.base.name
-                          : ""
+                  // Derive pointer element size from the runtime pointer's
+                  // provenance ObjectInfo, since ptrBase is set to reflect
+                  // the correct containing object for Rule 15b checks.
+                  uint64_t ptrElemSize = 0;
+                  // Try extracting from the expression's first atom type.
+                  std::visit(
+                      [&](auto &&atom) {
+                        using A = std::decay_t<decltype(atom)>;
+                        if constexpr (std::is_same_v<A, RValueAtom>) {
+                          auto tit = typeMap_.find(atom.rval.base.name);
+                          if (tit != typeMap_.end()) {
+                            if (auto pt = std::get_if<PtrType>(&tit->second->v))
+                              ptrElemSize = sizeofType(pt->pointee);
+                          }
+                        } else if constexpr (std::is_same_v<A, AddrAtom>) {
+                          // addr %x.f / addr %x[i]: the pointee is the type
+                          // of the addressed lvalue. Walk the type through
+                          // accesses to get the leaf element type.
+                          auto tit = typeMap_.find(atom.lv.base.name);
+                          if (tit != typeMap_.end()) {
+                            TypePtr cur = tit->second;
+                            for (const auto &acc: atom.lv.accesses) {
+                              if (!cur)
+                                break;
+                              if (auto ai = std::get_if<AccessIndex>(&acc)) {
+                                (void) ai;
+                                if (auto at = std::get_if<ArrayType>(&cur->v))
+                                  cur = at->elem;
+                              } else if (auto af = std::get_if<AccessField>(&acc)) {
+                                if (auto st = std::get_if<StructType>(&cur->v)) {
+                                  auto sit = structs_.find(st->name.name);
+                                  if (sit != structs_.end()) {
+                                    for (const auto &fd: sit->second->fields)
+                                      if (fd.name == af->field) {
+                                        cur = fd.type;
+                                        break;
+                                      }
+                                  }
+                                }
+                              }
+                            }
+                            if (cur)
+                              ptrElemSize = sizeofType(cur);
+                          }
+                        }
+                      },
+                      i.ptr.first.v
                   );
-                  if (tit != typeMap_.end()) {
-                    TypePtr ptrTy = tit->second;
-                    if (auto pt = std::get_if<PtrType>(&ptrTy->v)) {
-                      uint64_t ptrElemSize = sizeofType(pt->pointee);
-                      if (ptrElemSize != cellObj->elemSize)
-                        throw UndefinedBehaviorError(
-                            "UB: Typed-access mismatch (rule 15b) on store"
-                        );
-                    }
-                  }
+                  if (ptrElemSize > 0 && ptrElemSize != cellObj->elemSize)
+                    throw UndefinedBehaviorError("UB: Typed-access mismatch (rule 15b) on store");
                 }
                 // SPEC §6.4: enforce destination precision. The pointee object
                 // has an elemSize that reflects the pointee type; for f32 this
@@ -826,7 +950,7 @@ namespace symir {
         // ptr ± int: scale offset by element size; result must stay in [base, end].
         // One-past-the-end (== end) is valid for arithmetic but not for dereference.
         // Use ptrBase to find the exact provenance object (enforces field-level boundaries).
-        const ObjectInfo *obj = findObjectByBase(v.ptrBase);
+        const ObjectInfo *obj = findObjectByProvId(v.ptrBase);
         if (!obj)
           throw UndefinedBehaviorError("UB: Pointer arithmetic on out-of-bounds pointer");
         uint64_t elemSize = obj->elemSize;
@@ -843,7 +967,7 @@ namespace symir {
           throw std::runtime_error("Cannot add two pointers");
         if (v.ptrBase != right.ptrBase)
           throw UndefinedBehaviorError("UB: Pointer subtraction across different objects");
-        const ObjectInfo *obj = findObjectByBase(v.ptrBase);
+        const ObjectInfo *obj = findObjectByProvId(v.ptrBase);
         uint64_t elemSize = obj ? obj->elemSize : 1;
         int64_t diff = static_cast<int64_t>(v.ptrVal) - static_cast<int64_t>(right.ptrVal);
         v.kind = RuntimeValue::Kind::Int;
@@ -1238,9 +1362,7 @@ namespace symir {
                 }
                 base = nextAddr_;
                 nextAddr_ += (elemSize * count + 7) & ~7ULL;
-                objects_.push_back(
-                    ObjectInfo{varName, "", base, base + elemSize * count, elemSize, count}
-                );
+                addObject(ObjectInfo{varName, "", base, base + elemSize * count, elemSize, count});
                 addrMap_[varName] = base;
                 if (sv.kind == RuntimeValue::Kind::Array) {
                   for (size_t i = 0; i < sv.arrayVal.size(); ++i)
@@ -1251,14 +1373,33 @@ namespace symir {
               }
             }
 
-            // Walk accesses to compute final address and provenance base.
+            // Find the top-level ObjectInfo for the variable.
+            const ObjectInfo *curObj = nullptr;
+            for (const auto &o: objects_) {
+              if (o.varName == varName && o.fieldName.empty() && o.base == base) {
+                curObj = &o;
+                break;
+              }
+            }
+            if (!curObj) {
+              for (const auto &o: objects_) {
+                if (o.varName == varName && o.fieldName.empty()) {
+                  curObj = &o;
+                  break;
+                }
+              }
+            }
+
             uint64_t addr = base;
-            uint64_t ptrBase = base; // updated by field accesses (rule 15)
+            uint64_t provId = curObj ? curObj->provId : 0;
+
+            // We also trace the static type of the sub-expression to identify sub-ObjectInfos.
+            TypePtr curType = tit != typeMap_.end() ? tit->second : TypePtr{};
+
             for (const auto &acc: arg.lv.accesses) {
               if (auto ai = std::get_if<AccessIndex>(&acc)) {
-                const ObjectInfo *obj = findObjectByBase(ptrBase);
-                if (!obj)
-                  throw std::runtime_error("Internal: no ObjectInfo at ptrBase for addr");
+                if (!curObj)
+                  throw std::runtime_error("Internal: no ObjectInfo for index access");
                 int64_t idx = 0;
                 if (std::holds_alternative<IntLit>(ai->index)) {
                   idx = std::get<IntLit>(ai->index).value;
@@ -1269,35 +1410,70 @@ namespace symir {
                                            : store.at(std::get_if<SymId>(&id)->name);
                   idx = idxRv.intVal;
                 }
-                if (idx < 0 || (uint64_t) idx >= obj->count)
+                if (idx < 0 || (uint64_t) idx >= curObj->count)
                   throw UndefinedBehaviorError("UB: addr of out-of-bounds array element");
-                addr = ptrBase + idx * obj->elemSize;
-                // ptrBase stays at the array's base (arithmetic walks the array).
+
+                addr = curObj->base + idx * curObj->elemSize;
+
+                // Provenance = the containing array (spec rule 15).
+                provId = curObj->provId;
+
+                // Update curType and find the sub-ObjectInfo if the element is an aggregate.
+                if (curType) {
+                  if (auto at = std::get_if<ArrayType>(&curType->v)) {
+                    curType = at->elem;
+                    if (std::holds_alternative<StructType>(curType->v) ||
+                        std::holds_alternative<ArrayType>(curType->v)) {
+                      curObj = findFieldOrStructObject(addr, curType);
+                    } else {
+                      curObj = nullptr;
+                    }
+                  } else {
+                    curType = nullptr;
+                    curObj = nullptr;
+                  }
+                } else {
+                  curObj = nullptr;
+                }
               } else if (auto af = std::get_if<AccessField>(&acc)) {
-                // addr lv.f: per spec rule 15, provenance = the immediate
-                // containing struct. The result pointer can roam over the
-                // whole struct's byte range.
-                auto tit2 = typeMap_.find(varName);
-                if (tit2 == typeMap_.end())
-                  throw std::runtime_error("No type info for field access on " + varName);
-                auto st = std::get_if<StructType>(&tit2->second->v);
+                if (!curType)
+                  throw std::runtime_error("Internal: no type info for field access");
+                auto st = std::get_if<StructType>(&curType->v);
                 if (!st)
-                  throw std::runtime_error("Field access on non-struct variable " + varName);
+                  throw std::runtime_error("Field access on non-struct variable");
                 auto sit = structs_.find(st->name.name);
                 if (sit == structs_.end())
                   throw std::runtime_error("Unknown struct for field access");
-                // materializeStruct is idempotent; ensures per-field ObjectInfos exist.
-                uint64_t structBase = materializeStruct(varName, *sit->second, store);
-                addr = structBase + fieldOffset(*sit->second, af->field);
-                // Provenance = the struct's base (whole-struct ObjectInfo).
-                ptrBase = structBase;
+
+                uint64_t off = fieldOffset(*sit->second, af->field);
+                addr = addr + off;
+
+                // Provenance = the containing struct (spec rule 15).
+                if (curObj)
+                  provId = curObj->provId;
+
+                // Update type and find the field's ObjectInfo.
+                TypePtr fieldType;
+                for (const auto &f: sit->second->fields) {
+                  if (f.name == af->field) {
+                    fieldType = f.type;
+                    break;
+                  }
+                }
+                curType = fieldType;
+                if (curType) {
+                  // Find the field ObjectInfo at 'addr'.
+                  curObj = findFieldOrStructObject(addr, curType);
+                } else {
+                  curObj = nullptr;
+                }
               }
             }
 
             RuntimeValue rv;
             rv.kind = RuntimeValue::Kind::Ptr;
             rv.ptrVal = addr;
-            rv.ptrBase = ptrBase;
+            rv.ptrBase = provId;
             rv.bits = 64;
             return rv;
           } else if constexpr (std::is_same_v<T, LoadAtom>) {
@@ -1310,7 +1486,7 @@ namespace symir {
             if (ptrRv.ptrVal == 0)
               throw UndefinedBehaviorError("UB: Null pointer dereference in load");
             // Provenance-based bounds check: use ptrBase to locate the exact object.
-            const ObjectInfo *obj = findObjectByBase(ptrRv.ptrBase);
+            const ObjectInfo *obj = findObjectByProvId(ptrRv.ptrBase);
             if (!obj)
               throw UndefinedBehaviorError("UB: Load from unknown address");
             if (ptrRv.ptrVal < obj->base || ptrRv.ptrVal >= obj->end)
@@ -1356,11 +1532,32 @@ namespace symir {
               throw std::runtime_error("ptrindex requires a pointer operand");
             if (ptrRv.ptrVal == 0)
               throw UndefinedBehaviorError("UB: 'ptrindex' through null pointer");
-            const ObjectInfo *obj = findObjectByBase(ptrRv.ptrBase);
+            const ObjectInfo *obj = findObjectByProvId(ptrRv.ptrBase);
             if (!obj)
               throw UndefinedBehaviorError("UB: 'ptrindex' on pointer to unknown object");
             if (ptrRv.ptrVal == obj->end)
               throw UndefinedBehaviorError("UB: 'ptrindex' from a one-past-the-end pointer");
+
+            // [v0.2.1 fix] Derive the array element count and element size
+            // from the pointer's static type (ptr [N] T), NOT from the
+            // provenance ObjectInfo. This is critical for nested arrays:
+            // a ptr [3] i32 inside a [2][3] i32 must check against N=3,
+            // not the outermost array's count.
+            uint64_t arrSize = obj->count;     // fallback
+            uint64_t elemSize = obj->elemSize; // fallback
+            auto tit = typeMap_.find(arg.rval.base.name);
+            TypePtr pointeeType;
+            if (tit != typeMap_.end()) {
+              TypePtr cur = tit->second;
+              if (auto pt = std::get_if<PtrType>(&cur->v)) {
+                pointeeType = pt->pointee;
+                if (auto at = std::get_if<ArrayType>(&pt->pointee->v)) {
+                  arrSize = at->size;
+                  elemSize = sizeofType(at->elem);
+                }
+              }
+            }
+
             // Resolve the index (literal or local/sym).
             int64_t idx = 0;
             if (auto il = std::get_if<IntLit>(&arg.index)) {
@@ -1375,17 +1572,40 @@ namespace symir {
               idx = idxRv.intVal;
             }
             // Rule 16: index in [0, N] (N is one-past-end, valid for arithmetic).
-            // obj->count is N.
-            if (idx < 0 || (uint64_t) idx > obj->count)
+            if (idx < 0 || (uint64_t) idx > arrSize)
               throw UndefinedBehaviorError("UB: 'ptrindex' index out of bounds");
+
+            // Compute element address relative to the
+            // current pointer position (ptrRv.ptrVal), NOT from the
+            // provenance base. This is essential for nested ptrindex:
+            // after ptrindex(%p_outer, 1), the inner ptrindex must
+            // start from arr[1], not arr[0].
+            uint64_t elemAddr = ptrRv.ptrVal + (uint64_t) idx * elemSize;
+
+            // Provenance = the containing array (spec rule 15).
+            // The containing array is located at ptrRv.ptrVal and has type `pointeeType` (e.g. [3]
+            // i32).
+            const ObjectInfo *containingArrayObj = nullptr;
+            if (pointeeType) {
+              containingArrayObj = findFieldOrStructObject(ptrRv.ptrVal, pointeeType);
+            }
+            if (!containingArrayObj) {
+              // Fallback: search by base address or create a new ObjectInfo
+              containingArrayObj = findObjectByBaseAddress(ptrRv.ptrVal);
+              if (!containingArrayObj) {
+                uint64_t subBase = ptrRv.ptrVal;
+                uint64_t subEnd = ptrRv.ptrVal + arrSize * elemSize;
+                containingArrayObj =
+                    &addObject(ObjectInfo{obj->varName, "", subBase, subEnd, elemSize, arrSize});
+              }
+            }
+
             RuntimeValue rv;
             rv.kind = RuntimeValue::Kind::Ptr;
             rv.bits = 64;
-            rv.ptrVal = obj->base + (uint64_t) idx * obj->elemSize;
-            // Provenance: arithmetic on the result roams over the array
-            // (spec rule 15, §7.5). ptrBase stays at the array's base so
-            // ptr/load checks continue to use the whole-array range.
-            rv.ptrBase = obj->base;
+            rv.ptrVal = elemAddr;
+            // Provenance = the containing array's provId!
+            rv.ptrBase = containingArrayObj->provId;
             return rv;
           } else if constexpr (std::is_same_v<T, PtrFieldAtom>) {
             // [v0.2.1] §6.8.10: ptrfield <ptr>, <fld> navigates ptr @S to
@@ -1397,7 +1617,7 @@ namespace symir {
               throw std::runtime_error("ptrfield requires a pointer operand");
             if (ptrRv.ptrVal == 0)
               throw UndefinedBehaviorError("UB: 'ptrfield' through null pointer");
-            const ObjectInfo *obj = findObjectByBase(ptrRv.ptrBase);
+            const ObjectInfo *obj = findObjectByProvId(ptrRv.ptrBase);
             if (!obj)
               throw UndefinedBehaviorError("UB: 'ptrfield' on pointer to unknown object");
             if (ptrRv.ptrVal == obj->end)
@@ -1447,20 +1667,27 @@ namespace symir {
             if (sit == structs_.end())
               throw std::runtime_error("Unknown struct in ptrfield: " + st.name.name);
             uint64_t off = fieldOffset(*sit->second, arg.field);
+
+            // Find the ObjectInfo of the containing struct (which is @Inner, located at
+            // ptrRv.ptrVal).
+            const ObjectInfo *containingStructObj =
+                findFieldOrStructObject(ptrRv.ptrVal, pt.pointee);
+            if (!containingStructObj) {
+              // Fallback: create one if it doesn't exist
+              containingStructObj = &addObject(
+                  ObjectInfo{
+                      obj->varName, "", ptrRv.ptrVal, ptrRv.ptrVal + sizeofType(pt.pointee),
+                      sizeofType(pt.pointee), 1
+                  }
+              );
+            }
+
             RuntimeValue rv;
             rv.kind = RuntimeValue::Kind::Ptr;
             rv.bits = 64;
-            // The field address is relative to the *current* struct the
-            // pointer is pointing into. For `addr %arr[k]; %p = %p + n;
-            // ptrfield %p, f`, that's `ptrVal + off`, not `ptrBase + off`
-            // — ptrBase still refers to the containing array's start.
             rv.ptrVal = ptrRv.ptrVal + off;
-            // Provenance: field pointer's provenance is the *immediate
-            // containing struct* (spec rule 15). Arithmetic on the result
-            // can roam over the whole struct's byte range. We set ptrBase
-            // to the struct's start address so the bounds check in ptr
-            // arith / load / store uses the struct's ObjectInfo.
-            rv.ptrBase = ptrRv.ptrVal;
+            // Provenance = the containing struct's provId!
+            rv.ptrBase = containingStructObj->provId;
             return rv;
           } else if constexpr (std::is_same_v<T, CastAtom>) {
             RuntimeValue v = std::visit(
@@ -1631,9 +1858,10 @@ namespace symir {
         // Eval index
         RuntimeValue idxVal;
         const auto &idx = ai->index;
-        if (std::holds_alternative<IntLit>(idx))
+        if (std::holds_alternative<IntLit>(idx)) {
+          idxVal.kind = RuntimeValue::Kind::Int;
           idxVal.intVal = std::get<IntLit>(idx).value;
-        else {
+        } else {
           const auto &id = std::get<LocalOrSymId>(idx);
           if (auto lid = std::get_if<LocalId>(&id))
             idxVal = store.at(lid->name);
@@ -1677,9 +1905,10 @@ namespace symir {
           throw std::runtime_error("Indexing non-array");
         RuntimeValue idxVal;
         const auto &idx = ai->index;
-        if (std::holds_alternative<IntLit>(idx))
+        if (std::holds_alternative<IntLit>(idx)) {
+          idxVal.kind = RuntimeValue::Kind::Int;
           idxVal.intVal = std::get<IntLit>(idx).value;
-        else {
+        } else {
           const auto &id = std::get<LocalOrSymId>(idx);
           if (auto lid = std::get_if<LocalId>(&id))
             idxVal = store.at(lid->name);

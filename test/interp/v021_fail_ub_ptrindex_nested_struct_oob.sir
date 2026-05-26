@@ -1,0 +1,31 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: COMPILER
+// Rationale: This test demonstrates that the interpreter fails to recursively
+// create ObjectInfos for nested structs, leading to missing provenance narrowing.
+// Expected behavior: UB (Index 1 is out of bounds for [1] i32).
+// Observed behavior: PASS (Interpreter incorrectly checks against @Outer).
+
+struct @Inner {
+  data: [1] i32;
+}
+
+struct @Outer {
+  inner: @Inner;
+  other: i32;
+}
+
+fun @main() : i32 {
+  let mut %o: @Outer = {{10}, 20};
+  let mut %pi: ptr @Inner = null;
+  let mut %parr: ptr [1] i32 = null;
+  let mut %pd: ptr i32 = null;
+  let mut %v: i32 = 0;
+^entry:
+  %pi = addr %o.inner;
+  %parr = ptrfield %pi, data;
+
+  // %parr points to [1] i32. Navigating to index 1 should be UB.
+  %pd = ptrindex %parr, 1;
+  %v = load %pd;
+  ret %v;
+}

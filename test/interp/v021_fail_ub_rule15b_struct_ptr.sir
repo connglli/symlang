@@ -1,0 +1,29 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: COMPILER
+// Rationale: This test demonstrates a bug in the interpreter's Rule 15b check.
+// It fails to check typed-access when the pointer is derived from a struct field.
+// Expected behavior: UB (Typed-access mismatch: ptr i32 accessing i64 field).
+// Observed behavior: PASS (Interpreter skips the check for complex pointer exprs).
+
+struct @S {
+  f1: i32;
+  f2: i32;
+  val: i64;
+}
+
+fun @main() : i32 {
+  let mut %s: @S = {1, 2, 123456789};
+  let mut %p: ptr i32 = null;
+  let mut %v: i32 = 0;
+^entry:
+  // %p points to %s.f1
+  %p = addr %s.f1;
+
+  // Advance it by 2 units (8 bytes) to point to %s.val (i64)
+  // %p + 2 is an Expr with rest.
+  %p = %p + 2;
+
+  // Accessing %s.val (i64) through ptr i32 is UB under Rule 15b.
+  %v = load %p;
+  ret %v;
+}

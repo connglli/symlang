@@ -1,0 +1,33 @@
+// EXPECT: PASS
+// Rationale: This test validates vector comparison and mask-based select.
+// SPEC v0.2.1 §5.3: 'cmp' on vectors produces '<N> i1'.
+// SPEC §5.3: 'select' with a vector mask blends lanes.
+// Expected behavior: return 46 (10 + 2 + 30 + 4).
+
+fun @main() : i32 {
+  let mut %v1: <4> i32 = {10, 1, 30, 3};
+  let mut %v2: <4> i32 = {5, 2, 25, 4};
+  let mut %mask: <4> i1 = {0, 0, 0, 0};
+  let mut %v3: <4> i32 = {0, 0, 0, 0};
+  let mut %v3_0: i32 = 0;
+  let mut %v3_1: i32 = 0;
+  let mut %v3_2: i32 = 0;
+  let mut %v3_3: i32 = 0;
+  let mut %res: i32 = 0;
+
+^entry:
+  %mask = cmp > %v1, %v2;    // Should be {1, 0, 1, 0}
+  %v3 = select %mask, %v1, %v2; // Should be {10, 2, 30, 4}
+
+  // Extract lanes to verify (using lane subscripts)
+  %v3_0 = %v3[0];
+  %v3_1 = %v3[1];
+  %v3_2 = %v3[2];
+  %v3_3 = %v3[3];
+
+  // Return sum to verify all lanes
+  %res = %v3_0 + %v3_1;
+  %res = %res + %v3_2;
+  %res = %res + %v3_3;
+  ret %res;
+}

@@ -1,0 +1,25 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: COMPILER
+// Rationale: This test demonstrates that the interpreter fails to recursively
+// create field-level ObjectInfos for structs that are nested inside arrays.
+// Expected behavior: UB (Typed-access mismatch).
+// Observed behavior: PASS.
+
+struct @Inner {
+  f1: i32;
+  val: i64;
+}
+
+fun @main() : i32 {
+  let mut %arr: [2] @Inner = {{1, 10}, {2, 20}};
+  let mut %p: ptr @Inner = null;
+  let mut %pf: ptr i32 = null;
+  let mut %p_alias: ptr i32 = null;
+  let mut %v: i32 = 0;
+^entry:
+  %p = addr %arr[1];
+  %pf = ptrfield %p, f1;
+  %p_alias = %pf + 2;
+  %v = load %p_alias;
+  ret %v;
+}

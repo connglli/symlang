@@ -1,0 +1,22 @@
+// EXPECT: FAIL:UndefinedBehavior
+// Rationale: This test demonstrates that the interpreter fails to catch
+// out-of-bounds indices on nested sub-arrays because it uses the outermost
+// array's count for bounds checking.
+// Expected behavior: UB (Index 5 is out of bounds for [2] i32).
+
+fun @main() : i32 {
+  let mut %arr: [10][2] i32 = 0;
+  let mut %p_base: ptr [10][2] i32 = null;
+  let mut %p1: ptr [2] i32 = null;
+  let mut %p2: ptr i32 = null;
+  let mut %v: i32 = 0;
+
+^entry:
+  %p_base = addr %arr;
+  %p1 = ptrindex %p_base, 0; // arr[0]
+
+  // arr[0] is [2] i32. Navigating to index 5 should be UB.
+  %p2 = ptrindex %p1, 5;
+  %v = load %p2;
+  ret %v;
+}

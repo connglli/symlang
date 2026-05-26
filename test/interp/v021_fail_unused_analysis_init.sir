@@ -1,0 +1,14 @@
+// EXPECT: PASS
+// Rationale: This test demonstrates a bug in UnusedNameAnalysis where it
+// fails to identify usage of a local when it is used in the 'init' value
+// of another local.
+// Expected behavior: No warnings.
+// Observed behavior: warning: Unused local: %x
+
+fun @main() : i32 {
+  let mut %x: i32 = 10;
+  let %p: ptr i32 = addr %x;
+  let %v: i32 = load %p;
+^entry:
+  ret %v;
+}

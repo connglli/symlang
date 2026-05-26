@@ -1,0 +1,18 @@
+// EXPECT: PASS
+// Rationale: This test demonstrates a bug in the TypeChecker where 'cmp' atoms
+// do not propagate pointer context to the RHS, causing 'null' to be rejected.
+// SPEC §5.3 states 'cmp' semantics are identical to 'Cond'.
+// SPEC §6.11 requires 'null' to be inferred from pointer context (sibling propagation).
+// Expected behavior: Compilation passes.
+// Observed behavior: error: 'null' requires a pointer type context (ptr T).
+
+fun @main() : i32 {
+  let mut %x: i32 = 0;
+  let mut %p: ptr i32 = null;
+  let mut %res: i1 = 0;
+^entry:
+  %p = addr %x;
+  // This 'cmp' uses a pointer context from %p for the 'null' literal.
+  %res = cmp == %p, null;
+  ret 0;
+}

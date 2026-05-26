@@ -1,0 +1,26 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: INTERPRETER, COMPILER
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: This test demonstrates that the solver fails to narrow
+// provenance during 'ptrindex', violating Rule 15.
+// Expected behavior: UB because %p2 + 4 roams outside arr[0].
+
+fun @main() : i32 {
+  let mut %arr: [2][3] i32 = {{1, 2, 3}, {4, 5, 6}};
+  let mut %p_base: ptr [2][3] i32 = null;
+  let mut %p1: ptr [3] i32 = null;
+  let mut %p2: ptr i32 = null;
+  let mut %v: i32 = 0;
+
+^entry:
+  %p_base = addr %arr;
+  %p1 = ptrindex %p_base, 0; // Points to arr[0]
+  %p2 = ptrindex %p1, 0;    // Points to arr[0][0]
+
+  // %p2 points to arr[0][0]. %p2 + 4 points to arr[1][1].
+  // This is cross-object arithmetic relative to arr[0], thus UB.
+  %p2 = %p2 + 4;
+  %v = load %p2;
+  ret %v;
+}

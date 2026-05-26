@@ -1,0 +1,23 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: INTERPRETER, COMPILER
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: This test demonstrates that the solver fails to check Rule 14
+// during pointer comparison in 'cmp' atoms.
+// Rule 14: relational comparison of pointers from different objects is UB.
+
+fun @main() : i1 {
+  let mut %a: i32 = 1;
+  let mut %b: i32 = 2;
+  let mut %pa: ptr i32 = null;
+  let mut %pb: ptr i32 = null;
+  let mut %res: i1 = 0;
+
+^entry:
+  %pa = addr %a;
+  %pb = addr %b;
+
+  // Rule 14: relational compare of pointers from different objects is UB.
+  %res = cmp < %pa, %pb;
+  ret %res;
+}

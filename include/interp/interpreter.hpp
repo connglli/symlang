@@ -1,5 +1,6 @@
 #pragma once
 
+#include <list>
 #include <string>
 #include <unordered_map>
 #include <variant>
@@ -36,7 +37,7 @@ namespace symir {
      * Represents a value during runtime.
      */
     struct RuntimeValue {
-      enum class Kind { Int, Float, Array, Struct, Undef, Ptr, Vec } kind;
+      enum class Kind { Int, Float, Array, Struct, Undef, Ptr, Vec } kind = Kind::Undef;
       std::int64_t intVal = 0;
       double floatVal = 0.0;
       std::uint32_t bits = 64;   // bitwidth for Int or Float (32/64)
@@ -66,26 +67,32 @@ namespace symir {
       // when not array-nested. Used by StoreInstr to mirror the heap
       // write back into the right `store["%arr"].arrayVal[k]` cell.
       std::uint64_t arrayIdx = static_cast<std::uint64_t>(-1);
+      std::uint64_t provId = 0; // unique provenance object ID
     };
 
     // heap_: flat address → RuntimeValue (one slot per element)
     std::unordered_map<std::uint64_t, RuntimeValue> heap_;
     // objects_: per-function allocation tracking
-    std::vector<ObjectInfo> objects_;
+    std::list<ObjectInfo> objects_;
     // addrMap_: varName → base address (assigned lazily on first addr)
     std::unordered_map<std::string, std::uint64_t> addrMap_;
     // typeMap_: varName → TypePtr, rebuilt at start of each execFunction call
     std::unordered_map<std::string, TypePtr> typeMap_;
     // nextAddr_: allocator counter (starts at 4096 to leave null = 0 at bottom)
     std::uint64_t nextAddr_ = 4096;
+    // nextProvId_: unique provenance ID counter
+    std::uint64_t nextProvId_ = 1;
 
     std::uint64_t sizeofType(const TypePtr &t) const;
     std::uint64_t allocObject(const std::string &varName, const TypePtr &t, const Store &store);
     std::uint64_t fieldOffset(const StructDecl &s, const std::string &fieldName) const;
     std::uint64_t
     materializeStruct(const std::string &varName, const StructDecl &s, const Store &store);
+    ObjectInfo &addObject(ObjectInfo obj);
     const ObjectInfo *findObject(std::uint64_t addr) const;
-    const ObjectInfo *findObjectByBase(std::uint64_t base) const;
+    const ObjectInfo *findObjectByProvId(std::uint64_t provId) const;
+    const ObjectInfo *findObjectByBaseAddress(std::uint64_t base) const;
+    const ObjectInfo *findFieldOrStructObject(std::uint64_t addr, const TypePtr &type) const;
     const ObjectInfo *findObjectForArith(std::uint64_t addr) const;
 
     // --- Runtime evaluation helpers ---

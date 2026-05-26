@@ -107,6 +107,92 @@ namespace symir {
         collectAtom(t.atom);
     };
 
+    // [v0.2.1] Walk let-declaration init values so that a local referenced
+    // only in another local's initialiser (e.g. `let %p = addr %x`) is
+    // correctly marked as used.
+    std::function<void(const InitVal &)> collectInitVal = [&](const InitVal &iv) {
+      switch (iv.kind) {
+        case InitVal::Kind::Local: {
+          auto &lid = std::get<LocalId>(iv.value);
+          used.insert(lid.name);
+          break;
+        }
+        case InitVal::Kind::Sym: {
+          auto &sid = std::get<SymId>(iv.value);
+          used.insert(sid.name);
+          break;
+        }
+        case InitVal::Kind::Aggregate: {
+          auto &children = std::get<std::vector<InitValPtr>>(iv.value);
+          for (const auto &child: children)
+            if (child)
+              collectInitVal(*child);
+          break;
+        }
+        case InitVal::Kind::Atom: {
+          // Atom-form init (addr, load, cmp, ptrindex, select, etc.):
+          // directly visit the atom using collectAtom (from collectExpr).
+          auto &atomPtr = std::get<AtomPtr>(iv.value);
+          if (atomPtr) {
+            // collectAtom is the inner lambda of collectExpr; call
+            // collectExpr with a view that only visits first.
+            auto collectAtom = [&](const Atom &a) {
+              std::visit(
+                  [&](auto &&arg) {
+                    using T = std::decay_t<decltype(arg)>;
+                    if constexpr (std::is_same_v<T, OpAtom>) {
+                      if (auto lsid = std::get_if<LocalOrSymId>(&arg.coef))
+                        std::visit([&](auto &&id) { used.insert(id.name); }, *lsid);
+                      collectLValue(arg.rval);
+                    } else if constexpr (std::is_same_v<T, RValueAtom>) {
+                      collectLValue(arg.rval);
+                    } else if constexpr (std::is_same_v<T, AddrAtom>) {
+                      collectLValue(arg.lv);
+                    } else if constexpr (std::is_same_v<T, LoadAtom>) {
+                      collectLValue(arg.rval);
+                    } else if constexpr (std::is_same_v<T, CoefAtom>) {
+                      if (auto lsid = std::get_if<LocalOrSymId>(&arg.coef))
+                        std::visit([&](auto &&id) { used.insert(id.name); }, *lsid);
+                    } else if constexpr (std::is_same_v<T, PtrIndexAtom>) {
+                      collectLValue(arg.rval);
+                      std::visit(
+                          [&](auto &&iv2) {
+                            using IV = std::decay_t<decltype(iv2)>;
+                            if constexpr (std::is_same_v<IV, LocalOrSymId>)
+                              std::visit([&](auto &&id) { used.insert(id.name); }, iv2);
+                          },
+                          arg.index
+                      );
+                    } else if constexpr (std::is_same_v<T, PtrFieldAtom>) {
+                      collectLValue(arg.rval);
+                    } else if constexpr (std::is_same_v<T, CmpAtom>) {
+                      auto handleSv = [&](const SelectVal &sv) {
+                        if (auto rv = std::get_if<RValue>(&sv))
+                          collectLValue(*rv);
+                        else if (auto cf = std::get_if<Coef>(&sv))
+                          if (auto lsid = std::get_if<LocalOrSymId>(cf))
+                            std::visit([&](auto &&id) { used.insert(id.name); }, *lsid);
+                      };
+                      handleSv(arg.lhs);
+                      handleSv(arg.rhs);
+                    }
+                  },
+                  a.v
+              );
+            };
+            collectAtom(*atomPtr);
+          }
+          break;
+        }
+        default:
+          break; // Int, Float, Undef, Null — no names to collect
+      }
+    };
+    for (const auto &l: f.lets) {
+      if (l.init)
+        collectInitVal(*l.init);
+    }
+
     for (const auto &b: f.blocks) {
       for (const auto &ins: b.instrs) {
         std::visit(

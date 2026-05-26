@@ -621,8 +621,43 @@ namespace symir {
                           std::uint64_t size = sizeofTagUnits(ty, structs_);
                           return PtrProvenance{baseTag, size};
                         }
-                        if (auto pi = std::get_if<PtrIndexAtom>(&a))
-                          return provFromName(pi->rval.base.name);
+                        if (auto pi = std::get_if<PtrIndexAtom>(&a)) {
+                          // [v0.2.1 fix] Narrow provenance for ptrindex.
+                          // The result pointer's provenance = the array the
+                          // source points to. Compute the narrowed sub-array
+                          // range from the source's type (ptr [N] T).
+                          auto srcProv = provFromName(pi->rval.base.name);
+                          if (srcProv && currentFun_) {
+                            TypePtr baseType;
+                            for (const auto &l: currentFun_->lets)
+                              if (l.name.name == pi->rval.base.name) {
+                                baseType = l.type;
+                                break;
+                              }
+                            if (!baseType)
+                              for (const auto &p: currentFun_->params)
+                                if (p.name.name == pi->rval.base.name) {
+                                  baseType = p.type;
+                                  break;
+                                }
+                            if (baseType) {
+                              if (auto pt = std::get_if<PtrType>(&baseType->v)) {
+                                if (auto at = std::get_if<ArrayType>(&pt->pointee->v)) {
+                                  // Narrowed size = N * sizeofTagUnits(T)
+                                  std::uint64_t elemUnits = sizeofTagUnits(at->elem, structs_);
+                                  std::uint64_t narrowSize = at->size * elemUnits;
+                                  // The narrowed base = source ptrVal at
+                                  // assignment time. We don't have the
+                                  // concrete tag here, so approximate:
+                                  // baseTag stays at the source's base but
+                                  // size is narrowed.
+                                  return PtrProvenance{srcProv->baseTag, narrowSize};
+                                }
+                              }
+                            }
+                          }
+                          return srcProv;
+                        }
                         if (auto pf = std::get_if<PtrFieldAtom>(&a))
                           return provFromName(pf->rval.base.name);
                         if (auto ca = std::get_if<CoefAtom>(&a)) {
@@ -1617,6 +1652,50 @@ namespace symir {
                 return evalLValue(*rv, solver, store, pc).term;
               return evalCoef(std::get<Coef>(sv), solver, store, opSort);
             };
+
+            // [v0.2.1 fix] Rule 14: cross-object pointer relational
+            // comparison is UB. For <, <=, >, >= on pointer operands,
+            // check that both operands have the same provenance.
+            if (arg.op == RelOp::LT || arg.op == RelOp::LE || arg.op == RelOp::GT ||
+                arg.op == RelOp::GE) {
+              enum class PK { Unknown, Null, Tagged };
+              struct PSide {
+                PK k = PK::Unknown;
+                std::uint64_t tag = 0;
+              };
+              auto extractProv = [&](const SelectVal &sv) -> PSide {
+                if (auto cf = std::get_if<Coef>(&sv)) {
+                  if (std::get_if<NullLit>(cf))
+                    return {PK::Null, 0};
+                  if (auto id = std::get_if<LocalOrSymId>(cf))
+                    if (auto lid = std::get_if<LocalId>(id)) {
+                      auto pit = ptrProv_.find(lid->name);
+                      if (pit != ptrProv_.end())
+                        return {PK::Tagged, pit->second.baseTag};
+                    }
+                }
+                if (auto rv = std::get_if<RValue>(&sv)) {
+                  std::string key = rv->base.name;
+                  for (const auto &acc: rv->accesses)
+                    if (auto af = std::get_if<AccessField>(&acc))
+                      key += "." + af->field;
+                    else
+                      return {};
+                  auto pit = ptrProv_.find(key);
+                  if (pit != ptrProv_.end())
+                    return {PK::Tagged, pit->second.baseTag};
+                }
+                return {};
+              };
+              PSide ls = extractProv(arg.lhs);
+              PSide rs = extractProv(arg.rhs);
+              auto isPtr = [](PK k) { return k == PK::Null || k == PK::Tagged; };
+              if (isPtr(ls.k) && isPtr(rs.k)) {
+                if (ls.k == PK::Null || rs.k == PK::Null || ls.tag != rs.tag)
+                  pc.push_back(solver.make_false());
+              }
+            }
+
             smt::Term l = loadOperand(arg.lhs);
             smt::Term r = loadOperand(arg.rhs);
             // Reconcile widths/sorts before applying the relational op.
@@ -2333,11 +2412,28 @@ namespace symir {
                   }
                   case AtomOpKind::Div: {
                     pc.push_back(solver.make_term(smt::Kind::DISTINCT, {r, bvZeroR}));
+                    // [v0.2.1 fix] Per-lane INT_MIN / -1 overflow is UB
+                    // (rule 4 lifted to lanes by rule 21).
+                    auto min_signed = solver.make_bv_min_signed(solver.get_sort(c));
+                    auto minus_one = solver.make_bv_value_int64(solver.get_sort(r), -1);
+                    auto is_min = solver.make_term(smt::Kind::EQUAL, {c, min_signed});
+                    auto is_minus_one = solver.make_term(smt::Kind::EQUAL, {r, minus_one});
+                    auto div_overflow = solver.make_term(smt::Kind::AND, {is_min, is_minus_one});
+                    pc.push_back(solver.make_term(smt::Kind::NOT, {div_overflow}));
                     out = solver.make_term(smt::Kind::BV_SDIV, {c, r});
                     break;
                   }
                   case AtomOpKind::Mod: {
                     pc.push_back(solver.make_term(smt::Kind::DISTINCT, {r, bvZeroR}));
+                    // [v0.2.1 fix] Per-lane INT_MIN % -1 overflow is UB
+                    // (rule 4 lifted to lanes by rule 21).
+                    auto min_signed_m = solver.make_bv_min_signed(solver.get_sort(c));
+                    auto minus_one_m = solver.make_bv_value_int64(solver.get_sort(r), -1);
+                    auto is_min_m = solver.make_term(smt::Kind::EQUAL, {c, min_signed_m});
+                    auto is_minus_one_m = solver.make_term(smt::Kind::EQUAL, {r, minus_one_m});
+                    auto mod_overflow =
+                        solver.make_term(smt::Kind::AND, {is_min_m, is_minus_one_m});
+                    pc.push_back(solver.make_term(smt::Kind::NOT, {mod_overflow}));
                     out = solver.make_term(smt::Kind::BV_SREM, {c, r});
                     break;
                   }

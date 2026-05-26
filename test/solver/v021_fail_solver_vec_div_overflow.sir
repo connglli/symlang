@@ -1,0 +1,18 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: INTERPRETER, COMPILER
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: This test demonstrates a bug in the solver's vector 'div'
+// implementation, which fails to check for signed overflow (INT_MIN / -1).
+// Expected behavior: UB / UNSAT.
+// Observed behavior: SAT (it allows the overflow).
+
+fun @main() : i32 {
+  // i32 MIN is -2147483648
+  let mut %v1: <2> i32 = {-2147483648, 1};
+  let mut %v2: <2> i32 = {-1, 1};
+  let mut %res: <2> i32 = {0, 0};
+^entry:
+  %res = %v1 / %v2;
+  ret 0;
+}

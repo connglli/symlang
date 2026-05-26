@@ -1,0 +1,20 @@
+// EXPECT: PASS
+// Rationale: This test demonstrates a bug in the interpreter's 'ptrindex' implementation.
+// According to SPEC v0.2.1 §6.8.9 and §7.5 Rule 15, each 'ptrindex' step should
+// navigate into the array, and subsequent 'ptrindex' calls on the result should
+// be relative to that sub-array.
+// Expected behavior: %v should be 5 (%arr[1][1]).
+
+fun @main() : i32 {
+  let mut %arr: [2][3] i32 = {{1, 2, 3}, {4, 5, 6}};
+  let mut %p: ptr [2][3] i32 = addr %arr;
+  let mut %p1: ptr [3] i32 = null;
+  let mut %p2: ptr i32 = null;
+  let mut %v: i32 = 0;
+
+^entry:
+  %p1 = ptrindex %p, 1;      // Points to %arr[1] ({4, 5, 6})
+  %p2 = ptrindex %p1, 1;     // Should point to %arr[1][1] (5)
+  %v = load %p2;
+  ret %v;
+}
