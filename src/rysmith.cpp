@@ -89,16 +89,26 @@ static bool validateWithSymiri(
 
 static bool compileWithSymirc(
     const fs::path &symircPath, const fs::path &sirPath, const std::string &target,
-    const fs::path &outPath, bool noRequire, bool verbose
+    const fs::path &outPath, bool noRequire, const std::string &vecLowering, bool verbose
 ) {
   std::string cmd = "\"" + symircPath.string() + "\" \"" + sirPath.string() + "\" --target " +
                     target + " -o \"" + outPath.string() + "\"";
   if (noRequire)
     cmd += " --no-require";
+  if (!vecLowering.empty())
+    cmd += " --vec-lowering " + vecLowering;
   if (!verbose)
     cmd += " 2>/dev/null";
   int status = std::system(cmd.c_str());
   return status == 0;
+}
+
+static std::string pickVecLowering(std::mt19937 &rng, const std::string &requested) {
+  if (requested != "random")
+    return requested;
+  static const char *strategies[] = {"vecext", "scalars", "array", "structscalars", "structarray"};
+  std::uniform_int_distribution<int> d(0, 4);
+  return strategies[d(rng)];
 }
 
 struct GenerateResult {
@@ -284,6 +294,8 @@ int main(int argc, char **argv) {
     ("no-fp",             "Disable f32/f64 types entirely")
     ("enable-vec",        "Enable <N> T vector type generation (WIP)")
     ("enable-agg-ptr",    "Enable ptr [N] T / ptr @S aggregate pointer generation (WIP)")
+    ("vec-lowering",      "Vec-lowering strategy for C backend (random|vecext|scalars|array|structscalars|structarray)",
+                          cxxopts::value<std::string>()->default_value("random"))
     ("max-ptr-depth",     "Maximum pointer nesting depth (0 disables pointers)",
                           cxxopts::value<int>()->default_value("2"))
     ("max-agg-nest",      "Maximum aggregate nesting depth",
@@ -423,6 +435,7 @@ int main(int argc, char **argv) {
   bool verbose = result.count("verbose") > 0;
   std::string target = result["target"].as<std::string>();
   bool noRequire = !result.count("keep-require");
+  std::string vecLoweringOpt = result["vec-lowering"].as<std::string>();
 
   if (target != "sir" && target != "c" && target != "wasm") {
     std::cerr << "error: unknown target '" << target << "' (expected sir, c, wasm)\n";
@@ -513,7 +526,11 @@ int main(int argc, char **argv) {
       if (target != "sir") {
         std::string ext = (target == "c") ? ".c" : ".wat";
         fs::path outPath = p.parent_path() / (p.stem().string() + ext);
-        bool ok = compileWithSymirc(symircPath, p, target, outPath, noRequire, verbose);
+        std::string vecLowering = pickVecLowering(rng, vecLoweringOpt);
+        if (verbose && !vecLowering.empty())
+          std::cout << "  vec-lowering: " << vecLowering << "\n";
+        bool ok =
+            compileWithSymirc(symircPath, p, target, outPath, noRequire, vecLowering, verbose);
         if (ok)
           std::cout << "  compiled: " << outPath << "\n";
         else
