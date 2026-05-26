@@ -170,8 +170,10 @@ namespace symir {
 
     SymbolicValue makeUndef(const TypePtr &t, smt::ISolver &solver);
     SymbolicValue broadcast(const TypePtr &t, smt::Term val, smt::ISolver &solver);
-    SymbolicValue
-    evalInit(const InitVal &iv, const TypePtr &t, smt::ISolver &solver, SymbolicStore &store);
+    SymbolicValue evalInit(
+        const InitVal &iv, const TypePtr &t, smt::ISolver &solver, SymbolicStore &store,
+        std::vector<smt::Term> &pc
+    );
 
     std::unordered_map<std::string, const StructDecl *> structs_;
 

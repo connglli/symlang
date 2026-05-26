@@ -255,10 +255,25 @@ namespace symir {
   }
 
   SymbolicExecutor::SymbolicValue SymbolicExecutor::evalInit(
-      const InitVal &iv, const TypePtr &t, smt::ISolver &solver, SymbolicStore &store
+      const InitVal &iv, const TypePtr &t, smt::ISolver &solver, SymbolicStore &store,
+      std::vector<smt::Term> &pc
   ) {
     if (iv.kind == InitVal::Kind::Undef)
       return makeUndef(t, solver);
+
+    // [v0.2.1] Atom-form initializer (addr, load, cmp, ptrindex, etc.)
+    if (iv.kind == InitVal::Kind::Atom) {
+      const auto &atom = *std::get<AtomPtr>(iv.value);
+      if (auto vt = std::get_if<VecType>(&t->v)) {
+        return evalVecExprAtom(atom, *vt, solver, store, pc);
+      }
+      smt::Term val = evalAtom(atom, solver, store, pc, getSort(t, solver));
+      SymbolicValue sv;
+      sv.kind = SymbolicValue::Kind::Int;
+      sv.term = val;
+      sv.is_defined = solver.make_true();
+      return sv;
+    }
 
     if (iv.kind == InitVal::Kind::Aggregate) {
       const auto &elements = std::get<std::vector<InitValPtr>>(iv.value);
@@ -266,13 +281,13 @@ namespace symir {
         SymbolicValue res;
         res.kind = SymbolicValue::Kind::Array;
         for (size_t i = 0; i < elements.size(); ++i)
-          res.arrayVal.push_back(evalInit(*elements[i], at->elem, solver, store));
+          res.arrayVal.push_back(evalInit(*elements[i], at->elem, solver, store, pc));
         return res;
       } else if (auto vt = std::get_if<VecType>(&t->v)) {
         SymbolicValue res;
         res.kind = SymbolicValue::Kind::Vec;
         for (size_t i = 0; i < elements.size(); ++i)
-          res.arrayVal.push_back(evalInit(*elements[i], vt->elem, solver, store));
+          res.arrayVal.push_back(evalInit(*elements[i], vt->elem, solver, store, pc));
         return res;
       } else if (auto st = std::get_if<StructType>(&t->v)) {
         SymbolicValue res;
@@ -281,7 +296,7 @@ namespace symir {
         if (it != structs_.end()) {
           for (size_t i = 0; i < elements.size(); ++i)
             res.structVal[it->second->fields[i].name] =
-                evalInit(*elements[i], it->second->fields[i].type, solver, store);
+                evalInit(*elements[i], it->second->fields[i].type, solver, store, pc);
         }
         return res;
       }
@@ -448,7 +463,7 @@ namespace symir {
     }
     for (const auto &l: entry->lets) {
       if (l.init) {
-        store[l.name.name] = evalInit(*l.init, l.type, solver, store);
+        store[l.name.name] = evalInit(*l.init, l.type, solver, store, pathConstraints);
       } else {
         store[l.name.name] = makeUndef(l.type, solver);
       }
@@ -1587,12 +1602,20 @@ namespace symir {
             }
           } else if constexpr (std::is_same_v<T, CmpAtom>) {
             // [v0.2.1] Scalar `cmp <op> a, b` reifies the comparison as i1.
-            // The CFG's br evaluates a Cond directly via evalCond; this
-            // branch lets cmp also appear on the RHS of an assignment.
+            // Infer operand sort from whichever side is an RValue (has a
+            // known sort), so literals get the right width.
+            auto getOperandSort = [&]() -> std::optional<smt::Sort> {
+              if (auto rv = std::get_if<RValue>(&arg.lhs))
+                return solver.get_sort(evalLValue(*rv, solver, store, pc).term);
+              if (auto rv = std::get_if<RValue>(&arg.rhs))
+                return solver.get_sort(evalLValue(*rv, solver, store, pc).term);
+              return std::nullopt;
+            };
+            auto opSort = getOperandSort();
             auto loadOperand = [&](const SelectVal &sv) -> smt::Term {
               if (auto rv = std::get_if<RValue>(&sv))
                 return evalLValue(*rv, solver, store, pc).term;
-              return evalCoef(std::get<Coef>(sv), solver, store, expectedSort);
+              return evalCoef(std::get<Coef>(sv), solver, store, opSort);
             };
             smt::Term l = loadOperand(arg.lhs);
             smt::Term r = loadOperand(arg.rhs);
@@ -2073,6 +2096,32 @@ namespace symir {
             return evalLValue(arg.rval, solver, store, pc);
           } else if constexpr (std::is_same_v<T, CmpAtom>) {
             // Per-lane comparison → <N> i1.
+            // Infer operand lane sort from whichever side is a vec RValue.
+            auto getOperandLaneSort = [&]() -> std::optional<smt::Sort> {
+              auto getValSort = [&](const SelectVal &sv) -> std::optional<smt::Sort> {
+                if (auto rv = std::get_if<RValue>(&sv)) {
+                  auto val = evalLValue(*rv, solver, store, pc);
+                  if (val.kind == SymbolicValue::Kind::Vec && !val.arrayVal.empty())
+                    return solver.get_sort(val.arrayVal[0].term);
+                }
+                if (auto cf = std::get_if<Coef>(&sv)) {
+                  if (auto id = std::get_if<LocalOrSymId>(cf)) {
+                    std::string nm = std::visit([](auto &&x) { return x.name; }, *id);
+                    auto it = store.find(nm);
+                    if (it != store.end() && it->second.kind == SymbolicValue::Kind::Vec &&
+                        !it->second.arrayVal.empty())
+                      return solver.get_sort(it->second.arrayVal[0].term);
+                  }
+                }
+                return std::nullopt;
+              };
+              if (auto s = getValSort(arg.lhs))
+                return s;
+              if (auto s = getValSort(arg.rhs))
+                return s;
+              return std::nullopt;
+            };
+            auto opLaneSort = getOperandLaneSort();
             auto getVecOperand = [&](const SelectVal &sv) -> SymbolicValue {
               if (auto rv = std::get_if<RValue>(&sv))
                 return evalLValue(*rv, solver, store, pc);
@@ -2083,7 +2132,7 @@ namespace symir {
                   if (it != store.end() && it->second.kind == SymbolicValue::Kind::Vec)
                     return it->second;
                 }
-                smt::Term bv = evalCoef(*cf, solver, store, sortFor());
+                smt::Term bv = evalCoef(*cf, solver, store, opLaneSort);
                 std::vector<SymbolicValue> lanes;
                 lanes.reserve(vt.size);
                 for (std::uint64_t k = 0; k < vt.size; ++k)

@@ -135,13 +135,22 @@ namespace symir {
   }
 
   const Interpreter::ObjectInfo *Interpreter::findObject(std::uint64_t addr) const {
-    // Prefer the most specific (smallest) ObjectInfo containing the address.
-    // This ensures field-level ObjectInfos win over whole-struct ones.
     const ObjectInfo *best = nullptr;
-    for (const auto &o: objects_)
-      if (addr >= o.base && addr < o.end)
-        if (!best || (o.end - o.base) < (best->end - best->base))
+    for (const auto &o: objects_) {
+      if (addr >= o.base && addr < o.end) {
+        if (!best) {
           best = &o;
+        } else {
+          uint64_t oSize = o.end - o.base;
+          uint64_t bestSize = best->end - best->base;
+          if (oSize < bestSize) {
+            best = &o;
+          } else if (oSize == bestSize && best->fieldName.empty() && !o.fieldName.empty()) {
+            best = &o;
+          }
+        }
+      }
+    }
     return best;
   }
 
