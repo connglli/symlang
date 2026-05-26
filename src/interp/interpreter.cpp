@@ -664,7 +664,10 @@ namespace symir {
                     store[syncObj->varName].structVal[syncObj->fieldName] = val;
                   }
                 } else if (obj->count == 1 && obj->fieldName.empty() &&
-                           obj->arrayIdx == static_cast<std::uint64_t>(-1)) {
+                           obj->arrayIdx == static_cast<std::uint64_t>(-1) &&
+                           store.count(obj->varName) &&
+                           store.at(obj->varName).kind != RuntimeValue::Kind::Array &&
+                           store.at(obj->varName).kind != RuntimeValue::Kind::Vec) {
                   store[obj->varName] = val;
                 } else {
                   uint64_t idx = (ptrVal.ptrVal - obj->base) / obj->elemSize;
