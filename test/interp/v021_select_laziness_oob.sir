@@ -1,0 +1,13 @@
+// EXPECT: PASS
+// Rationale: SPEC §2.7 and §7.2: 'select' is lazy.
+// If the condition is true, only the true arm is evaluated.
+// Evaluating an RValue like %arr[10] is UB if 10 is OOB.
+// This test checks if OOB in the unselected arm is ignored.
+
+fun @main() : i32 {
+  let mut %arr: [1] i32 = {42};
+  let mut %res: i32 = 0;
+^entry:
+  %res = select 1 == 1, 42, %arr[10];
+  ret %res; // Should return 42
+}

@@ -1,0 +1,11 @@
+// EXPECT: FAIL:UndefinedBehavior
+// Rationale: SPEC §7.2: 'select' evaluates the chosen arm.
+// If the false arm is chosen and it is OOB, it must be UB.
+
+fun @main() : i32 {
+  let mut %arr: [1] i32 = {42};
+  let mut %res: i32 = 0;
+^entry:
+  %res = select 1 == 0, 42, %arr[10];
+  ret %res;
+}

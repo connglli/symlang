@@ -1,0 +1,24 @@
+// EXPECT: PASS
+// SKIP: INTERPRETER, COMPILER
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: SPEC §6.8.3: load operand is an RValue.
+// If the pointer is a field in a struct, it should be reachable.
+
+struct @S {
+  p: ptr i32;
+}
+
+fun @main() : i32 {
+  let mut %x: i32 = 42;
+  let mut %s: @S = {null};
+  let mut %v: i32 = 0;
+^entry:
+  %s.p = addr %x;
+
+  // %s.p is an RValue with base %s and field access .p.
+  %v = load %s.p;
+
+  require %v == 42;
+  ret 0;
+}

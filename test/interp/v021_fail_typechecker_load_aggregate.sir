@@ -1,0 +1,13 @@
+// EXPECT: FAIL
+
+fun @main() : i32 {
+  let mut %arr: [2] i32 = {10, 20};
+  let mut %p: ptr [2] i32 = null;
+  let mut %res: i32 = 0;
+^entry:
+  %p = addr %arr;
+
+  // This should be a type error.
+  %res = load %p;
+  ret 0;
+}

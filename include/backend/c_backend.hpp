@@ -77,6 +77,7 @@ namespace symir {
     TypePtr getAtomType(const Atom &atom);
     TypePtr getExprType(const Expr &expr);
     TypePtr getCoefType(const Coef &coef);
+    TypePtr getInitValType(const InitVal &iv);
 
     // [v0.2.1] Vector-specific statement-level emission. These handle the
     // RHS atoms that need lane-wise C emission (loop or unroll) and so

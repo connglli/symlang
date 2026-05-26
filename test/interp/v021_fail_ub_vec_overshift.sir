@@ -1,0 +1,14 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: COMPILER
+// Rationale: SPEC §7.1 Rule 5 and §7.6 Rule 21: Vector shifts must check
+// per-lane for overshift (n >= width).
+// For i32, shift >= 32 is UB.
+
+fun @main() : i32 {
+  let mut %v1: <2> i32 = {1, 1};
+  let mut %v2: <2> i32 = {0, 32}; // Lane 1 has overshift (32 >= 32)
+  let mut %res: <2> i32 = {0, 0};
+^entry:
+  %res = %v1 << %v2;
+  ret 0;
+}

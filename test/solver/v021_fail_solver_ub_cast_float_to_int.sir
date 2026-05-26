@@ -1,0 +1,13 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: INTERPRETER, COMPILER
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: SPEC §7.4 Rule 8: 'fN as iM' is UB if outside representable range.
+
+fun @main() : i32 {
+  let %f: f32 = 3000000000.0;
+  let mut %i: i32 = 0;
+^entry:
+  %i = %f as i32;
+  ret 0;
+}

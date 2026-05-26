@@ -7,6 +7,7 @@
 #include <iostream>
 #include <limits>
 #include <sstream>
+#include "analysis/type_utils.hpp"
 
 namespace symir {
 
@@ -188,6 +189,7 @@ namespace symir {
     out_ << "#include <stdbool.h>\n";
     out_ << "#include <float.h>\n";
     out_ << "#include <math.h>\n";
+    out_ << "#include <string.h>\n";
     if (!noRequire_)
       out_ << "#include <assert.h>\n";
     out_ << "\n";
@@ -373,13 +375,43 @@ namespace symir {
             } else if (l.init->kind == InitVal::Kind::Undef) {
               // undef: no init. Reading is UB by spec (caught by definite-init).
             } else {
-              // Broadcast scalar.
-              for (std::uint64_t k = 0; k < vt.size; ++k) {
-                indent();
-                std::string lane = vecLowering_->emitLaneRead(vName, vt, std::to_string(k));
-                out_ << lane << " = ";
-                emitInitVal(*l.init, vt.elem);
-                out_ << ";\n";
+              TypePtr initType = getInitValType(*l.init);
+              if (initType && std::holds_alternative<VecType>(initType->v)) {
+                if (l.init->kind == InitVal::Kind::Local || l.init->kind == InitVal::Kind::Sym) {
+                  std::string srcName;
+                  if (l.init->kind == InitVal::Kind::Local) {
+                    srcName = mangleName(std::get<LocalId>(l.init->value).name);
+                  } else {
+                    srcName = mangleName(std::get<SymId>(l.init->value).name);
+                  }
+                  indent();
+                  vecLowering_->emitWholeCopy(out_, vName, srcName, vt);
+                  out_ << ";\n";
+                } else if (l.init->kind == InitVal::Kind::Atom) {
+                  if (vecLowering_->needsLaneUnroll()) {
+                    for (std::uint64_t k = 0; k < vt.size; ++k) {
+                      indent();
+                      std::string dstLane =
+                          vecLowering_->emitLaneRead(vName, vt, std::to_string(k));
+                      out_ << dstLane << " = "
+                           << emitVecAtomLane(*std::get<AtomPtr>(l.init->value), vt, k) << ";\n";
+                    }
+                  } else {
+                    indent();
+                    out_ << vName << " = ";
+                    emitInitVal(*l.init, l.type);
+                    out_ << ";\n";
+                  }
+                }
+              } else {
+                // Broadcast scalar.
+                for (std::uint64_t k = 0; k < vt.size; ++k) {
+                  indent();
+                  std::string lane = vecLowering_->emitLaneRead(vName, vt, std::to_string(k));
+                  out_ << lane << " = ";
+                  emitInitVal(*l.init, vt.elem);
+                  out_ << ";\n";
+                }
               }
             }
           }
@@ -403,8 +435,21 @@ namespace symir {
           emitInitVal(*l.init, l.type);
           out_ << ";\n";
         } else if (l.init) {
-          // Broadcast init
-          if (!dims.empty() || std::holds_alternative<StructType>(l.type->v)) {
+          TypePtr initType = getInitValType(*l.init);
+          bool isWholeCopy = initType && TypeUtils::areTypesEqual(initType, l.type);
+          if (isWholeCopy) {
+            if (!dims.empty()) {
+              out_ << " = {0};\n";
+              indent();
+              out_ << "memcpy(&" << mangleName(l.name.name) << ", &";
+              emitInitVal(*l.init, l.type);
+              out_ << ", sizeof(" << mangleName(l.name.name) << "));\n";
+            } else {
+              out_ << " = ";
+              emitInitVal(*l.init, l.type);
+              out_ << ";\n";
+            }
+          } else if (!dims.empty() || std::holds_alternative<StructType>(l.type->v)) {
             // Aggregate broadcast
             out_ << " = {0};\n";
             // Check if we need a loop for non-zero init
@@ -1571,5 +1616,33 @@ namespace symir {
   // SymIR requires every atom in an Expr to share a single type, so the
   // first atom's type is the whole expression's type.
   TypePtr CBackend::getExprType(const Expr &expr) { return getAtomType(expr.first); }
+
+  TypePtr CBackend::getInitValType(const InitVal &iv) {
+    switch (iv.kind) {
+      case InitVal::Kind::Int: {
+        auto t = std::make_shared<Type>();
+        t->v = IntType{IntType::Kind::I64, {}, {}};
+        return t;
+      }
+      case InitVal::Kind::Float: {
+        auto t = std::make_shared<Type>();
+        t->v = FloatType{isDoubleCtx_ ? FloatType::Kind::F64 : FloatType::Kind::F32, {}};
+        return t;
+      }
+      case InitVal::Kind::Sym: {
+        auto it = varTypes_.find(std::get<SymId>(iv.value).name);
+        return (it != varTypes_.end()) ? it->second : nullptr;
+      }
+      case InitVal::Kind::Local: {
+        auto it = varTypes_.find(std::get<LocalId>(iv.value).name);
+        return (it != varTypes_.end()) ? it->second : nullptr;
+      }
+      case InitVal::Kind::Atom: {
+        return getAtomType(*std::get<AtomPtr>(iv.value));
+      }
+      default:
+        return nullptr;
+    }
+  }
 
 } // namespace symir

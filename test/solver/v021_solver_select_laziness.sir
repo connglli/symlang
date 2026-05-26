@@ -1,0 +1,17 @@
+// EXPECT: PASS
+// SKIP: INTERPRETER, COMPILER
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: SPEC §7.2: 'select' is lazy.
+// If the condition is true, only the true arm is evaluated.
+// The false arm has OOB access, which would be UB if evaluated.
+// If the solver is NOT lazy, it might incorrectly mark this path as UNSAT (pruned).
+
+fun @main() : i32 {
+  let mut %arr: [1] i32 = {42};
+  let mut %res: i32 = 0;
+^entry:
+  %res = select 1 == 1, 42, %arr[10];
+  require %res == 42;
+  ret 0;
+}

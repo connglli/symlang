@@ -29,7 +29,16 @@ namespace symir {
       TypePtr type; // always a VecType node
     };
 
-    using Variant = std::variant<BoolTy, BVTy, FloatTy, PtrTy, VecTy, std::monostate>;
+    struct ArrayTy {
+      TypePtr type; // always an ArrayType node
+    };
+
+    struct StructTy {
+      TypePtr type; // always a StructType node
+    };
+
+    using Variant =
+        std::variant<BoolTy, BVTy, FloatTy, PtrTy, VecTy, ArrayTy, StructTy, std::monostate>;
     Variant v;
 
     bool isBool() const { return std::holds_alternative<BoolTy>(v); }
@@ -49,6 +58,14 @@ namespace symir {
     bool isVec() const { return std::holds_alternative<VecTy>(v); }
 
     TypePtr vecType() const { return std::get<VecTy>(v).type; }
+
+    bool isArray() const { return std::holds_alternative<ArrayTy>(v); }
+
+    TypePtr arrayType() const { return std::get<ArrayTy>(v).type; }
+
+    bool isStruct() const { return std::holds_alternative<StructTy>(v); }
+
+    TypePtr structType() const { return std::get<StructTy>(v).type; }
   };
 
   /**

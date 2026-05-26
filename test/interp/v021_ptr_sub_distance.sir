@@ -1,0 +1,20 @@
+// EXPECT: PASS
+// Rationale: SPEC §6.8.6: 'ptr T - ptr T' yields element distance as i64.
+
+fun @main() : i32 {
+  let mut %arr: [10] i32 = 0;
+  let mut %p: ptr i32 = null;
+  let mut %q: ptr i32 = null;
+  let mut %diff: i64 = 0;
+^entry:
+  %p = addr %arr[2];
+  %q = addr %arr[5];
+
+  %diff = %q - %p; // Should be 3
+  require %diff == 3;
+
+  %diff = %p - %q; // Should be -3
+  require %diff == -3;
+
+  ret 0;
+}

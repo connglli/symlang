@@ -1,0 +1,13 @@
+// EXPECT: FAIL
+
+fun @main() : i32 {
+  let mut %arr1: [2] i32 = {10, 20};
+  let mut %arr2: [2] i32 = {30, 40};
+  let mut %p: ptr [2] i32 = null;
+^entry:
+  %p = addr %arr1;
+
+  // This should be a type error.
+  store %p, %arr2;
+  ret 0;
+}

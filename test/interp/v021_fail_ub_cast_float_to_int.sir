@@ -1,0 +1,11 @@
+// EXPECT: FAIL:UndefinedBehavior
+// Rationale: SPEC §7.4 Rule 8: 'fN as iM' is UB if the truncated value
+// is outside the representable range of iM.
+
+fun @main() : i32 {
+  let %f: f32 = 3000000000.0; // > 2^31 - 1 (2147483647)
+  let mut %i: i32 = 0;
+^entry:
+  %i = %f as i32;
+  ret %i;
+}

@@ -1,0 +1,12 @@
+// EXPECT: FAIL:UndefinedBehavior
+// Rationale: Testing if INT_MIN % -1 is UB.
+// SPEC §7.1 Rule 4 says INT_MIN / -1 is UB. Modulo usually follows division.
+
+fun @main() : i32 {
+  let mut %min: i32 = -2147483648;
+  let mut %neg1: i32 = -1;
+  let mut %res: i32 = 0;
+^entry:
+  %res = %min % %neg1;
+  ret %res;
+}

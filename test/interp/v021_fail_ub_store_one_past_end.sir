@@ -1,0 +1,13 @@
+// EXPECT: FAIL:UndefinedBehavior
+// Rationale: SPEC §7.5 Rule 13: store through one-past-the-end is UB.
+
+fun @main() : i32 {
+  let mut %arr: [2] i32 = {10, 20};
+  let mut %p_arr: ptr [2] i32 = null;
+  let mut %p_one_past: ptr i32 = null;
+^entry:
+  %p_arr = addr %arr;
+  %p_one_past = ptrindex %p_arr, 2;
+  store %p_one_past, 30; // UB
+  ret 0;
+}

@@ -1,0 +1,16 @@
+// EXPECT: PASS
+// Rationale: Testing whole-vector copy in interpreter.
+// If %v1 is a vector, 'let %v2 = %v1' should copy it correctly.
+
+fun @main() : i32 {
+  let mut %v1: <2> i32 = {10, 20};
+  let mut %v2: <2> i32 = %v1;
+  let mut %v0: i32 = 0;
+  let mut %v1_lane: i32 = 0;
+^entry:
+  %v0 = %v2[0];
+  %v1_lane = %v2[1];
+  require %v0 == 10;
+  require %v1_lane == 20;
+  ret %v0 + %v1_lane; // Should return 30
+}

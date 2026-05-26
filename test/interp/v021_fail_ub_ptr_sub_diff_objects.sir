@@ -1,0 +1,15 @@
+// EXPECT: FAIL:UndefinedBehavior
+// Rationale: SPEC §7.5 Rule 12: 'ptr T - ptr T' with different objects is UB.
+
+fun @main() : i32 {
+  let mut %a: i32 = 1;
+  let mut %b: i32 = 2;
+  let mut %pa: ptr i32 = null;
+  let mut %pb: ptr i32 = null;
+  let mut %diff: i64 = 0;
+^entry:
+  %pa = addr %a;
+  %pb = addr %b;
+  %diff = %pa - %pb; // UB
+  ret 0;
+}

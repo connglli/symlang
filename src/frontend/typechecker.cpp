@@ -291,6 +291,9 @@ namespace symir {
                     else if (!TypeUtils::areTypesEqual(rhsTy.vecType(), lt))
                       diags.error("Vector type mismatch in assignment", arg.rhs.span);
                     (void) lvt;
+                  } else if (std::holds_alternative<ArrayType>(lt->v) ||
+                             std::holds_alternative<StructType>(lt->v)) {
+                    diags.error("Aggregate-typed assignment is not supported", arg.lhs.span);
                   } else {
                     std::optional<uint32_t> expected;
                     bool isFloat = false;
@@ -700,6 +703,10 @@ namespace symir {
             // vectors into a local before lane subscripting).
             if (std::holds_alternative<VecType>(ct->v))
               return Ty{Ty::VecTy{ct}};
+            if (std::holds_alternative<ArrayType>(ct->v))
+              return Ty{Ty::ArrayTy{ct}};
+            if (std::holds_alternative<StructType>(ct->v))
+              return Ty{Ty::StructTy{ct}};
             return Ty{std::monostate{}};
           } else if constexpr (std::is_same_v<T, RValueAtom>) {
             auto rt = typeOfLValue(arg.rval, vars, syms, diags);
@@ -713,6 +720,10 @@ namespace symir {
               return Ty{Ty::PtrTy{rt}};
             if (rt && std::holds_alternative<VecType>(rt->v))
               return Ty{Ty::VecTy{rt}};
+            if (rt && std::holds_alternative<ArrayType>(rt->v))
+              return Ty{Ty::ArrayTy{rt}};
+            if (rt && std::holds_alternative<StructType>(rt->v))
+              return Ty{Ty::StructTy{rt}};
             return Ty{std::monostate{}};
           } else if constexpr (std::is_same_v<T, CmpAtom>) {
             // [v0.2.1] cmp: result is i1 (scalar) or <N> i1 (vector).
@@ -1039,6 +1050,10 @@ namespace symir {
     // [v0.2.1] Vector arms of `select` (Cond form or mask form).
     if (std::holds_alternative<VecType>(t->v))
       return Ty{Ty::VecTy{t}};
+    if (std::holds_alternative<ArrayType>(t->v))
+      return Ty{Ty::ArrayTy{t}};
+    if (std::holds_alternative<StructType>(t->v))
+      return Ty{Ty::StructTy{t}};
     return Ty{std::monostate{}};
   }
 

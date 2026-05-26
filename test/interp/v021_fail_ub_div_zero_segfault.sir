@@ -1,0 +1,8 @@
+// EXPECT: FAIL:UndefinedBehavior
+fun @main() : i32 {
+  let mut %z: i32 = 0;
+  let mut %r: i32 = 0;
+^entry:
+  %r = 1 / %z;
+  ret %r;
+}

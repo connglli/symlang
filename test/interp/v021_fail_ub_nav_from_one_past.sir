@@ -1,0 +1,16 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: COMPILER
+// Rationale: SPEC §7.5 Rule 19: 'ptrindex' from a one-past-the-end
+// pointer is UB.
+
+fun @main() : i32 {
+  let mut %arr: [2][3] i32 = 0;
+  let mut %p: ptr [2][3] i32 = null;
+  let mut %p1: ptr [3] i32 = null;
+  let mut %p2: ptr i32 = null;
+^entry:
+  %p = addr %arr;
+  %p1 = ptrindex %p, 2;    // one-past-the-end of arr
+  %p2 = ptrindex %p1, 0;   // UB: navigation from one-past-the-end
+  ret 0;
+}

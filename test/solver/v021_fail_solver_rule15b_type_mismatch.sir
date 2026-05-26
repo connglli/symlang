@@ -1,0 +1,22 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: INTERPRETER, COMPILER
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: SPEC §7.5 Rule 15b: Typed-access mismatch.
+// Accessing a field of type f32 through a pointer of type ptr i32 is UB.
+
+struct @S {
+  a: i32;
+  b: f32;
+}
+
+fun @main() : i32 {
+  let mut %s: @S = {10, 20.0};
+  let mut %pa: ptr i32 = null;
+  let mut %v: i32 = 0;
+^entry:
+  %pa = addr %s.a;
+  %pa = %pa + 1; // points to s.b (offset 4, same size as i32)
+  %v = load %pa; // UB: i32 pointer accessing f32 field
+  ret 0;
+}

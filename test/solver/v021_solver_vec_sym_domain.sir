@@ -1,0 +1,13 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: SPEC §3.4.1: sym vector domain constraints apply per-lane.
+// Symbolic vector must be assigned to a local to use lane indexing.
+
+fun @main() : i32 {
+  sym %?v: value <2> i32 in [0, 10];
+  let %v: <2> i32 = %?v;
+^entry:
+  require %v[0] + %v[1] == 20;
+  ret 0;
+}

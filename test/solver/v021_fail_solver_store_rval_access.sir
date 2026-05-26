@@ -1,0 +1,22 @@
+// EXPECT: PASS
+// SKIP: INTERPRETER, COMPILER
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: SPEC §4.2: store operand is an RValue.
+
+struct @S {
+  p: ptr i32;
+}
+
+fun @main() : i32 {
+  let mut %x: i32 = 0;
+  let mut %s: @S = {null};
+^entry:
+  %s.p = addr %x;
+
+  // store through a field pointer.
+  store %s.p, 42;
+
+  require %x == 42;
+  ret 0;
+}

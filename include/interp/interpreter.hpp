@@ -69,6 +69,16 @@ namespace symir {
       // write back into the right `store["%arr"].arrayVal[k]` cell.
       std::uint64_t arrayIdx = static_cast<std::uint64_t>(-1);
       std::uint64_t provId = 0; // unique provenance object ID
+      TypePtr type = nullptr;   // [v0.2.1] The static type of the object/field
+
+      ObjectInfo() = default;
+
+      ObjectInfo(
+          std::string vn, std::string fn, std::uint64_t b, std::uint64_t e, std::uint64_t es,
+          std::uint64_t c, std::uint64_t ai = -1, std::uint64_t pi = 0, TypePtr t = nullptr
+      ) :
+          varName(vn), fieldName(fn), base(b), end(e), elemSize(es), count(c), arrayIdx(ai),
+          provId(pi), type(t) {}
     };
 
     // heap_: flat address → RuntimeValue (one slot per element)
@@ -85,6 +95,8 @@ namespace symir {
     std::uint64_t nextProvId_ = 1;
 
     std::uint64_t sizeofType(const TypePtr &t) const;
+    TypePtr getCellTypeAtOffset(TypePtr t, std::uint64_t offset) const;
+    TypePtr getLValueType(const LValue &lv) const;
     std::uint64_t allocObject(const std::string &varName, const TypePtr &t, const Store &store);
     std::uint64_t fieldOffset(const StructDecl &s, const std::string &fieldName) const;
     std::uint64_t

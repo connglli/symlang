@@ -1,0 +1,18 @@
+// EXPECT: PASS
+// Rationale: SPEC §2.9: +0.0 and -0.0 compare equal.
+// 'cmp' atom must respect this.
+
+fun @main() : i32 {
+  let mut %f1: f32 = 0.0;
+  let mut %f2: f32 = -0.0;
+  let mut %res_eq: i1 = 0;
+  let mut %res_lt: i1 = 0;
+^entry:
+  %res_eq = cmp == %f1, %f2;
+  %res_lt = cmp < %f1, %f2;
+
+  // require they compare equal and not less than
+  require %res_eq == 1;
+  require %res_lt == 0;
+  ret 0;
+}

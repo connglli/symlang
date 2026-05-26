@@ -1,0 +1,18 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: Testing struct local to local initialization.
+
+struct @S {
+  a: i32;
+  b: i32;
+}
+
+fun @main() : i32 {
+  let %s1: @S = {10, 20};
+  let %s2: @S = %s1;
+^entry:
+  require %s2.a == 10;
+  require %s2.b == 20;
+  ret 0;
+}

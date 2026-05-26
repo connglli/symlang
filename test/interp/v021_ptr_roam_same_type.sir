@@ -1,0 +1,21 @@
+// EXPECT: PASS
+// Rationale: SPEC §7.5 Rule 15: ptrfield provenance is the immediate
+// containing struct. Pointer arithmetic can roam over all fields.
+// Rule 15b: load is valid if it lands on a cell of matching type.
+// If both fields have same type, roaming between them is valid.
+
+struct @S {
+  a: i32;
+  b: i32;
+}
+
+fun @main() : i32 {
+  let mut %s: @S = {10, 20};
+  let mut %p: ptr i32 = null;
+  let mut %v: i32 = 0;
+^entry:
+  %p = addr %s.a;
+  %p = %p + 1; // points to s.b
+  %v = load %p;
+  ret %v; // Should return 20
+}

@@ -1,0 +1,14 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: Testing whole-vector assignment in the solver.
+
+fun @main() : i32 {
+  let mut %v1: <2> i32 = {1, 2};
+  let mut %v2: <2> i32 = {0, 0};
+^entry:
+  %v2 = %v1;
+  require %v2[0] == 1;
+  require %v2[1] == 2;
+  ret 0;
+}

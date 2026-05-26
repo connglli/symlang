@@ -59,6 +59,71 @@ namespace symir {
     return 8;
   }
 
+  TypePtr Interpreter::getCellTypeAtOffset(TypePtr t, std::uint64_t offset) const {
+    if (!t)
+      return nullptr;
+    if (auto at = std::get_if<ArrayType>(&t->v)) {
+      uint64_t elemSz = sizeofType(at->elem);
+      if (elemSz == 0)
+        return at->elem;
+      uint64_t subOff = offset % elemSz;
+      return getCellTypeAtOffset(at->elem, subOff);
+    }
+    if (auto st = std::get_if<StructType>(&t->v)) {
+      auto sit = structs_.find(st->name.name);
+      if (sit != structs_.end()) {
+        uint64_t off = 0;
+        for (const auto &f: sit->second->fields) {
+          uint64_t fSize = sizeofType(f.type);
+          if (offset >= off && offset < off + fSize) {
+            return getCellTypeAtOffset(f.type, offset - off);
+          }
+          off += fSize;
+        }
+      }
+    }
+    return t;
+  }
+
+  TypePtr Interpreter::getLValueType(const LValue &lv) const {
+    auto tit = typeMap_.find(lv.base.name);
+    if (tit == typeMap_.end())
+      return nullptr;
+    TypePtr cur = tit->second;
+    for (const auto &acc: lv.accesses) {
+      if (!cur)
+        break;
+      if (auto ai = std::get_if<AccessIndex>(&acc)) {
+        (void) ai;
+        if (auto at = std::get_if<ArrayType>(&cur->v))
+          cur = at->elem;
+        else if (auto vt = std::get_if<VecType>(&cur->v))
+          cur = vt->elem;
+      } else if (auto af = std::get_if<AccessField>(&acc)) {
+        if (auto st = std::get_if<StructType>(&cur->v)) {
+          auto sit = structs_.find(st->name.name);
+          if (sit != structs_.end()) {
+            bool found = false;
+            for (const auto &fd: sit->second->fields) {
+              if (fd.name == af->field) {
+                cur = fd.type;
+                found = true;
+                break;
+              }
+            }
+            if (!found)
+              cur = nullptr;
+          } else {
+            cur = nullptr;
+          }
+        } else {
+          cur = nullptr;
+        }
+      }
+    }
+    return cur;
+  }
+
   // Allocate (or return existing) base address for varName with type t.
   // Syncs the current store value into the heap.
   std::uint64_t
@@ -75,7 +140,12 @@ namespace symir {
     uint64_t elemSize =
         sizeofType(std::get_if<ArrayType>(&t->v) ? std::get<ArrayType>(t->v).elem : t);
     uint64_t count = std::get_if<ArrayType>(&t->v) ? std::get<ArrayType>(t->v).size : 1;
-    addObject(ObjectInfo{varName, "", base, base + totalSize, elemSize, count});
+    addObject(
+        ObjectInfo{
+            varName, "", base, base + totalSize, elemSize, count, static_cast<std::uint64_t>(-1), 0,
+            t
+        }
+    );
     addrMap_[varName] = base;
 
     // Sync current store value into heap. For arrays-of-structs the
@@ -110,12 +180,18 @@ namespace symir {
                 minFS = fs;
             }
             addObject(
-                ObjectInfo{varName, "", elemBase, elemBase + elemSize, minFS, elemSize / minFS, i}
+                ObjectInfo{
+                    varName, "", elemBase, elemBase + elemSize, minFS, elemSize / minFS, i, 0,
+                    elemTy
+                }
             );
             for (const auto &f: sd->fields) {
               uint64_t fSize = sizeofType(f.type);
               addObject(
-                  ObjectInfo{varName, f.name, elemBase + off, elemBase + off + fSize, fSize, 1, i}
+                  ObjectInfo{
+                      varName, f.name, elemBase + off, elemBase + off + fSize, fSize, 1, i, 0,
+                      f.type
+                  }
               );
               if (sv.arrayVal[i].kind == RuntimeValue::Kind::Struct) {
                 auto fit = sv.arrayVal[i].structVal.find(f.name);
@@ -134,7 +210,10 @@ namespace symir {
             uint64_t subElemSize = subAt ? sizeofType(subAt->elem) : 4;
             uint64_t subCount = subAt ? subAt->size : sv.arrayVal[i].arrayVal.size();
             addObject(
-                ObjectInfo{varName, "", elemBase, elemBase + elemSize, subElemSize, subCount}
+                ObjectInfo{
+                    varName, "", elemBase, elemBase + elemSize, subElemSize, subCount,
+                    static_cast<std::uint64_t>(-1), 0, elemTy
+                }
             );
             // Recursively flatten leaves into heap.
             std::function<void(uint64_t, const RuntimeValue &, const TypePtr &)> flattenToHeap =
@@ -265,11 +344,14 @@ namespace symir {
         minFieldSize = fs;
     }
     addObject(
-        ObjectInfo{varName, "", base, base + totalSize, minFieldSize, totalSize / minFieldSize}
+        ObjectInfo{
+            varName, "", base, base + totalSize, minFieldSize, totalSize / minFieldSize,
+            static_cast<std::uint64_t>(-1), 0, std::make_shared<Type>(StructType{s.name, s.span})
+        }
     );
 
     // Create one ObjectInfo per field and sync its value into the heap.
-    // [v0.2.1 fix] Recurse into nested struct fields so that Rule 15b
+    // [v0.2.1] Recurse into nested struct fields so that Rule 15b
     // typed-access mismatch checks can resolve nested field ObjectInfos.
     uint64_t offset = 0;
     auto sv = store.find(varName);
@@ -296,7 +378,12 @@ namespace symir {
         fElemSize = sizeofType(f.type);
       }
       uint64_t fSize = fCount * fElemSize;
-      addObject(ObjectInfo{varName, f.name, fBase, fBase + fSize, fElemSize, fCount});
+      addObject(
+          ObjectInfo{
+              varName, f.name, fBase, fBase + fSize, fElemSize, fCount,
+              static_cast<std::uint64_t>(-1), 0, f.type
+          }
+      );
 
       // [v0.2.1 fix] For nested struct fields, create sub-field ObjectInfos
       // so that Rule 15b checks can identify typed-access mismatches inside
@@ -306,7 +393,10 @@ namespace symir {
         for (const auto &sf: fieldSD->fields) {
           uint64_t sfSize = sizeofType(sf.type);
           addObject(
-              ObjectInfo{varName, sf.name, fBase + subOff, fBase + subOff + sfSize, sfSize, 1}
+              ObjectInfo{
+                  varName, sf.name, fBase + subOff, fBase + subOff + sfSize, sfSize, 1,
+                  static_cast<std::uint64_t>(-1), 0, sf.type
+              }
           );
           // Sync nested struct field value into heap.
           if (sv != store.end() && sv->second.kind == RuntimeValue::Kind::Struct) {
@@ -436,6 +526,10 @@ namespace symir {
   }
 
   Interpreter::RuntimeValue Interpreter::broadcast(const TypePtr &t, const RuntimeValue &v) {
+    if (v.kind == RuntimeValue::Kind::Vec || v.kind == RuntimeValue::Kind::Array ||
+        v.kind == RuntimeValue::Kind::Struct) {
+      return v;
+    }
     if (auto vt = TypeUtils::asVec(t)) {
       // [v0.2.1] Broadcast init for vector: each lane gets a copy of `v`
       // canonicalized to the lane scalar type.
@@ -613,6 +707,29 @@ namespace symir {
                   v.floatVal = static_cast<double>(val);
                 }
                 v.bits = (std::get<FloatType>(s.type->v).kind == FloatType::Kind::F32) ? 32 : 64;
+              } else if (std::holds_alternative<VecType>(s.type->v)) {
+                RuntimeValue scalar;
+                auto &vt = std::get<VecType>(s.type->v);
+                if (std::holds_alternative<IntType>(vt.elem->v)) {
+                  scalar.kind = RuntimeValue::Kind::Int;
+                  if constexpr (std::is_same_v<T, std::int64_t>) {
+                    scalar.intVal = val;
+                  } else {
+                    scalar.intVal = static_cast<std::int64_t>(val);
+                  }
+                  scalar.bits = TypeUtils::getBitWidth(vt.elem).value_or(64);
+                  scalar.intVal = canonicalize(scalar.intVal, scalar.bits);
+                } else if (std::holds_alternative<FloatType>(vt.elem->v)) {
+                  scalar.kind = RuntimeValue::Kind::Float;
+                  if constexpr (std::is_same_v<T, double>) {
+                    scalar.floatVal = val;
+                  } else {
+                    scalar.floatVal = static_cast<double>(val);
+                  }
+                  scalar.bits =
+                      (std::get<FloatType>(vt.elem->v).kind == FloatType::Kind::F32) ? 32 : 64;
+                }
+                v = broadcast(s.type, scalar);
               }
             },
             it->second
@@ -700,61 +817,34 @@ namespace symir {
                 if (ptrVal.ptrVal < obj->base || ptrVal.ptrVal >= obj->end)
                   throw UndefinedBehaviorError("UB: Store out of bounds");
                 // [v0.2.1] Rule 15b: typed-access mismatch on store.
-                // Derive the pointer's element size from the expression's first
+                // Derive the pointer's pointee type from the expression's first
                 // atom — supports AddrAtom, RValueAtom, LoadAtom, PtrIndexAtom,
-                // PtrFieldAtom, etc., not just simple RValueAtom locals.
+                // PtrFieldAtom, etc.
                 const ObjectInfo *cellObj = findObject(ptrVal.ptrVal);
-                if (cellObj && cellObj->fieldName.size() > 0) {
-                  // Derive pointer element size from the runtime pointer's
-                  // provenance ObjectInfo, since ptrBase is set to reflect
-                  // the correct containing object for Rule 15b checks.
-                  uint64_t ptrElemSize = 0;
-                  // Try extracting from the expression's first atom type.
+                if (cellObj && cellObj->type) {
+                  TypePtr ptrPointeeType = nullptr;
                   std::visit(
                       [&](auto &&atom) {
                         using A = std::decay_t<decltype(atom)>;
                         if constexpr (std::is_same_v<A, RValueAtom>) {
-                          auto tit = typeMap_.find(atom.rval.base.name);
-                          if (tit != typeMap_.end()) {
-                            if (auto pt = std::get_if<PtrType>(&tit->second->v))
-                              ptrElemSize = sizeofType(pt->pointee);
+                          if (auto t = getLValueType(atom.rval)) {
+                            if (auto pt = std::get_if<PtrType>(&t->v))
+                              ptrPointeeType = pt->pointee;
                           }
                         } else if constexpr (std::is_same_v<A, AddrAtom>) {
-                          // addr %x.f / addr %x[i]: the pointee is the type
-                          // of the addressed lvalue. Walk the type through
-                          // accesses to get the leaf element type.
-                          auto tit = typeMap_.find(atom.lv.base.name);
-                          if (tit != typeMap_.end()) {
-                            TypePtr cur = tit->second;
-                            for (const auto &acc: atom.lv.accesses) {
-                              if (!cur)
-                                break;
-                              if (auto ai = std::get_if<AccessIndex>(&acc)) {
-                                (void) ai;
-                                if (auto at = std::get_if<ArrayType>(&cur->v))
-                                  cur = at->elem;
-                              } else if (auto af = std::get_if<AccessField>(&acc)) {
-                                if (auto st = std::get_if<StructType>(&cur->v)) {
-                                  auto sit = structs_.find(st->name.name);
-                                  if (sit != structs_.end()) {
-                                    for (const auto &fd: sit->second->fields)
-                                      if (fd.name == af->field) {
-                                        cur = fd.type;
-                                        break;
-                                      }
-                                  }
-                                }
-                              }
-                            }
-                            if (cur)
-                              ptrElemSize = sizeofType(cur);
+                          if (auto t = getLValueType(atom.lv)) {
+                            ptrPointeeType = t;
                           }
                         }
                       },
                       i.ptr.first.v
                   );
-                  if (ptrElemSize > 0 && ptrElemSize != cellObj->elemSize)
-                    throw UndefinedBehaviorError("UB: Typed-access mismatch (rule 15b) on store");
+                  if (ptrPointeeType) {
+                    TypePtr cellType =
+                        getCellTypeAtOffset(cellObj->type, ptrVal.ptrVal - cellObj->base);
+                    if (!TypeUtils::areTypesEqual(ptrPointeeType, cellType))
+                      throw UndefinedBehaviorError("UB: Typed-access mismatch (rule 15b) on store");
+                  }
                 }
                 // SPEC §6.4: enforce destination precision. The pointee object
                 // has an elemSize that reflects the pointee type; for f32 this
@@ -1361,7 +1451,13 @@ namespace symir {
                 }
                 base = nextAddr_;
                 nextAddr_ += (elemSize * count + 7) & ~7ULL;
-                addObject(ObjectInfo{varName, "", base, base + elemSize * count, elemSize, count});
+                TypePtr varType = typeMap_.at(varName);
+                addObject(
+                    ObjectInfo{
+                        varName, "", base, base + elemSize * count, elemSize, count,
+                        static_cast<std::uint64_t>(-1), 0, varType
+                    }
+                );
                 addrMap_[varName] = base;
                 if (sv.kind == RuntimeValue::Kind::Array) {
                   for (size_t i = 0; i < sv.arrayVal.size(); ++i)
@@ -1495,24 +1591,16 @@ namespace symir {
             // must coincide with the start of a cell whose declared type
             // matches the pointer's static type. We check by finding the
             // most specific (field-level) ObjectInfo at the address; if
-            // the pointer's elemSize doesn't match that ObjectInfo's
-            // elemSize, the types disagree.
+            // the pointer's type doesn't match that ObjectInfo's type,
+            // the types disagree.
             const ObjectInfo *cellObj = findObject(ptrRv.ptrVal);
-            if (cellObj && cellObj->fieldName.size() > 0) {
-              // The pointer's element size comes from the provenance obj.
-              // If the field cell's elemSize differs, it's a type mismatch.
-              // (e.g., ptr i32 landing on an i64 field cell.)
-              auto tit = typeMap_.find(arg.rval.base.name);
-              if (tit != typeMap_.end()) {
-                TypePtr ptrTy = tit->second;
+            if (cellObj && cellObj->type) {
+              if (auto ptrTy = getLValueType(arg.rval)) {
                 if (auto pt = std::get_if<PtrType>(&ptrTy->v)) {
-                  uint64_t ptrElemSize = sizeofType(pt->pointee);
-                  if (ptrElemSize != cellObj->elemSize)
-                    throw UndefinedBehaviorError(
-                        "UB: Typed-access mismatch (rule 15b): pointer element size " +
-                        std::to_string(ptrElemSize) + " != cell size " +
-                        std::to_string(cellObj->elemSize)
-                    );
+                  TypePtr cellType =
+                      getCellTypeAtOffset(cellObj->type, ptrRv.ptrVal - cellObj->base);
+                  if (!TypeUtils::areTypesEqual(pt->pointee, cellType))
+                    throw UndefinedBehaviorError("UB: Typed-access mismatch (rule 15b)");
                 }
               }
             }
@@ -1595,8 +1683,18 @@ namespace symir {
               if (!containingArrayObj) {
                 uint64_t subBase = ptrRv.ptrVal;
                 uint64_t subEnd = ptrRv.ptrVal + arrSize * elemSize;
-                containingArrayObj =
-                    &addObject(ObjectInfo{obj->varName, "", subBase, subEnd, elemSize, arrSize});
+                TypePtr subType = pointeeType;
+                if (pointeeType) {
+                  if (auto at = std::get_if<ArrayType>(&pointeeType->v)) {
+                    subType = at->elem;
+                  }
+                }
+                containingArrayObj = &addObject(
+                    ObjectInfo{
+                        obj->varName, "", subBase, subEnd, elemSize, arrSize,
+                        static_cast<std::uint64_t>(-1), 0, subType
+                    }
+                );
               }
             }
 
@@ -1678,7 +1776,7 @@ namespace symir {
               containingStructObj = &addObject(
                   ObjectInfo{
                       obj->varName, "", ptrRv.ptrVal, ptrRv.ptrVal + sizeofType(pt.pointee),
-                      sizeofType(pt.pointee), 1
+                      sizeofType(pt.pointee), 1, static_cast<std::uint64_t>(-1), 0, pt.pointee
                   }
               );
             }

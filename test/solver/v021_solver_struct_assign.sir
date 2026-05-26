@@ -1,0 +1,19 @@
+// EXPECT: FAIL:StaticError
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: Whole-struct assignment is not supported (§6.6).
+
+struct @S {
+  a: i32;
+  b: i32;
+}
+
+fun @main() : i32 {
+  let mut %s1: @S = {10, 20};
+  let mut %s2: @S = {0, 0};
+^entry:
+  %s2 = %s1;
+  require %s2.a == 10;
+  require %s2.b == 20;
+  ret 0;
+}

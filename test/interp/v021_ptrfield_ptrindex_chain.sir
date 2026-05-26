@@ -1,0 +1,22 @@
+// EXPECT: PASS
+// Rationale: Verify ptrfield followed by ptrindex in interpreter.
+
+struct @S {
+  a: i32;
+  arr: [2] i32;
+}
+
+fun @main() : i32 {
+  let mut %s: @S = {10, {20, 30}};
+  let mut %p: ptr @S = null;
+  let mut %pa: ptr [2] i32 = null;
+  let mut %pe: ptr i32 = null;
+  let mut %v: i32 = 0;
+^entry:
+  %p = addr %s;
+  %pa = ptrfield %p, arr; // offset 4
+  %pe = ptrindex %pa, 1;  // offset 4 + 1*4 = 8
+
+  %v = load %pe;
+  ret %v; // Should return 30
+}

@@ -1,0 +1,26 @@
+// EXPECT: PASS
+// Rationale: Verify nested ptrfield resolution in interpreter.
+
+struct @Inner {
+  f1: i32;
+  f2: i32;
+}
+
+struct @Outer {
+  inner: @Inner;
+}
+
+fun @main() : i32 {
+  let mut %o: @Outer = {{10, 20}};
+  let mut %p: ptr @Outer = null;
+  let mut %pi: ptr @Inner = null;
+  let mut %pf: ptr i32 = null;
+  let mut %v: i32 = 0;
+^entry:
+  %p = addr %o;
+  %pi = ptrfield %p, inner; // offset 0
+  %pf = ptrfield %pi, f2;    // offset 4
+
+  %v = load %pf;
+  ret %v; // Should return 20
+}

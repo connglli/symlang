@@ -1,0 +1,13 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: Testing vector local to local initialization.
+
+fun @main() : i32 {
+  let %v1: <2> i32 = {1, 2};
+  let %v2: <2> i32 = %v1;
+^entry:
+  require %v2[0] == 1;
+  require %v2[1] == 2;
+  ret 0;
+}

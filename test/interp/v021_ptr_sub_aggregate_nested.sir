@@ -1,0 +1,24 @@
+// EXPECT: PASS
+// Rationale: Verify ptr subtraction with aggregate T in interpreter.
+
+struct @S {
+  a: i32;
+  b: i32;
+}
+
+fun @main() : i64 {
+  let mut %arr: [10] @S = 0;
+  let mut %p: ptr [10] @S = null;
+  let mut %p1: ptr @S = null;
+  let mut %p2: ptr @S = null;
+  let mut %diff: i64 = 0;
+^entry:
+  %p = addr %arr;
+  %p1 = ptrindex %p, 2; // offset 16
+  %p2 = ptrindex %p, 5; // offset 40
+
+  // byte diff = 24. sizeof(@S) = 8.
+  // diff should be 3.
+  %diff = %p2 - %p1;
+  ret %diff; // Should return 3
+}

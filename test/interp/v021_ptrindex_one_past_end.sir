@@ -1,0 +1,13 @@
+// EXPECT: PASS
+// Rationale: SPEC §7.5 Rule 16: 'ptrindex <ptr>, N' is valid
+// (one-past-the-end address).
+
+fun @main() : i32 {
+  let mut %arr: [2] i32 = {10, 20};
+  let mut %p_arr: ptr [2] i32 = null;
+  let mut %p_one_past: ptr i32 = null;
+^entry:
+  %p_arr = addr %arr;
+  %p_one_past = ptrindex %p_arr, 2; // Index 2 is valid for [2] i32
+  ret 0;
+}

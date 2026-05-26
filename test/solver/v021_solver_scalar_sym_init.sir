@@ -1,0 +1,12 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: Testing scalar sym to local initialization.
+
+fun @main() : i32 {
+  sym %?x: value i32 in [10, 10];
+  let %x: i32 = %?x;
+^entry:
+  require %x == 10;
+  ret 0;
+}

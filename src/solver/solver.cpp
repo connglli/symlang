@@ -327,9 +327,9 @@ namespace symir {
           getSort(leafType, solver), std::to_string(lit.value), smt::RoundingMode::RNE
       );
     } else if (iv.kind == InitVal::Kind::Sym) {
-      val = store.at(std::get<SymId>(iv.value).name).term;
+      return store.at(std::get<SymId>(iv.value).name);
     } else if (iv.kind == InitVal::Kind::Local) {
-      val = store.at(std::get<LocalId>(iv.value).name).term;
+      return store.at(std::get<LocalId>(iv.value).name);
     }
     return broadcast(t, val, solver);
   }
@@ -626,20 +626,9 @@ namespace symir {
                           // The result pointer's provenance = the array the
                           // source points to. Compute the narrowed sub-array
                           // range from the source's type (ptr [N] T).
-                          auto srcProv = provFromName(pi->rval.base.name);
+                          auto srcProv = provFromName(buildLValueKey(pi->rval));
                           if (srcProv && currentFun_) {
-                            TypePtr baseType;
-                            for (const auto &l: currentFun_->lets)
-                              if (l.name.name == pi->rval.base.name) {
-                                baseType = l.type;
-                                break;
-                              }
-                            if (!baseType)
-                              for (const auto &p: currentFun_->params)
-                                if (p.name.name == pi->rval.base.name) {
-                                  baseType = p.type;
-                                  break;
-                                }
+                            TypePtr baseType = resolveLValueType(pi->rval);
                             if (baseType) {
                               if (auto pt = std::get_if<PtrType>(&baseType->v)) {
                                 if (auto at = std::get_if<ArrayType>(&pt->pointee->v)) {
@@ -659,15 +648,14 @@ namespace symir {
                           return srcProv;
                         }
                         if (auto pf = std::get_if<PtrFieldAtom>(&a))
-                          return provFromName(pf->rval.base.name);
+                          return provFromName(buildLValueKey(pf->rval));
                         if (auto ca = std::get_if<CoefAtom>(&a)) {
                           if (auto id = std::get_if<LocalOrSymId>(&ca->coef))
                             if (auto lid = std::get_if<LocalId>(id))
                               return provFromName(lid->name);
                         }
                         if (auto rv = std::get_if<RValueAtom>(&a)) {
-                          if (rv->rval.accesses.empty())
-                            return provFromName(rv->rval.base.name);
+                          return provFromName(buildLValueKey(rv->rval));
                         }
                         // LoadAtom-derived ptrs: provenance unknown.
                       } else {
@@ -679,8 +667,7 @@ namespace symir {
                               return provFromName(lid->name);
                         }
                         if (auto rv = std::get_if<RValueAtom>(&a)) {
-                          if (rv->rval.accesses.empty())
-                            return provFromName(rv->rval.base.name);
+                          return provFromName(buildLValueKey(rv->rval));
                         }
                       }
                       return std::nullopt;
@@ -716,26 +703,12 @@ namespace symir {
                 );
 
                 // Determine pointee type from the ptr expression's first atom.
-                // The first atom is an RValueAtom of a ptr-typed local in the
-                // common case (rysmith generates `store %p, ...`).
                 TypePtr pointeeType;
                 if (auto *rv = std::get_if<RValueAtom>(&arg.ptr.first.v)) {
-                  const std::string baseName = rv->rval.base.name;
-                  // Look in lets and params for the ptr-typed binding.
-                  for (const auto &l: currentFun_->lets) {
-                    if (l.name.name == baseName) {
-                      if (auto pt = std::get_if<PtrType>(&l.type->v))
-                        pointeeType = pt->pointee;
-                      break;
-                    }
-                  }
-                  if (!pointeeType) {
-                    for (const auto &p: currentFun_->params) {
-                      if (p.name.name == baseName) {
-                        if (auto pt = std::get_if<PtrType>(&p.type->v))
-                          pointeeType = pt->pointee;
-                        break;
-                      }
+                  TypePtr rvalType = resolveLValueType(rv->rval);
+                  if (rvalType) {
+                    if (auto pt = std::get_if<PtrType>(&rvalType->v)) {
+                      pointeeType = pt->pointee;
                     }
                   }
                 }
@@ -1832,7 +1805,7 @@ namespace symir {
             pc.push_back(solver.make_term(smt::Kind::DISTINCT, {ptrTerm, nullTerm}));
             // Rule 19: navigation from a one-past-the-end pointer is UB.
             // If we know the source's provenance, assert ptr != base + size.
-            auto provIt = ptrProv_.find(arg.rval.base.name);
+            auto provIt = ptrProv_.find(buildLValueKey(arg.rval));
             if (provIt != ptrProv_.end()) {
               auto endAddr = solver.make_bv_value_int64(
                   bv64, static_cast<int64_t>(provIt->second.baseTag + provIt->second.size)
@@ -1856,24 +1829,15 @@ namespace symir {
             std::uint64_t elemUnits = 1;
             std::uint64_t arrSize = 0;
             if (currentFun_) {
-              TypePtr baseType;
-              for (const auto &l: currentFun_->lets)
-                if (l.name.name == arg.rval.base.name) {
-                  baseType = l.type;
-                  break;
-                }
-              if (!baseType)
-                for (const auto &p: currentFun_->params)
-                  if (p.name.name == arg.rval.base.name) {
-                    baseType = p.type;
-                    break;
-                  }
-              if (baseType)
-                if (auto pt = std::get_if<PtrType>(&baseType->v))
+              TypePtr baseType = resolveLValueType(arg.rval);
+              if (baseType) {
+                if (auto pt = std::get_if<PtrType>(&baseType->v)) {
                   if (auto at = std::get_if<ArrayType>(&pt->pointee->v)) {
                     elemUnits = sizeofTagUnits(at->elem, structs_);
                     arrSize = at->size;
                   }
+                }
+              }
             }
             // [v0.2.1] Rule 16: ptrindex with index outside [0, N] is UB.
             if (arrSize > 0) {
@@ -1901,7 +1865,7 @@ namespace symir {
             pc.push_back(solver.make_term(smt::Kind::DISTINCT, {ptrTerm, nullTerm}));
             // Rule 19: navigation from a one-past-the-end pointer is UB.
             {
-              auto provIt = ptrProv_.find(arg.rval.base.name);
+              auto provIt = ptrProv_.find(buildLValueKey(arg.rval));
               if (provIt != ptrProv_.end()) {
                 auto endAddr = solver.make_bv_value_int64(
                     bv64, static_cast<int64_t>(provIt->second.baseTag + provIt->second.size)
@@ -1910,26 +1874,7 @@ namespace symir {
               }
             }
             // Resolve the pointee struct (the rval is ptr @S — find @S).
-            const std::string baseName = arg.rval.base.name;
-            TypePtr baseType;
-            for (const auto &l: currentFun_->lets)
-              if (l.name.name == baseName) {
-                baseType = l.type;
-                break;
-              }
-            if (!baseType)
-              for (const auto &p: currentFun_->params)
-                if (p.name.name == baseName) {
-                  baseType = p.type;
-                  break;
-                }
-            // Walk the rval's accesses (for chained navigation).
-            TypePtr cur = baseType;
-            for (const auto &acc: arg.rval.accesses) {
-              (void) acc;
-              cur = nullptr; // accesses on pointer rvals are unusual; bail
-              break;
-            }
+            TypePtr cur = resolveLValueType(arg.rval);
             if (!cur || !std::holds_alternative<PtrType>(cur->v))
               throw std::runtime_error("ptrfield: rval is not pointer-typed");
             auto &pt = std::get<PtrType>(cur->v);
@@ -1965,24 +1910,10 @@ namespace symir {
 
             // Identify pointee type from the pointer-typed lvalue.
             // arg.rval is an LValue; resolve the base local's type and walk
-            // any accesses (none expected in the rysmith use case).
-            const std::string baseName = arg.rval.base.name;
-            TypePtr baseType;
-            for (const auto &l: currentFun_->lets) {
-              if (l.name.name == baseName) {
-                baseType = l.type;
-                break;
-              }
-            }
-            if (!baseType) {
-              for (const auto &p: currentFun_->params)
-                if (p.name.name == baseName) {
-                  baseType = p.type;
-                  break;
-                }
-            }
+            // any accesses.
+            const TypePtr baseType = resolveLValueType(arg.rval);
             if (!baseType || !std::holds_alternative<PtrType>(baseType->v))
-              throw std::runtime_error("load target is not ptr-typed: " + baseName);
+              throw std::runtime_error("load target is not ptr-typed: " + arg.rval.base.name);
             const TypePtr pointeeType = std::get<PtrType>(baseType->v).pointee;
 
             // Default fallback: zero of pointee sort.
@@ -2864,6 +2795,73 @@ namespace symir {
     }
 
     return lastRes;
+  }
+
+  TypePtr SymbolicExecutor::resolveLValueType(const LValue &lv) const {
+    if (!currentFun_)
+      throw std::runtime_error("resolveLValueType: no active FunDecl");
+    const std::string baseName = lv.base.name;
+    TypePtr cur;
+    for (const auto &l: currentFun_->lets) {
+      if (l.name.name == baseName) {
+        cur = l.type;
+        break;
+      }
+    }
+    if (!cur) {
+      for (const auto &p: currentFun_->params) {
+        if (p.name.name == baseName) {
+          cur = p.type;
+          break;
+        }
+      }
+    }
+    if (!cur)
+      throw std::runtime_error("resolveLValueType: base local not found: " + baseName);
+
+    for (const auto &acc: lv.accesses) {
+      if (auto ai = std::get_if<AccessIndex>(&acc)) {
+        (void) ai;
+        if (auto at = std::get_if<ArrayType>(&cur->v)) {
+          cur = at->elem;
+        } else if (auto vt = std::get_if<VecType>(&cur->v)) {
+          cur = vt->elem;
+        } else {
+          throw std::runtime_error("resolveLValueType: indexing non-array/vector type");
+        }
+      } else if (auto af = std::get_if<AccessField>(&acc)) {
+        if (auto st = std::get_if<StructType>(&cur->v)) {
+          auto sIt = structs_.find(st->name.name);
+          if (sIt == structs_.end())
+            throw std::runtime_error("resolveLValueType: unknown struct type: " + st->name.name);
+          bool found = false;
+          for (const auto &f: sIt->second->fields) {
+            if (f.name == af->field) {
+              cur = f.type;
+              found = true;
+              break;
+            }
+          }
+          if (!found)
+            throw std::runtime_error("resolveLValueType: field not found in struct: " + af->field);
+        } else {
+          throw std::runtime_error("resolveLValueType: field access on non-struct type");
+        }
+      }
+    }
+    return cur;
+  }
+
+  std::string SymbolicExecutor::buildLValueKey(const LValue &lv) const {
+    std::string key = lv.base.name;
+    for (const auto &acc: lv.accesses) {
+      if (auto af = std::get_if<AccessField>(&acc)) {
+        key += "." + af->field;
+      } else {
+        return {};
+      }
+    }
+    return key;
   }
 
 } // namespace symir

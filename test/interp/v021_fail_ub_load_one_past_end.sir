@@ -1,0 +1,14 @@
+// EXPECT: FAIL:UndefinedBehavior
+// Rationale: SPEC §7.5 Rule 13: load through one-past-the-end is UB.
+
+fun @main() : i32 {
+  let mut %arr: [2] i32 = {10, 20};
+  let mut %p_arr: ptr [2] i32 = null;
+  let mut %p_one_past: ptr i32 = null;
+  let mut %v: i32 = 0;
+^entry:
+  %p_arr = addr %arr;
+  %p_one_past = ptrindex %p_arr, 2; // valid navigation
+  %v = load %p_one_past; // UB: dereference of one-past-end
+  ret %v;
+}

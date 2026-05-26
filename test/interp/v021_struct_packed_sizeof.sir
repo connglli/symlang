@@ -1,0 +1,26 @@
+// EXPECT: PASS
+// Rationale: SPEC §2.10: packed struct layout. No padding.
+// For @S { a: i32; b: i8; c: i32; }, sizeof(@S) = 4 + 1 + 4 = 9.
+// ptr @S + 1 should advance by 9 bytes.
+
+struct @S {
+  a: i32;
+  b: i8;
+  c: i32;
+}
+
+fun @main() : i32 {
+  let mut %arr: [2] @S = {{1, 2, 3}, {4, 5, 6}};
+  let mut %p0: ptr @S = null;
+  let mut %p1: ptr @S = null;
+  let mut %pa1: ptr i32 = null;
+  let mut %v: i32 = 0;
+^entry:
+  %p0 = addr %arr[0];
+  %p1 = %p0 + 1; // advances by sizeof(@S) = 9
+
+  // p1 points to %arr[1].
+  %pa1 = ptrfield %p1, a;
+  %v = load %pa1;
+  ret %v; // Should return 4
+}

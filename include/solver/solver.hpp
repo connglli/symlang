@@ -175,6 +175,9 @@ namespace symir {
         std::vector<smt::Term> &pc
     );
 
+    TypePtr resolveLValueType(const LValue &lv) const;
+    std::string buildLValueKey(const LValue &lv) const;
+
     std::unordered_map<std::string, const StructDecl *> structs_;
 
     // Pointer dispatch helpers (v0.2.0):

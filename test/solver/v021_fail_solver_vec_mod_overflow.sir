@@ -1,0 +1,15 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: INTERPRETER, COMPILER
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: SPEC §7.6 Rule 21: Lane-wise UB.
+// Vector modulo should check for INT_MIN % -1.
+
+fun @main() : i32 {
+  let mut %v1: <2> i32 = {-2147483648, 1};
+  let mut %v2: <2> i32 = {-1, 1};
+  let mut %res: <2> i32 = {0, 0};
+^entry:
+  %res = %v1 % %v2;
+  ret 0;
+}

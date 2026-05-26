@@ -1,0 +1,20 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SKIP: INTERPRETER, COMPILER
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: SPEC §7.5 Rule 15b: Typed-access mismatch on store.
+
+struct @S {
+  a: i32;
+  b: f32;
+}
+
+fun @main() : i32 {
+  let mut %s: @S = {10, 20.0};
+  let mut %pa: ptr i32 = null;
+^entry:
+  %pa = addr %s.a;
+  %pa = %pa + 1; // points to s.b (f32)
+  store %pa, 42; // UB: i32 pointer storing into f32 field
+  ret 0;
+}
