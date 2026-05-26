@@ -812,6 +812,40 @@ namespace symir::reify {
         }
       } else if (isPtrType(targetType)) {
         a = genPtrAtom(rng, vars, targetType);
+      } else if (isVecType(targetType)) {
+        // [v0.2.1] Vec target in genExprWithRequires — delegate to the
+        // same logic as genExpr's vec branch.
+        auto vecs = vars.vecsOf(targetType);
+        const auto &vt = std::get<VecType>(targetType->v);
+        if (i == 0 && !vecs.empty()) {
+          auto *v = pickOne(rng, vecs);
+          if (onPath && sym) {
+            std::uniform_int_distribution<int> slot(0, 1);
+            if (slot(rng) == 0)
+              a = rvalAtom(localLV(v->name));
+            else
+              a = opAtom(AtomOpKind::Mul, symCoef(sym->nextCoef(vt.elem)), localLV(v->name));
+          } else {
+            a = rvalAtom(localLV(v->name));
+          }
+        } else if (i > 0 && !vecs.empty()) {
+          std::uniform_int_distribution<int> ts(0, 1);
+          if (ts(rng) == 0) {
+            auto *v = pickOne(rng, vecs);
+            a = rvalAtom(localLV(v->name));
+          } else {
+            CoefAtom ca;
+            if (isFpType(vt.elem))
+              ca.coef = FloatLit{1.0, {}};
+            else
+              ca.coef = IntLit{1, {}};
+            a = Atom{std::move(ca), {}};
+          }
+        } else {
+          CoefAtom ca;
+          ca.coef = IntLit{0, {}};
+          a = Atom{std::move(ca), {}};
+        }
       } else {
         // Struct type — generate i32 concrete (struct assignments handled specially)
         a = genConcreteIntAtom(rng, makeI32());
