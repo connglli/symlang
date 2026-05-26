@@ -1,10 +1,14 @@
 // EXPECT: FAIL:UndefinedBehavior
 // SKIP: COMPILER
-// Rationale: This test demonstrates a bug in the interpreter's Rule 15b check
-// during 'store'. It fails to check typed-access when the pointer is a
-// complex expression (not a simple local reference).
-// Expected behavior: UB (Typed-access mismatch).
-// Observed behavior: PASS (Interpreter skips the check for complex exprs).
+//
+// Rationale: SPEC §7.5 Rule 15b — typed-access mismatch on store.
+// A pointer derived from 'addr %s.f1' (ptr i32) is advanced by 2 elements
+// via pointer arithmetic to point at %s.val (i64). Storing through this
+// ptr i32 into an i64 cell is a typed-access mismatch = UB (rule 15b).
+//
+// SPEC §4.2: StoreInstr := "store" RValue "," Expr ";"
+// RValue := LValue — the pointer must be staged through a 'let mut' local;
+// complex pointer expressions cannot appear directly as the store operand.
 
 struct @S {
   f1: i32;
@@ -14,10 +18,10 @@ struct @S {
 
 fun @main() : i32 {
   let mut %s: @S = {1, 2, 0};
+  let mut %p: ptr i32 = null;
 ^entry:
-  // Complex pointer expression in 'store'.
-  // (addr %s.f1) + 2 points to %s.val (i64).
-  // But the pointer type derived from 'addr %s.f1' is 'ptr i32'.
-  store addr %s.f1 + 2, 123456789;
+  %p = addr %s.f1;
+  %p = %p + 2;
+  store %p, 123456789;
   ret 0;
 }

@@ -433,7 +433,19 @@ namespace symir {
   StoreInstr Parser::parseStoreInstr() {
     SourcePos b = peek().span.begin;
     consume(TokenKind::KwStore, "'store'");
-    Expr ptr = parseExpr();
+    // SPEC §4.2: StoreInstr := "store" RValue "," Expr ";"
+    // RValue := LValue  — the pointer must be an lvalue (local or field/index
+    // access), not an arbitrary expression. Complex pointer values must be
+    // staged through a 'let mut' local first.
+    LValue ptrLV = parseLValue();
+    SourceSpan ptrSpan{b, prevEnd()};
+    // Wrap the LValue into a minimal Expr (single RValueAtom) so the AST
+    // field type (Expr) is satisfied while enforcing the RValue restriction.
+    RValueAtom ra{ptrLV, ptrSpan};
+    Atom ptrAtom{ra, ptrSpan};
+    Expr ptr;
+    ptr.first = std::move(ptrAtom);
+    ptr.span = ptrSpan;
     consume(TokenKind::Comma, "','");
     Expr val = parseExpr();
     consume(TokenKind::Semicolon, "';'");

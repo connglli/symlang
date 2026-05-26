@@ -108,4 +108,6 @@ if __name__ == "__main__":
     )
     sys.exit(1)
 
-  run_test_suite(sys.argv[1], run_example_test(sys.argv[2], sys.argv[3]))
+  run_test_suite(
+    "example_tests", sys.argv[1], run_example_test(sys.argv[2], sys.argv[3])
+  )

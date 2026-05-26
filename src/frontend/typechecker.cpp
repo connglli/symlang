@@ -199,10 +199,28 @@ namespace symir {
     }
 
     if (initType) {
-      // [v0.2.1] Whole-vector / whole-pointer init: if initType matches
-      // the target type exactly, accept without descending. This covers
-      // `let %w: <4> i32 = %v;` and `let %p: ptr T = %q;` where the
-      // RHS is itself a value of the target's aggregate-shaped type.
+      // SPEC §3.4.2: whole-aggregate-copy via a LocalId/SymId is forbidden.
+      // Arrays ([N] T) and structs (@S) are aggregates; copying them requires
+      // explicit field-by-field assignment (see §6.6). The forbidden case is
+      // when the *atom's type* is itself an aggregate — it means we are trying
+      // to initialise an aggregate target with an aggregate-typed source
+      // variable (whole-aggregate-copy).
+      //
+      // The *broadcast* exception is still valid: a scalar atom (initType not
+      // aggregate) initialising an array target broadcasts the scalar value to
+      // every element (§3.4.2, "Broadcast"). Scalars, pointers, and vectors
+      // all map to a single SMT value term and are always safe to copy.
+      if (TypeUtils::asArray(initType) || TypeUtils::asStruct(initType)) {
+        diags.error(
+            "Whole-aggregate-copy initializer is not allowed: use BraceInit "
+            "or 'undef' to initialise array/struct types",
+            iv.span
+        );
+        return;
+      }
+      // Whole-vector / whole-pointer init: if initType matches the target type
+      // exactly, accept without descending. This covers `let %w: <4> i32 = %v;`
+      // and `let %p: ptr T = %q;`.
       if (TypeUtils::areTypesEqual(targetType, initType))
         return;
       for (const auto &leaf: targetLeaves) {

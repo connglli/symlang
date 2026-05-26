@@ -1,0 +1,18 @@
+// EXPECT: FAIL:StaticError
+// SKIP: COMPILER
+//
+// Rationale: SPEC §3.4.2: Atom-form initializers are only valid for
+// non-aggregate types. A struct type (@S) is an aggregate, so initializing
+// with a LocalId is forbidden. Only BraceInit or 'undef' are valid.
+
+struct @S {
+  x: i32;
+  y: i32;
+}
+
+fun @main() : i32 {
+  let %s1: @S = {1, 2};
+  let %s2: @S = %s1;
+^entry:
+  ret 0;
+}

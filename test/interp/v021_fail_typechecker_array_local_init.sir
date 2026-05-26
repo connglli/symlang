@@ -1,0 +1,13 @@
+// EXPECT: FAIL:StaticError
+// SKIP: COMPILER
+//
+// Rationale: SPEC §3.4.2: Atom-form initializers are only valid for
+// non-aggregate types. An array type ([N] T) is an aggregate, so initializing
+// with a LocalId is forbidden. Only BraceInit or 'undef' are valid.
+
+fun @main() : i32 {
+  let %a1: [2] i32 = 0;
+  let %a2: [2] i32 = %a1;
+^entry:
+  ret 0;
+}

@@ -2,9 +2,8 @@
 // SOLVER_ARGS: --main @main --path '^entry'
 //
 // Rationale: SPEC §3.4.2: Atom-form initializers are only valid for
-// non-aggregate types. Struct type @S is an aggregate; 'let %s2: @S = %s1;'
-// uses a LocalId (atom-form) as the initializer, which is forbidden.
-// Only BraceInit or 'undef' are valid initializers for aggregate types.
+// non-aggregate types. A struct type (@S) is an aggregate, so initializing
+// with a LocalId is forbidden. Only BraceInit or 'undef' are valid.
 
 struct @S {
   a: i32;
@@ -15,7 +14,5 @@ fun @main() : i32 {
   let %s1: @S = {10, 20};
   let %s2: @S = %s1;
 ^entry:
-  require %s2.a == 10;
-  require %s2.b == 20;
   ret 0;
 }

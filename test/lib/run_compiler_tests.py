@@ -394,7 +394,7 @@ if __name__ == "__main__":
 
   test_func, temp_dir = run_symirc_test(args.symirc_path, args.target)
   try:
-    run_test_suite(args.test_dir, test_func)
+    run_test_suite("compiler_tests", args.test_dir, test_func)
   finally:
     if os.path.exists(temp_dir):
       shutil.rmtree(temp_dir)

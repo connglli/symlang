@@ -74,7 +74,7 @@ def run_command(cmd, timeout=None):
     return None, "TIMEOUT"
 
 
-def run_test_suite(test_dir, test_func):
+def run_test_suite(test_name, test_dir, test_func):
   passed_count = 0
   failed_count = 0
   timeout_count = 0
@@ -120,7 +120,7 @@ def run_test_suite(test_dir, test_func):
       print(f"{red('FAIL')} ({duration_ms}ms)")
       failures.append((file_path, message))
 
-  print(f"\nSummary: {passed_count}/{total_count} passed", end="")
+  print(f"\nSummary ({test_name}): {passed_count}/{total_count} passed", end="")
   if timeout_count > 0:
     print(f", {yellow(str(timeout_count) + ' timeouts')}", end="")
   if skipped_count > 0:

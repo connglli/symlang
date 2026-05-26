@@ -85,4 +85,6 @@ if __name__ == "__main__":
   symirsolve_path = sys.argv[2]
   symiri_path = sys.argv[3] if len(sys.argv) > 3 else None
 
-  run_test_suite(test_dir, run_symirsolve_test(symirsolve_path, symiri_path))
+  run_test_suite(
+    "solver_tests", test_dir, run_symirsolve_test(symirsolve_path, symiri_path)
+  )

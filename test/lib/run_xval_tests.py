@@ -174,4 +174,6 @@ if __name__ == "__main__":
   symiri = argv[2]
   symirc = argv[3]
   gcc = argv[4] if len(argv) > 4 else "gcc"
-  run_test_suite(test_dir, run_xval_test(symiri, symirc, gcc, symirc_extra))
+  run_test_suite(
+    "xval_tests", test_dir, run_xval_test(symiri, symirc, gcc, symirc_extra)
+  )

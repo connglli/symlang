@@ -53,4 +53,4 @@ if __name__ == "__main__":
   test_dir = sys.argv[1]
   binary_cmd_parts = sys.argv[2:]
 
-  run_test_suite(test_dir, run_symiri_test(binary_cmd_parts))
+  run_test_suite("interp_tests", test_dir, run_symiri_test(binary_cmd_parts))

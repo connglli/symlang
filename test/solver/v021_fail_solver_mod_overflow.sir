@@ -1,0 +1,14 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: SPEC §7.1 Rule 4: Signed integer overflow.
+// Modulo should check for INT_MIN % -1.
+
+fun @main() : i32 {
+  let mut %min: i32 = -2147483648;
+  let mut %neg1: i32 = -1;
+  let mut %res: i32 = 0;
+^entry:
+  %res = %min % %neg1;
+  ret %res;
+}
