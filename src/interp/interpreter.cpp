@@ -2061,10 +2061,7 @@ namespace symir {
       return;
     uint64_t base = ait->second;
     const RuntimeValue &top = store.at(lv.base.name);
-    if (lv.accesses.empty()) {
-      heap_[base] = top;
-      return;
-    }
+
     // For nested accesses, recompute the offset relative to base.
     uint64_t addr = base;
     const RuntimeValue *walk = &top;
@@ -2086,11 +2083,7 @@ namespace symir {
         uint64_t elemSize = 0;
         if (curType) {
           if (auto at = std::get_if<ArrayType>(&curType->v)) {
-            auto bw = TypeUtils::getBitWidth(at->elem);
-            elemSize = bw ? (*bw + 7) / 8
-                       : std::holds_alternative<FloatType>(at->elem->v)
-                           ? (std::get<FloatType>(at->elem->v).kind == FloatType::Kind::F32 ? 4 : 8)
-                           : 8;
+            elemSize = sizeofType(at->elem);
             curType = at->elem;
           }
         }
@@ -2121,7 +2114,36 @@ namespace symir {
         walk = &sfit->second;
       }
     }
-    heap_[addr] = *walk;
+
+    std::function<void(uint64_t, const RuntimeValue &, const TypePtr &)> flattenToHeap =
+        [&](uint64_t targetAddr, const RuntimeValue &rv, const TypePtr &ty) {
+          if (rv.kind == RuntimeValue::Kind::Array) {
+            auto innerAt = ty ? std::get_if<ArrayType>(&ty->v) : nullptr;
+            auto innerElem = innerAt ? innerAt->elem : TypePtr{};
+            uint64_t innerElemSz = innerElem ? sizeofType(innerElem) : 4;
+            for (std::size_t j = 0; j < rv.arrayVal.size(); ++j)
+              flattenToHeap(targetAddr + j * innerElemSz, rv.arrayVal[j], innerElem);
+          } else if (rv.kind == RuntimeValue::Kind::Struct) {
+            auto innerSt = ty ? std::get_if<StructType>(&ty->v) : nullptr;
+            if (innerSt) {
+              auto sd = structs_.find(innerSt->name.name);
+              if (sd != structs_.end()) {
+                uint64_t off = 0;
+                for (const auto &f: sd->second->fields) {
+                  auto fit = rv.structVal.find(f.name);
+                  if (fit != rv.structVal.end()) {
+                    flattenToHeap(targetAddr + off, fit->second, f.type);
+                  }
+                  off += sizeofType(f.type);
+                }
+              }
+            }
+          } else {
+            heap_[targetAddr] = rv;
+          }
+        };
+
+    flattenToHeap(addr, *walk, curType);
   }
 
   bool Interpreter::evalCond(const Cond &c, const Store &store) {

@@ -1,0 +1,21 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path '^entry'
+// SKIP: COMPILER
+// Rationale: SPEC §7.5 Rule 12 & 15: Subtraction across narrowed provenance.
+
+struct @S {
+  a: i32;
+  b: i32;
+}
+
+fun @main() : i32 {
+  let mut %arr: [2] @S = {{1, 2}, {3, 4}};
+  let mut %pa: ptr i32 = null;
+  let mut %pb: ptr i32 = null;
+  let mut %diff: i64 = 0;
+^entry:
+  %pa = addr %arr[0].a;
+  %pb = addr %arr[1].a;
+  %diff = %pb - %pa; // UB: diff objects
+  ret 0;
+}

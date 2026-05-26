@@ -1,0 +1,23 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: SPEC §7.5 Rule 14: Relational comparison of pointers from
+// different objects is UB, even if they are one-past-the-end.
+
+fun @main() : i32 {
+  let mut %x: i32 = 1;
+  let mut %y: i32 = 2;
+  let mut %px: ptr i32 = null;
+  let mut %py: ptr i32 = null;
+  let mut %res: i1 = 0;
+^entry:
+  %px = addr %x;
+  %px = %px + 1; // one-past-end of x
+
+  %py = addr %y;
+  %py = %py + 1; // one-past-end of y
+
+  // Rule 14: Relational compare of different objects is UB.
+  %res = cmp < %px, %py;
+  ret 0;
+}

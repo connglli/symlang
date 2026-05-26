@@ -574,10 +574,20 @@ namespace symir {
                       return;
                     }
                   }
-                  emitLValue(arg.lhs);
-                  out_ << " = ";
-                  emitExpr(arg.rhs);
-                  out_ << ";\n";
+                  if (lhsTy && std::holds_alternative<ArrayType>(lhsTy->v)) {
+                    out_ << "memcpy(&(";
+                    emitLValue(arg.lhs);
+                    out_ << "), &(";
+                    emitExpr(arg.rhs);
+                    out_ << "), sizeof(";
+                    emitLValue(arg.lhs);
+                    out_ << "));\n";
+                  } else {
+                    emitLValue(arg.lhs);
+                    out_ << " = ";
+                    emitExpr(arg.rhs);
+                    out_ << ";\n";
+                  }
                   // [v0.2.1] FP vector lanes: per-lane finite check (rule 21
                   // lifted to FP rules 6/7 — any lane producing ±∞ or NaN
                   // is UB). The native vec-ext division won't trap on its

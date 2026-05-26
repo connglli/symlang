@@ -1,0 +1,25 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: SPEC §7.5 Rule 12: pointer subtraction across objects is UB.
+// If the selected pointer has a different provenance than the subtracted one,
+// it must be UB.
+
+fun @main() : i32 {
+  let mut %x: i32 = 1;
+  let mut %y: i32 = 2;
+  let mut %p: ptr i32 = null;
+  let mut %q: ptr i32 = null;
+  let mut %ptr: ptr i32 = null;
+  let mut %diff: i64 = 0;
+^entry:
+  %p = addr %x;
+  %q = addr %y;
+
+  // Conditionally select %q (provenance of %y)
+  %ptr = select 1 == 0, %p, %q;
+
+  // %ptr - %p => %y - %x => UB
+  %diff = %ptr - %p;
+  ret 0;
+}

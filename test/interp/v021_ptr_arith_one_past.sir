@@ -1,0 +1,14 @@
+// EXPECT: PASS
+// Rationale: Testing arithmetic from one-past-the-end.
+// SPEC §7.5 Rule 19 only forbids ptrindex/ptrfield from one-past-end.
+// Pointer arithmetic (+, -) is allowed as long as result stays in [base, end].
+
+fun @main() : i32 {
+  let mut %arr: [4] i32 = 0;
+  let mut %p: ptr i32 = null;
+^entry:
+  %p = addr %arr[0];
+  %p = %p + 4;   // p is now one-past-end (valid)
+  %p = %p - 1;   // navigation back into object (should be valid)
+  ret 0;
+}

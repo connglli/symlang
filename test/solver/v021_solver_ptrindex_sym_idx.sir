@@ -1,0 +1,21 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: SPEC §6.8.9: ptrindex with a symbolic index.
+// The solver should correctly handle symbolic indices and enforce Rule 16 bounds.
+
+fun @main() : i32 {
+  sym %?idx: value i32 in [0, 3];
+  let mut %arr: [4] i32 = {10, 20, 30, 40};
+  let mut %p: ptr [4] i32 = null;
+  let mut %pe: ptr i32 = null;
+  let mut %v: i32 = 0;
+^entry:
+  %p = addr %arr;
+  %pe = ptrindex %p, %?idx;
+  %v = load %pe;
+
+  // require that we find an index that results in 30
+  require %v == 30;
+  ret 0;
+}

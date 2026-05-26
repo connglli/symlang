@@ -1,0 +1,13 @@
+// EXPECT: FAIL:RequireViolation
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: Testing symbolic domain clamping.
+// sym i8 in [0, 200] should be effectively in [0, 127].
+// require %?x == 200 should be UNSAT.
+
+fun @main() : i32 {
+  sym %?x: value i8 in [0, 200];
+^entry:
+  require %?x == 200;
+  ret 0;
+}

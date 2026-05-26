@@ -1,0 +1,25 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: SPEC §7.5 Rule 14: Relational pointer comparison of different
+// objects is UB.
+// If the selected pointer has a different provenance, it must be UB.
+
+fun @main() : i32 {
+  let mut %x: i32 = 1;
+  let mut %y: i32 = 2;
+  let mut %px: ptr i32 = null;
+  let mut %py: ptr i32 = null;
+  let mut %ptr: ptr i32 = null;
+  let mut %res: i1 = 0;
+^entry:
+  %px = addr %x;
+  %py = addr %y;
+
+  // Select %py (provenance of %y)
+  %ptr = select 1 == 0, %px, %py;
+
+  // %ptr < %px => %y < %x => UB
+  %res = cmp < %ptr, %px;
+  ret 0;
+}

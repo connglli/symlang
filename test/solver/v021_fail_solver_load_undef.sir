@@ -1,0 +1,13 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: SPEC §7.5 Rule 11: load through unknown pointer is UB.
+// Even if there are no locals, loading through undef must be UNSAT/UB.
+
+fun @main() : i32 {
+  let mut %p: ptr i32 = undef;
+  let mut %v: i32 = 0;
+^entry:
+  %v = load %p; // Should be UB
+  ret 0;
+}

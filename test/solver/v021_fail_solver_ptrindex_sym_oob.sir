@@ -1,0 +1,16 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: SPEC §7.5 Rule 16: ptrindex index in [0, N].
+// Forced OOB symbolic index must be UNSAT.
+
+fun @main() : i32 {
+  sym %?idx: value i32 in [5, 5];
+  let mut %arr: [4] i32 = {10, 20, 30, 40};
+  let mut %p: ptr [4] i32 = null;
+  let mut %pe: ptr i32 = null;
+^entry:
+  %p = addr %arr;
+  %pe = ptrindex %p, %?idx; // Guaranteed UB (5 > 4)
+  ret 0;
+}

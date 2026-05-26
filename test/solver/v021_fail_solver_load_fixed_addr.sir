@@ -1,0 +1,12 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path '^entry'
+
+fun @main() : i32 {
+  sym %?p_val: value i64 in [4096, 4096];
+  let mut %p: ptr i32 = null;
+  let mut %v: i32 = 0;
+^entry:
+  %p = %?p_val as ptr i32;
+  %v = load %p;
+  ret 0;
+}

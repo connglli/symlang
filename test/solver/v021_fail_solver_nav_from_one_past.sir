@@ -1,0 +1,16 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path '^entry'
+// SKIP: COMPILER
+// Rationale: SPEC §7.5 Rule 19: navigation from one-past-the-end is UB.
+
+fun @main() : i32 {
+  let mut %arr: [4][2] i32 = 0;
+  let mut %p: ptr [4][2] i32 = null;
+  let mut %p1: ptr [2] i32 = null;
+  let mut %p2: ptr i32 = null;
+^entry:
+  %p = addr %arr;
+  %p1 = ptrindex %p, 4;   // Valid: one-past-end of %arr
+  %p2 = ptrindex %p1, 0;  // UB: navigation from one-past-end
+  ret 0;
+}

@@ -1,0 +1,15 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: Testing symbolic indexing on nested arrays in solver.
+
+fun @main() : i32 {
+  sym %?i: value i32 in [0, 1];
+  sym %?j: value i32 in [0, 1];
+  let mut %arr: [2][2] i32 = {{1, 2}, {3, 4}};
+  let mut %v: i32 = 0;
+^entry:
+  %v = %arr[%?i][%?j];
+  require %v == 4; // Should find %?i=1, %?j=1
+  ret 0;
+}

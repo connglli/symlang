@@ -1,0 +1,24 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path '^entry'
+// SKIP: COMPILER
+// Rationale: SPEC §7.5 Rule 14 & 15: Narrowed provenance for relational compare.
+// Comparison across different struct instances (elements of an array) is UB.
+
+struct @S {
+  a: i32;
+  b: i32;
+}
+
+fun @main() : i32 {
+  let mut %arr: [2] @S = {{1, 2}, {3, 4}};
+  let mut %pa: ptr i32 = null;
+  let mut %pb: ptr i32 = null;
+  let mut %res: i1 = 0;
+^entry:
+  %pa = addr %arr[0].a;
+  %pb = addr %arr[1].a;
+
+  // Rule 14: relational compare across different objects.
+  %res = cmp < %pa, %pb;
+  ret 0;
+}

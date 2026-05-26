@@ -1,0 +1,25 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path '^entry'
+// SKIP: COMPILER
+// Rationale: SPEC §7.5 Rule 15: Deep provenance narrowing.
+// Each ptrindex step must narrow.
+
+fun @main() : i32 {
+  let mut %arr: [2][2][2] i32 = 0;
+  let mut %p: ptr [2][2][2] i32 = null;
+  let mut %p1: ptr [2][2] i32 = null;
+  let mut %p2: ptr [2] i32 = null;
+  let mut %pe: ptr i32 = null;
+  let mut %v: i32 = 0;
+^entry:
+  %p = addr %arr;
+  %p1 = ptrindex %p, 0;  // prov: arr[0] (4 elements)
+  %p2 = ptrindex %p1, 0; // prov: arr[0][0] (2 elements)
+  %pe = ptrindex %p2, 0; // prov: arr[0][0][0..1] (2 elements)
+
+  // %pe + 2 roams outside arr[0][0] but stays inside arr[0].
+  // Rule 15 says provenance of %pe is arr[0][0].
+  %pe = %pe + 2;
+  %v = load %pe; // Should be UB
+  ret 0;
+}

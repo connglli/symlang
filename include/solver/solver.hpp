@@ -88,11 +88,17 @@ namespace symir {
       std::vector<SymbolicValue> arrayVal;
       std::unordered_map<std::string, SymbolicValue> structVal;
 
+      smt::Term prov_base; // [v0.2.1] Pointer provenance base tag (BV64)
+      smt::Term prov_size; // [v0.2.1] Pointer provenance size in tag-units (BV64)
+
       SymbolicValue() = default;
 
       SymbolicValue(Kind k) : kind(k) {}
 
       SymbolicValue(Kind k, smt::Term t, smt::Term d) : kind(k), term(t), is_defined(d) {}
+
+      SymbolicValue(Kind k, smt::Term t, smt::Term d, smt::Term pb, smt::Term ps) :
+          kind(k), term(t), is_defined(d), prov_base(pb), prov_size(ps) {}
 
       SymbolicValue(const SymbolicValue &other) = default;
       SymbolicValue &operator=(const SymbolicValue &other) = default;
@@ -124,11 +130,11 @@ namespace symir {
         std::vector<smt::Term> &pc
     );
 
-    smt::Term evalExpr(
+    SymbolicValue evalExpr(
         const Expr &e, smt::ISolver &solver, SymbolicStore &store, std::vector<smt::Term> &pc,
         std::optional<smt::Sort> expectedSort = std::nullopt
     );
-    smt::Term evalAtom(
+    SymbolicValue evalAtom(
         const Atom &a, smt::ISolver &solver, SymbolicStore &store, std::vector<smt::Term> &pc,
         std::optional<smt::Sort> expectedSort = std::nullopt
     );
@@ -136,7 +142,7 @@ namespace symir {
         const Coef &c, smt::ISolver &solver, SymbolicStore &store,
         std::optional<smt::Sort> expectedSort = std::nullopt
     );
-    smt::Term evalSelectVal(
+    SymbolicValue evalSelectVal(
         const SelectVal &sv, smt::ISolver &solver, SymbolicStore &store, std::vector<smt::Term> &pc,
         std::optional<smt::Sort> expectedSort = std::nullopt
     );
@@ -177,6 +183,9 @@ namespace symir {
 
     TypePtr resolveLValueType(const LValue &lv) const;
     std::string buildLValueKey(const LValue &lv) const;
+    TypePtr resolveExprType(const Expr &e) const;
+    TypePtr resolveAtomType(const Atom &a) const;
+    TypePtr resolveSelectValType(const SelectVal &sv) const;
 
     std::unordered_map<std::string, const StructDecl *> structs_;
 

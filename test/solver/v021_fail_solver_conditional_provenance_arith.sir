@@ -1,0 +1,25 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path '^entry'
+// SKIP: COMPILER
+// Rationale: SPEC §7.5 Rule 10: Pointer arithmetic must stay in bounds.
+// If the selected pointer is advanced out of its object's bounds, it's UB.
+
+fun @main() : i32 {
+  let mut %x: i32 = 1;
+  let mut %y: [10] i32 = 0;
+  let mut %px: ptr i32 = null;
+  let mut %py: ptr i32 = null;
+  let mut %ptr: ptr i32 = null;
+^entry:
+  %px = addr %x;
+  %py = addr %y[0];
+
+  // Select %px (size 4)
+  %ptr = select 1 == 1, %px, %py;
+
+  // Advance by 5 units (20 bytes).
+  // Valid for %py (size 40), but UB for %px (size 4).
+  // Since we selected %px, this must be UB.
+  %ptr = %ptr + 5;
+  ret 0;
+}

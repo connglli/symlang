@@ -1,0 +1,19 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path '^entry'
+//
+// Rationale: Testing symbolic vector comparison and selection.
+
+fun @main() : i32 {
+  sym %?v1: value <2> i32 in [0, 10];
+  sym %?v2: value <2> i32 in [0, 10];
+  let mut %mask: <2> i1 = {0, 0};
+  let mut %res: <2> i32 = {0, 0};
+^entry:
+  %mask = cmp > %?v1, %?v2;
+  %res = select %mask, %?v1, %?v2;
+
+  // require that we find vectors where lane 0 max is 10 and lane 1 max is 5
+  require %res[0] == 10;
+  require %res[1] == 5;
+  ret 0;
+}
