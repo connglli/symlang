@@ -1,0 +1,12 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry
+fun @main() : i32 {
+  let mut %x: i16 = 300;
+  let mut %lit: i16 = undef;
+  let mut %cond: i1 = undef;
+^entry:
+  %lit = 300 as i16;
+  %cond = cmp == %x, %lit;
+  require %cond == 1;
+  ret 0;
+}

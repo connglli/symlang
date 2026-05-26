@@ -1804,19 +1804,27 @@ namespace symir {
     }
 
     if (l.kind == RuntimeValue::Kind::Int && r.kind == RuntimeValue::Kind::Int) {
+      // [v0.2.1] For comparisons involving i1 (boolean) values, use the
+      // unsigned (masked) representation so that `true` (canonicalized as
+      // -1 in signed i1) compares equal to literal `1`.
+      int64_t li = l.intVal, ri = r.intVal;
+      if (l.bits == 1)
+        li = li & 1;
+      if (r.bits == 1)
+        ri = ri & 1;
       switch (c.op) {
         case RelOp::EQ:
-          return l.intVal == r.intVal;
+          return li == ri;
         case RelOp::NE:
-          return l.intVal != r.intVal;
+          return li != ri;
         case RelOp::LT:
-          return l.intVal < r.intVal;
+          return li < ri;
         case RelOp::LE:
-          return l.intVal <= r.intVal;
+          return li <= ri;
         case RelOp::GT:
-          return l.intVal > r.intVal;
+          return li > ri;
         case RelOp::GE:
-          return l.intVal >= r.intVal;
+          return li >= ri;
       }
     } else if (l.kind == RuntimeValue::Kind::Float && r.kind == RuntimeValue::Kind::Float) {
       switch (c.op) {
