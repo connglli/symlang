@@ -513,6 +513,49 @@ namespace symir::reify {
       options.push_back(Atom{LoadAtom{localLV(ppv->name), {}}, {}});
     }
 
+    // [v0.2.1] PtrIndexAtom: if ptee is scalar and there exists a
+    // ptr [N] ptee var, we can ptrindex it at a safe index.
+    if (isScalarType(ptee)) {
+      for (const auto &v: vars.vars) {
+        if (!isPtrType(v.type))
+          continue;
+        auto innerPtee = pointeeType(v.type);
+        if (!innerPtee || !std::holds_alternative<ArrayType>(innerPtee->v))
+          continue;
+        const auto &at = std::get<ArrayType>(innerPtee->v);
+        if (typeEquals(at.elem, ptee)) {
+          std::uniform_int_distribution<int64_t> idxd(0, (int64_t) at.size - 1);
+          PtrIndexAtom pi;
+          pi.rval = localLV(v.name);
+          pi.index = Index{IntLit{idxd(rng), {}}};
+          options.push_back(Atom{std::move(pi), {}});
+        }
+      }
+    }
+
+    // [v0.2.1] PtrFieldAtom: if there exists a ptr @S var where @S has
+    // a field of type ptee, we can ptrfield it.
+    for (const auto &v: vars.vars) {
+      if (!isPtrType(v.type))
+        continue;
+      auto innerPtee = pointeeType(v.type);
+      if (!innerPtee || !std::holds_alternative<StructType>(innerPtee->v))
+        continue;
+      const auto &st = std::get<StructType>(innerPtee->v);
+      for (const auto &sd: vars.structDecls) {
+        if (sd.name.name != st.name.name)
+          continue;
+        for (const auto &f: sd.fields) {
+          if (typeEquals(f.type, ptee)) {
+            PtrFieldAtom pf;
+            pf.rval = localLV(v.name);
+            pf.field = f.name;
+            options.push_back(Atom{std::move(pf), {}});
+          }
+        }
+      }
+    }
+
     if (!options.empty()) {
       std::uniform_int_distribution<int> d(0, (int) options.size() - 1);
       return std::move(options[d(rng)]);
@@ -546,9 +589,9 @@ namespace symir::reify {
     if (isFpType(targetType) && nAtoms > 2) {
       nAtoms = 2;
     }
-    // [v0.2.1] Vec types: single atom for now (whole-vec copy or broadcast).
+    // [v0.2.1] Vec types: 1-2 atoms (lane-wise +/- is valid).
     if (isVecType(targetType)) {
-      nAtoms = 1;
+      nAtoms = std::min(nAtoms, 2);
     }
 
     for (int i = 0; i < nAtoms; i++) {
@@ -568,20 +611,41 @@ namespace symir::reify {
       } else if (isPtrType(targetType)) {
         a = genPtrAtom(rng, vars, targetType);
       } else if (isVecType(targetType)) {
-        // [v0.2.1] Vec expression: pick a same-typed vec var as RValueAtom
-        // (whole-vec copy). If none available, fall back to a broadcast
-        // literal (the typechecker accepts scalar init for vec targets).
+        // [v0.2.1] Vec atom generation.
         auto vecs = vars.vecsOf(targetType);
-        if (!vecs.empty()) {
-          std::uniform_int_distribution<int> vd(0, (int) vecs.size() - 1);
-          auto *v = vecs[vd(rng)];
-          RValueAtom ra;
-          ra.rval = LValue{LocalId{v->name, {}}, {}, {}};
-          a = Atom{std::move(ra), {}};
+        const auto &vt = std::get<VecType>(targetType->v);
+        std::uniform_int_distribution<int> slot(0, 99);
+        int s = slot(rng);
+
+        if (s < hp::kVecCopyEnd && !vecs.empty()) {
+          // Whole-vec copy from another vec var of same type.
+          auto *v = pickOne(rng, vecs);
+          a = rvalAtom(localLV(v->name));
+        } else if (s < hp::kVecSymMulEnd && !vecs.empty() && onPath && sym) {
+          // OpAtom: sym * vec (broadcast-scalar multiply).
+          auto *v = pickOne(rng, vecs);
+          a = opAtom(AtomOpKind::Mul, symCoef(sym->nextCoef(vt.elem)), localLV(v->name));
+        } else if (s < hp::kVecConcMulEnd && !vecs.empty()) {
+          // OpAtom: concrete coef * vec (off-path safe).
+          auto *v = pickOne(rng, vecs);
+          int64_t c = std::uniform_int_distribution<int64_t>(-4, 4)(rng);
+          if (c == 0)
+            c = 1;
+          a = opAtom(AtomOpKind::Mul, intCoef(c), localLV(v->name));
+        } else if (!vecs.empty()) {
+          // Fallback: copy from any same-typed vec var.
+          auto *v = pickOne(rng, vecs);
+          a = rvalAtom(localLV(v->name));
         } else {
-          // Broadcast: use 0 literal (valid for any vec type).
+          // No vec vars available — this shouldn't happen for whole-vec
+          // assignments (genBlockStmts guards against it), but as a
+          // safety net produce a self-referencing RValueAtom. The caller
+          // should only reach here for lane-write targets (scalar type).
           CoefAtom ca;
-          ca.coef = IntLit{0, {}};
+          if (isFpType(vt.elem))
+            ca.coef = FloatLit{0.0, {}};
+          else
+            ca.coef = IntLit{0, {}};
           a = Atom{std::move(ca), {}};
         }
       } else {
@@ -916,6 +980,26 @@ namespace symir::reify {
         Expr rhs = simpleExpr(genPtrAtom(rng, vars, lhsVar->type));
         result.push_back(Instr{AssignInstr{std::move(lhs), std::move(rhs), {}}});
         continue;
+      } else if (isVecType(lhsVar->type)) {
+        // [v0.2.1] Vec assignment: whole-vec only if we have another vec
+        // var of the same type to copy from (otherwise the typechecker
+        // rejects scalar RHS). Fall back to lane write.
+        const auto &vt = std::get<VecType>(lhsVar->type->v);
+        auto sameVecs = vars.vecsOf(lhsVar->type);
+        bool canWholeVec =
+            sameVecs.size() > 1 || (sameVecs.size() == 1 && sameVecs[0]->name != lhsVar->name);
+        std::uniform_int_distribution<int> vslot(0, 99);
+        if (canWholeVec && vslot(rng) >= hp::kVecLaneWriteProb) {
+          // Whole-vec assign (copy or broadcast-mul)
+          lhs = localLV(lhsVar->name);
+          assignType = lhsVar->type;
+        } else {
+          // Lane write: %vec[i] = scalar_expr
+          std::uniform_int_distribution<int64_t> ld(0, (int64_t) vt.size - 1);
+          lhs = localLV(lhsVar->name);
+          lhs.accesses.push_back(AccessIndex{Index{IntLit{ld(rng), {}}}, {}});
+          assignType = vt.elem;
+        }
       } else {
         continue; // unknown type, skip
       }

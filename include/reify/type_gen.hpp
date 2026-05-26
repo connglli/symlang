@@ -7,12 +7,12 @@
 namespace symir::reify {
 
   struct TypeGenConfig {
-    bool enableFp = true;      // --no-fp disables f32/f64
-    bool enableVec = false;    // --enable-vec enables <N> T generation (WIP)
-    bool enableAggPtr = false; // --enable-agg-ptr enables ptr [N] T / ptr @S (WIP)
-    int maxPtrDepth = 2;       // max ptr nesting
-    int maxAggNesting = 2;     // max array/struct nesting
-    int maxAggElems = 3;       // max array size and struct field count
+    bool enableFp = true;     // --no-fp disables f32/f64
+    bool enableVec = true;    // --no-vec disables <N> T generation
+    bool enableAggPtr = true; // --no-agg-ptr disables ptr [N] T / ptr @S
+    int maxPtrDepth = 2;      // max ptr nesting
+    int maxAggNesting = 2;    // max array/struct nesting
+    int maxAggElems = 3;      // max array size and struct field count
   };
 
   // Generate a random type. depth=0 is the top-level call.

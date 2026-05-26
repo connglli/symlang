@@ -292,8 +292,8 @@ int main(int argc, char **argv) {
                           cxxopts::value<int>()->default_value("1"))
     // Type control
     ("no-fp",             "Disable f32/f64 types entirely")
-    ("enable-vec",        "Enable <N> T vector type generation (WIP)")
-    ("enable-agg-ptr",    "Enable ptr [N] T / ptr @S aggregate pointer generation (WIP)")
+    ("no-vec",            "Disable <N> T vector type generation")
+    ("no-agg-ptr",        "Disable ptr [N] T / ptr @S aggregate pointer generation")
     ("vec-lowering",      "Vec-lowering strategy for C backend (random|vecext|scalars|array|structscalars|structarray)",
                           cxxopts::value<std::string>()->default_value("random"))
     ("max-ptr-depth",     "Maximum pointer nesting depth (0 disables pointers)",
@@ -393,11 +393,8 @@ int main(int argc, char **argv) {
   // Type config
   TypeGenConfig typeCfg;
   typeCfg.enableFp = !result.count("no-fp");
-  // [v0.2.1] Vec and agg-ptr generation. Disabled by default until the
-  // full expression pipeline is wired (Phases 2-4). Enable via
-  // --enable-vec / --enable-agg-ptr for testing.
-  typeCfg.enableVec = result.count("enable-vec") > 0;
-  typeCfg.enableAggPtr = result.count("enable-agg-ptr") > 0;
+  typeCfg.enableVec = !result.count("no-vec");
+  typeCfg.enableAggPtr = !result.count("no-agg-ptr");
   typeCfg.maxPtrDepth = result["max-ptr-depth"].as<int>();
   typeCfg.maxAggNesting = result["max-agg-nest"].as<int>();
   typeCfg.maxAggElems = result["max-agg-elems"].as<int>();

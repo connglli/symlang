@@ -79,7 +79,7 @@ namespace symir::reify::hp {
   inline constexpr double kPTypePtr = 0.15;
 
   // [v0.2.1] Vector type probability at depth 0. Zeroed if enableVec=false.
-  inline constexpr double kPTypeVec = 0.10;
+  inline constexpr double kPTypeVec = 0.15;
 
   // [v0.2.1] When generating a pointer, probability the pointee is an
   // aggregate (array or struct) rather than a scalar. Zeroed if
@@ -98,6 +98,21 @@ namespace symir::reify::hp {
   inline constexpr double kFracVecVars = 0.10;
   // [v0.2.1] Fraction of nVars allocated to aggregate-pointer locals.
   inline constexpr double kFracAggPtrVars = 0.10;
+
+  // ===========================================================================
+  // [v0.2.1] Vec atom slot thresholds for genExpr vec-target dispatch.
+  // Slots: [0, kVecCopyEnd) = whole-vec copy
+  //        [kVecCopyEnd, kVecSymMulEnd) = sym * vec (on-path only)
+  //        [kVecSymMulEnd, kVecConcMulEnd) = concrete coef * vec
+  //        [kVecConcMulEnd, 100) = fallback copy
+  // ===========================================================================
+  inline constexpr int kVecCopyEnd = 50;
+  inline constexpr int kVecSymMulEnd = 70;
+  inline constexpr int kVecConcMulEnd = 85;
+
+  // [v0.2.1] Vec lane-write probability in genBlockStmts when LHS is vec.
+  // When canWholeVec is true: probability of lane write vs whole-vec assign.
+  inline constexpr int kVecLaneWriteProb = 40; // 40% lane write, 60% whole-vec
 
   // Probability that a struct field is an array (struct-of-arrays pattern).
   inline constexpr double kPStructFieldIsArray = 0.30;
