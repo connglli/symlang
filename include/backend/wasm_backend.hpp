@@ -95,6 +95,8 @@ namespace symir {
 
     TypePtr getLValueType(const LValue &lv);
     TypePtr getSelectValType(const SelectVal &sv);
+    // TODO: Support native WebAssembly SIMD-128 (v128) lowering for vectors as planned
+    // in SPEC v0.2.1 §10.16. Currently vectors are lowered by unrolling operations lane-by-lane.
     void emitVecExprLane(
         const Expr &expr, const VecType &vt, std::uint64_t lane, std::uint32_t targetWidth,
         bool isFloat

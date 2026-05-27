@@ -1348,12 +1348,13 @@ These are not part of the language semantics but pin down what backends must do 
 
 - **Packed struct layout.** `sizeof(@S) = Σ sizeof(field_i)` with no padding (§2.10). The C backend must emit struct declarations with `__attribute__((packed))` (or the platform-equivalent pragma) — otherwise the C compiler will insert alignment padding and the byte offsets used by `ptrfield`, `addr %s.f`, and the SMT memory model will disagree with the compiled binary. This is the same class of risk as the FP precision mismatch fixed in v0.2.0 (`FLT_EVAL_METHOD == 0`): a layout mismatch can survive type-checking and surface only as a differential-test failure.
 - **Vectors in C lowering.** Vector parameters, returns, and locals lower to platform SIMD types (e.g., GCC/Clang vector extensions `T __attribute__((vector_size(N*sizeof(T))))`) so the by-value semantics survive ABI. Lane-wise arithmetic maps to the corresponding vector operator. Lane access `%v[i]` lowers directly to the C subscript `v[i]` on the vector-extension type (read and write). `cmp` on vectors lowers to a SIMD compare that produces an all-ones / all-zeros lane (truncated to the `<N> i1` representation).
-- **Vectors in WASM lowering.** Use the SIMD-128 proposal where `N * sizeof(T) ≤ 16`. For larger widths the backend may split into multiple SIMD registers; this is permitted but the semantics seen by SymIR remains a single `<N> T`.
+- **Vectors in WASM lowering.** Use the SIMD-128 proposal where `N * sizeof(T) ≤ 16`. For larger widths the backend may split into multiple SIMD registers; this is permitted but the semantics seen by SymIR remains a single `<N> T`. This is deferred for v0.2.2.
 
 
 ## 11. Non-goals for v0.2.1 (planned for later)
 
 - **Interprocedural calls and summaries — planned for v0.2.2**. Support `decl` and `call` with arguments, and intrinsics.
+- **WASM SIMD support — planned for v0.2.2**. The SIMD-128 proposal and Relaxed SIMD are targets.
 - **Addressable vectors — planned for v0.2.3**. Vectors are pure value types in v0.2.1: no `ptr <N> T`, no `addr` on vector locals (§2.11). v0.2.3 will add whole-vector `load`/`store` (LLVM-style) while keeping element pointers out; this requires defining `sizeof(<N> T) = N * sizeof(T)` and adding `<N> T` to the loadable-type set.
 - **Vectors in aggregates — planned for v0.2.3**. Vectors cannot appear as struct fields or array elements in v0.2.1. Deferred together with addressable vectors above.
 - **Vector shuffles and permutations — planned for v0.2.3**. Instructions like `shuffle`, `swizzle`, lane reordering are deferred to a future version. Lane rearrangement can be achieved through sequences of lane reads and writes (`%w[0] = %v[2]; %w[1] = %v[0]; …`).

@@ -91,6 +91,7 @@ Examples:
 | `--target c`       | Emit C source (default)                    |
 | `--target wasm`    | Emit WebAssembly (WAT)                     |
 | `-o <file>`        | Output file (default: stdout)              |
+| `--vec-lowering <s>` | Vector lowering strategy for the C backend |
 | `--dump-ast`       | Dump the AST to stdout and exit            |
 | `-w`               | Inhibit all warning messages               |
 | `--Werror`         | Make all warnings into errors              |
@@ -98,12 +99,13 @@ Examples:
 | `-h, --help`       | Print usage                                |
 
 
-## Limitations (v0.2.0)
+## Limitations (v0.2.1)
 
 * `i1`, `i8`, `i16`, `i32`, `i64`, `f32`, `f64`, arrays, structs, and pointers (`ptr T`) lower to both C and WASM.
 * Heap allocation is still out of scope; pointers always refer to stack-resident `let mut` locals (see spec §2.8).
 * No optimization passes — the lowered C/WASM follows the source closely.
 * In WASM, pointers are 32-bit addresses into the linear memory; in C they are native C pointers. Pointer arithmetic and `ptr - ptr` (element distance) are both supported, but cross-object arithmetic remains UB per spec §7.5.
+* WASM vector support currently unrolls operations lane-by-lane on the shadow stack (as aggregates). Native WebAssembly SIMD-128 lowering (using the `v128` type and instructions) is planned per SPEC §10.16.
 
 ## Refinement and Undefined Behavior Semantics
 
