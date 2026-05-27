@@ -1,4 +1,6 @@
 // EXPECT: FAIL:UndefinedBehavior
+// SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for pointer subtraction across different objects.
 // Rationale: SPEC §7.5 Rule 12: 'ptr T - ptr T' with different objects is UB.
 
 fun @main() : i32 {

@@ -1,5 +1,6 @@
 // EXPECT: FAIL:UndefinedBehavior
 // SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for signed integer subtraction overflow.
 // INTERP_ARGS: --sym %?a=-2147483648
 // COMPILER_ARGS: --sym %?a=-2147483648
 

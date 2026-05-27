@@ -1,6 +1,8 @@
 // EXPECT: FAIL:UndefinedBehavior
 // SKIP: INTERPRETER
 // COMPILER_ARGS: --sym %?key=5
+// SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for bitwise overshifts.
 
 // Mutated from feistel_cipher.sir
 // Triggers Rule 5: Overshift in compiled code.

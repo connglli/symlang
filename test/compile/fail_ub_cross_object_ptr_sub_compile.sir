@@ -1,6 +1,8 @@
 // EXPECT: FAIL
 // SKIP: INTERPRETER
 // SKIP: SOLVER
+// SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for cross-object pointer subtraction.
 //
 // Intention: Expose missing cross-object pointer subtraction check in compiled C.
 // Exposes: Missing runtime check / sanitizer failure in compiled C for pointer subtraction.

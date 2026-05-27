@@ -104,3 +104,38 @@ Examples:
 * Heap allocation is still out of scope; pointers always refer to stack-resident `let mut` locals (see spec §2.8).
 * No optimization passes — the lowered C/WASM follows the source closely.
 * In WASM, pointers are 32-bit addresses into the linear memory; in C they are native C pointers. Pointer arithmetic and `ptr - ptr` (element distance) are both supported, but cross-object arithmetic remains UB per spec §7.5.
+
+## Refinement and Undefined Behavior Semantics
+
+The compilers perform **semantic refinement** over the input SymIR program. Under refinement:
+- The compiled target program (C or WebAssembly) must not exhibit any observable behavior that was not allowed by the original source program.
+- This semantic equivalence is guaranteed only when the input program is **UB-free** (free of Undefined Behavior).
+- If the input program executes a path containing Undefined Behavior (such as signed integer overflow, division/modulo by zero, or invalid pointer navigation/comparison), the behavior of the target program is **not guaranteed** and may deviate from strict SymIR interpreter/solver checks (which model UB as a fatal execution constraint).
+- **C Target vs. WASM Target**:
+  - For the **C target**, we try our best to preserve the trapping semantics of SymIR undefined behaviors. Because many of SymIR's undefined behaviors map cleanly to native C undefined behaviors, compiling the output C code with GCC and enabling sanitizers (e.g., `-fsanitize=address,undefined,float-cast-overflow,pointer-compare,pointer-subtract`) allows the runtime to catch and trap these events.
+  - However, **this effort is not put on the WebAssembly (WASM) target**. The WASM backend lowers SymIR constructs to clean, native WASM instructions without inserting safety checks or runtime sanitizer assertions. Any executed undefined behavior on WASM will follow standard WASM instruction behavior (e.g. wrapping on signed overflow, returning 0 on modulo overflow, or ignoring relational pointer provenance).
+
+### Minimal WebAssembly Example (Signed Modulo Overflow)
+
+Consider the following SymIR program:
+
+```sir
+fun @main() : i32 {
+  let mut %min: i32 = -2147483648; // INT_MIN
+  let mut %neg1: i32 = -1;
+  let mut %res: i32 = 0;
+^entry:
+  // INT_MIN % -1 triggers signed overflow (Undefined Behavior under Spec §7.1 Rule 4)
+  %res = %min % %neg1;
+  ret %res;
+}
+```
+
+- **SymIR Semantics**: Since this operation triggers signed overflow, a strict SymIR symbolic execution path or interpreter execution will trap/fail immediately, treating the execution as invalid.
+- **WebAssembly compilation**: When translated to WebAssembly, the modulo instruction is compiled directly to WASM's native signed remainder instruction:
+  ```wat
+  local.get $min
+  local.get $neg1
+  i32.rem_s
+  ```
+  In the WebAssembly specification, `i32.rem_s` with `INT_MIN` and `-1` does not trap (unlike `i32.div_s`); instead, it returns `0` silently. Consequently, the compiled target program exits successfully with `0`, demonstrating that the behavior of target code is not guaranteed once undefined behavior is introduced in the source.

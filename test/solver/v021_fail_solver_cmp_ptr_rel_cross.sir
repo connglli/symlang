@@ -1,5 +1,7 @@
 // EXPECT: FAIL:UndefinedBehavior
 // SOLVER_ARGS: --main @main --path '^entry'
+// SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for cross-object pointer comparisons.
 //
 // Rationale: SPEC §7.5 Rule 14: Relational pointer comparison of different
 // objects is UB. Forced cross-object comparison must be UNSAT.

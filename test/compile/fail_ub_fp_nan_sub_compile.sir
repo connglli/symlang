@@ -1,6 +1,8 @@
 // EXPECT: FAIL
 // SKIP: INTERPRETER
 // SKIP: SOLVER
+// SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for float operations producing NaN.
 //
 // Intention: Expose missing FP invalid (NaN) check (inf - inf) in compiled C when writing to an array or struct element.
 // Exposes: Missing __builtin_isfinite check in C backend for non-empty accesses.

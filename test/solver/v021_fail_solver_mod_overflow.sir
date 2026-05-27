@@ -1,5 +1,7 @@
 // EXPECT: FAIL:UndefinedBehavior
 // SOLVER_ARGS: --main @main --path '^entry'
+// SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for signed modulo overflow.
 //
 // Rationale: SPEC §7.1 Rule 4: Signed integer overflow.
 // Modulo should check for INT_MIN % -1.

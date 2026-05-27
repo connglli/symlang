@@ -1,6 +1,8 @@
 // EXPECT: FAIL:UndefinedBehavior
 // SOLVER_ARGS: --main @main --path ^entry
 // SKIP: INTERPRETER
+// SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for signed integer multiplication overflow.
 
 // Testing Rule 4: Signed integer overflow (multiplication) in solver.
 

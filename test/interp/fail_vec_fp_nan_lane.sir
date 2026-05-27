@@ -1,4 +1,6 @@
 // EXPECT: FAIL:UndefinedBehavior
+// SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for vector lane float operations producing NaN.
 
 // Rule 21 lifted to FP rule 7: any lane producing NaN is UB. Here lane 1
 // computes 0.0/0.0 = NaN.

@@ -1,6 +1,8 @@
 // EXPECT: FAIL
 // SKIP: INTERPRETER
 // SKIP: SOLVER
+// SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for vector select mask failures.
 //
 // Intention: Expose compiler abort/crash on vector select with an inline comparison mask.
 // Exposes: C backend limitation in emitVecMaskSelectAssign where mask is expected to be an RValueAtom.

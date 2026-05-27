@@ -1,4 +1,6 @@
 // EXPECT: FAIL:UndefinedBehavior
+// SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for vector lane signed overflow.
 
 // Rule 21: lane-wise signed overflow. Lane 3 multiplies INT32_MAX by 2
 // which overflows; the path is UB.

@@ -1,4 +1,6 @@
 // EXPECT: FAIL:UndefinedBehavior
+// SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for signed modulo overflow.
 // Rationale: Testing if INT_MIN % -1 is UB.
 // SPEC §7.1 Rule 4 says INT_MIN / -1 is UB. Modulo usually follows division.
 

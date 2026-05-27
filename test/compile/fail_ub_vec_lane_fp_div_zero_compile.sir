@@ -1,6 +1,8 @@
 // EXPECT: FAIL
 // SKIP: INTERPRETER
 // SKIP: SOLVER
+// SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for vector lane float division by zero.
 //
 // Intention: Expose missing vector lane FP division-by-zero check in compiled C.
 // Exposes: Missing __builtin_isfinite check in C backend when writing to a vector lane.

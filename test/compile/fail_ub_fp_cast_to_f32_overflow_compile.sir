@@ -1,6 +1,8 @@
 // EXPECT: FAIL
 // SKIP: INTERPRETER
 // SKIP: SOLVER
+// SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for float-to-f32 out-of-range cast overflow.
 //
 // Intention: Expose missing FP cast bounds checks (f64 as f32) in compiled C when writing to an array or struct element.
 // Exposes: Missing __builtin_isfinite check in C backend for non-empty accesses after type casts.

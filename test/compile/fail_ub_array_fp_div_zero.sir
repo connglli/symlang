@@ -1,5 +1,7 @@
 // EXPECT: FAIL
 // SKIP: INTERPRETER, SOLVER
+// SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for float division by zero.
 //
 // Intention: Expose C compiler missing FP division by zero check on array write.
 // Exposes: Compiler bug in c_backend.cpp where isfinite checks are omitted if lhs has accesses, allowing OOB/infinity values to be written to arrays without trapping.

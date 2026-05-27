@@ -1,6 +1,8 @@
 // EXPECT: FAIL:UndefinedBehavior
 // SKIP: INTERPRETER
 // COMPILER_ARGS: --sym %?missing=3
+// SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for cross-object pointer comparisons.
 
 // Mutated from bubble_sort.sir
 // Tests cross-object pointer arithmetic in compiled code.

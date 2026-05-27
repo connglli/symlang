@@ -1,5 +1,6 @@
 // EXPECT: FAIL:UndefinedBehavior
 // SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for float-to-int out-of-range casts.
 // Intention: Test UB for out-of-bounds f64-to-i64 cast.
 // Purpose: Verify that casting a double value out of the representable i64 range is flagged as Undefined Behavior (SPEC Rule 8).
 // f64 1.0e20 cast to i64: out of i64 range [-2^63, 2^63-1], UB rule 8

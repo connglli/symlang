@@ -1,4 +1,6 @@
 // EXPECT: FAIL:UndefinedBehavior
+// SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for float operations producing NaN.
 // Intention: Test UB for float operations producing NaN.
 // Purpose: Verify that float operations that yield NaN (e.g. 0.0 / 0.0) are flagged as Undefined Behavior (SPEC Rule 7).
 // f32 0.0 / 0.0 produces NaN: UB rule 7

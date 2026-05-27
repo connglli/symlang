@@ -1,5 +1,6 @@
 // EXPECT: FAIL:UndefinedBehavior
 // SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for bitwise overshifts.
 // INTERP_ARGS: --sym %?n=32
 // COMPILER_ARGS: --sym %?n=32
 

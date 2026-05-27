@@ -2,6 +2,7 @@
 // COMPILER_ARGS: --sym %?sym1=5
 // INTERP_ARGS: --sym %?sym1=5
 // SKIP: WASM
+// Reason: Custom integer bitwidth (i40) is not natively supported or verified for WASM execution testing.
 struct @StructWithArray {
   arr: [2][2] i32;
 }

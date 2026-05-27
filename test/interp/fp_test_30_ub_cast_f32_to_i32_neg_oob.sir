@@ -1,5 +1,6 @@
 // EXPECT: FAIL:UndefinedBehavior
 // SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for float-to-int out-of-range casts.
 // Intention: Test UB for out-of-bounds float-to-integer cast (negative boundary).
 // Purpose: Verify that casting a float value less than the minimum representable i32 value is flagged as Undefined Behavior (SPEC Rule 8).
 // f32 -3.4e38 cast to i32: out of i32 range [-2^31, 2^31-1], UB rule 8

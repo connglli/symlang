@@ -11,6 +11,12 @@ namespace symir {
 
   /**
    * Generates WebAssembly Text Format (.wat) from a SymIR program.
+   *
+   * Note on Undefined Behavior: Unlike the C target (which leverages C's native
+   * UB similarities and GCC sanitizers to catch and trap SymIR UBs at runtime),
+   * the WASM backend does not instrument generated WAT with check logic to detect
+   * or trap undefined behavior. In compliance with the compiler's semantic refinement
+   * model, behavior is only guaranteed for UB-free inputs.
    */
   class WasmBackend {
   public:
@@ -81,7 +87,34 @@ namespace symir {
     void emitSelectVal(const SelectVal &sv, std::uint32_t targetWidth, bool isFloat = false);
     void emitIndex(const Index &idx);
     void emitInitVal(const InitVal &iv, const TypePtr &type, std::uint32_t offset);
+    void emitCopy(
+        const TypePtr &type, std::uint32_t dstOffset, const std::string &srcName,
+        std::uint32_t srcOffset
+    );
     void emitAddress(const LValue &lv);
+
+    TypePtr getLValueType(const LValue &lv);
+    TypePtr getSelectValType(const SelectVal &sv);
+    void emitVecExprLane(
+        const Expr &expr, const VecType &vt, std::uint64_t lane, std::uint32_t targetWidth,
+        bool isFloat
+    );
+    void emitVecAtomLane(
+        const Atom &atom, const VecType &vt, std::uint64_t lane, std::uint32_t targetWidth,
+        bool isFloat
+    );
+    void emitVecCoefLane(
+        const Coef &coef, const VecType &vt, std::uint64_t lane, std::uint32_t targetWidth,
+        bool isFloat
+    );
+    void emitVecLValueLane(
+        const LValue &lv, const VecType &vt, std::uint64_t lane, std::uint32_t targetWidth,
+        bool isFloat
+    );
+    void emitVecSelectValLane(
+        const SelectVal &sv, const VecType &vt, std::uint64_t lane, std::uint32_t targetWidth,
+        bool isFloat
+    );
 
     // --- Naming and structure ---
     std::string mangleName(const std::string &name);

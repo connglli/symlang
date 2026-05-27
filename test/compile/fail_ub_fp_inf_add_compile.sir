@@ -1,6 +1,8 @@
 // EXPECT: FAIL
 // SKIP: INTERPRETER
 // SKIP: SOLVER
+// SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for float operations producing infinity.
 //
 // Intention: Expose missing FP addition overflow-to-inf check in compiled C when writing to an array or struct element.
 // Exposes: Missing __builtin_isfinite check in C backend for non-empty accesses.

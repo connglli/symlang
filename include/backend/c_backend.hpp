@@ -13,6 +13,11 @@ namespace symir {
    * Generates C code from a SymIR program.
    * Maps SymIR constructs to their C equivalents, handling bitwidths
    * and symbolic variables (as externs).
+   *
+   * Note on Undefined Behavior: For the C target, we attempt to preserve
+   * SymIR's undefined behavior semantics as closely as possible, leveraging
+   * the fact that many SymIR UBs match native C UBs, which can be trapped
+   * at runtime using sanitizers (ASan, UBSan, pointer-compare, etc.).
    */
   class CBackend {
   public:

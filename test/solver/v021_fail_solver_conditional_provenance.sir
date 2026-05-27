@@ -1,5 +1,7 @@
 // EXPECT: FAIL:UndefinedBehavior
 // SOLVER_ARGS: --main @main --path '^entry'
+// SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for pointer subtraction across different objects.
 //
 // Rationale: SPEC §7.5 Rule 12: pointer subtraction across objects is UB.
 // If the selected pointer has a different provenance than the subtracted one,

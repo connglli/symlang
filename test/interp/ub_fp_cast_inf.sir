@@ -1,5 +1,6 @@
 // EXPECT: FAIL:UndefinedBehavior
 // SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for float-to-int out-of-range casts.
 // f64 9.0e18 cast to i32: valid f64, but way out of i32 range, UB rule 8
 fun @main() : i32 {
   let %a: f64 = 9.0e18;

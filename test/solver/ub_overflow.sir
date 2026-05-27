@@ -1,5 +1,6 @@
 // EXPECT: FAIL:UndefinedBehavior
 // SKIP: WASM
+// Reason: WASM doesn't support ASan/UBSan style runtime trapping for signed integer addition overflow.
 // SKIP: SOLVER
 // SOLVER_ARGS: --main @main --path ^entry
 // COMPILER_ARGS: --sym %?a=2147483647
