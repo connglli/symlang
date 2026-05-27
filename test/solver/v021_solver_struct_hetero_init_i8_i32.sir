@@ -1,0 +1,22 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --sample 1
+// Regression: struct with i8 array field followed by i32 field; init = 0
+// triggered sort mismatch in broadcast when combined with ptrfield — the
+// getSort(struct) returned BV[8] (first array element sort), which was
+// broadcast to all fields including the i32 ones, giving them wrong BV[8]
+// terms. In enumLoad the ITE {BV[8], BV[32]} caused bitwuzla to crash.
+struct @Hetero { data: [4] i8; ip: i32; }
+fun @main() : i32 {
+  sym %?x : value i32 in [1, 10];
+  let mut %s: @Hetero = 0;
+  let mut %ps: ptr @Hetero = null;
+  let mut %pip: ptr i32 = null;
+  let mut %r: i32 = 0;
+^entry:
+  %ps  = addr %s;
+  %pip = ptrfield %ps, ip;
+  store %pip, %?x;
+  %r = load %pip;
+  require %r > 0, "ip > 0";
+  ret %r;
+}

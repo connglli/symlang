@@ -1,0 +1,27 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --sample 1
+// Regression: ptrfield + load on a struct with i8 array field + <8> i8 vector
+// crashed with bitwuzla sort mismatch (BV[8] broadcast into i32 ip field).
+struct @BFState { code: [10] i8; ip: i32; }
+fun @main() : i32 {
+  sym %?x : value i8 in {60, 62};
+  let %opcodes: <8> i8 = {62, 60, 43, 45, 46, 91, 93, 0};
+  let %LANE_NUL: i32 = 7;
+  let mut %st: @BFState = 0;
+  let mut %pst: ptr @BFState = null;
+  let mut %pip: ptr i32 = null;
+  let mut %idx: i32 = 0;
+  let mut %instr: i8 = 0;
+  let mut %op: i8 = 0;
+  let mut %eq: i1 = 0;
+^entry:
+  %pst = addr %st;
+  %pip = ptrfield %pst, ip;
+  %st.code[0] = %?x;
+  %idx   = load %pip;
+  %instr = %st.code[%idx];
+  %op    = %opcodes[%LANE_NUL];
+  %eq    = cmp == %instr, %op;
+  require %eq == 0, "instr != NUL";
+  ret 0;
+}

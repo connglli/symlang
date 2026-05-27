@@ -1,0 +1,18 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --path '^entry'
+// Struct with i8 field followed by i64 field; both must have correct sorts.
+struct @Mixed { small: i8; large: i64; }
+fun @main() : i64 {
+  sym %?v : value i64 in [100, 200];
+  let mut %s: @Mixed = 0;
+  let mut %ps: ptr @Mixed = null;
+  let mut %plarge: ptr i64 = null;
+  let mut %r: i64 = 0;
+^entry:
+  %ps     = addr %s;
+  %plarge = ptrfield %ps, large;
+  store %plarge, %?v;
+  %r = load %plarge;
+  require %r >= 100, "r >= 100";
+  ret %r;
+}

@@ -1,0 +1,18 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --path '^entry'
+// Edge case: struct with i32 field first, then i8 array.
+struct @Rev { count: i32; buf: [8] i8; }
+fun @main() : i32 {
+  sym %?n : value i32 in [1, 50];
+  let mut %s: @Rev = 0;
+  let mut %ps: ptr @Rev = null;
+  let mut %pc: ptr i32 = null;
+  let mut %r: i32 = 0;
+^entry:
+  %ps = addr %s;
+  %pc = ptrfield %ps, count;
+  store %pc, %?n;
+  %r = load %pc;
+  require %r > 0, "count > 0";
+  ret %r;
+}

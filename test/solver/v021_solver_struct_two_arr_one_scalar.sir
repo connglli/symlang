@@ -1,0 +1,19 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --path '^entry'
+// Struct with tape:[10]i8, code:[10]i8, ip:i32 — mirrors @BFState.
+// ptrfield on ip must produce BV[32], not BV[8].
+struct @BFState2 { tape: [10] i8; code: [10] i8; ip: i32; }
+fun @main() : i32 {
+  sym %?ip : value i32 in [0, 9];
+  let mut %st: @BFState2 = 0;
+  let mut %pst: ptr @BFState2 = null;
+  let mut %pip: ptr i32 = null;
+  let mut %r: i32 = 0;
+^entry:
+  %pst = addr %st;
+  %pip = ptrfield %pst, ip;
+  store %pip, %?ip;
+  %r = load %pip;
+  require %r >= 0, "ip >= 0";
+  ret %r;
+}

@@ -1,0 +1,19 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --path '^entry'
+// Regression: store and load through ptrfield ptr on a struct whose first
+// field is an i8 array and second is i32.
+struct @S { buf: [8] i8; count: i32; }
+fun @main() : i32 {
+  sym %?n : value i32 in [1, 50];
+  let mut %s: @S = 0;
+  let mut %ps: ptr @S = null;
+  let mut %pc: ptr i32 = null;
+  let mut %r: i32 = 0;
+^entry:
+  %ps = addr %s;
+  %pc = ptrfield %ps, count;
+  store %pc, %?n;
+  %r = load %pc;
+  require %r > 0, "count > 0";
+  ret %r;
+}

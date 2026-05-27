@@ -266,9 +266,32 @@ namespace symir {
       }
       return res;
     } else {
+      // Scalar leaf (IntType, FloatType, PtrType).
+      // The incoming `val` term may have been constructed for a *different*
+      // scalar type (e.g., BV[8] when this leaf is i32) because evalInit
+      // derives the zero from getSort(struct), which returns the sort of
+      // the first field's element — not this particular field's sort.
+      // Resize BV terms to the correct width so every field gets a
+      // correctly-sorted SMT constant.  All callers that broadcast an
+      // integer literal zero just want "zero of the right width", so
+      // sign-extension (= zero-extension for 0) is always correct here.
+      smt::Term leaf = val;
+      auto targetSort = getSort(t, solver);
+      auto valSort = solver.get_sort(val);
+      if (solver.is_bv_sort(valSort) && solver.is_bv_sort(targetSort)) {
+        uint32_t vw = solver.get_bv_width(valSort);
+        uint32_t tw = solver.get_bv_width(targetSort);
+        if (vw < tw)
+          leaf = solver.make_term(smt::Kind::BV_SIGN_EXTEND, {val}, {tw - vw});
+        else if (vw > tw)
+          // Truncate: re-create the constant at the narrower sort.
+          // We only reach here for literal broadcasts (= 0), so the
+          // numeric value already fits in tw bits.
+          leaf = solver.make_bv_value(targetSort, "0", 10);
+      }
       SymbolicValue res;
       res.kind = SymbolicValue::Kind::Int;
-      res.term = val;
+      res.term = leaf;
       res.is_defined = solver.make_true();
       return res;
     }
