@@ -1353,14 +1353,14 @@ These are not part of the language semantics but pin down what backends must do 
 
 ## 11. Non-goals for v0.2.1 (planned for later)
 
-- **Heap allocation** (`malloc`/`free` or arena allocation). Pointers are stack-only.
+- **Interprocedural calls and summaries — planned for v0.2.2**. Support `decl` and `call` with arguments, and intrinsics.
+- **Addressable vectors — planned for v0.2.3**. Vectors are pure value types in v0.2.1: no `ptr <N> T`, no `addr` on vector locals (§2.11). v0.2.3 will add whole-vector `load`/`store` (LLVM-style) while keeping element pointers out; this requires defining `sizeof(<N> T) = N * sizeof(T)` and adding `<N> T` to the loadable-type set.
+- **Vectors in aggregates — planned for v0.2.3**. Vectors cannot appear as struct fields or array elements in v0.2.1. Deferred together with addressable vectors above.
+- **Vector shuffles and permutations — planned for v0.2.3**. Instructions like `shuffle`, `swizzle`, lane reordering are deferred to a future version. Lane rearrangement can be achieved through sequences of lane reads and writes (`%w[0] = %v[2]; %w[1] = %v[0]; …`).
+- **Horizontal vector reductions — planned for v0.2.3**. Intrinsics like `@reduce_add`, `@reduce_max` across lanes are not supported. Use lane subscripts (`%v[0]`, `%v[1]`, …) to access individual lanes and accumulate manually.
+- **SSA / phi nodes**.
 - **`sym` of pointer type**. Pointer symbols require a richer address domain theory.
+- **Heap allocation** (`malloc`/`free` or arena allocation). Pointers are stack-only.
 - **Pointer/integer casts** (`ptr T as iN`, `iN as ptr T`).
 - **Aliasing between distinct locals** (deliberately UB; explicit alias modeling deferred).
-- **Vector shuffles and permutations**. Operations like `shuffle`, `swizzle`, lane reordering are deferred to a future version. Lane rearrangement can be achieved through sequences of lane reads and writes (`%w[0] = %v[2]; %w[1] = %v[0]; …`).
-- **Addressable vectors — planned for v0.2.2**. Vectors are pure value types in v0.2.1: no `ptr <N> T`, no `addr` on vector locals (§2.11). v0.2.2 will add whole-vector `load`/`store` (LLVM-style) while keeping element pointers out; this requires defining `sizeof(<N> T) = N * sizeof(T)` and adding `<N> T` to the loadable-type set.
-- **Vectors in aggregates — planned for v0.2.2**. Vectors cannot appear as struct fields or array elements in v0.2.1. Deferred together with addressable vectors above.
-- **Horizontal vector reductions**. Operations like `reduce_add`, `reduce_max` across lanes are not supported. Use lane subscripts (`%v[0]`, `%v[1]`, …) to access individual lanes and accumulate manually.
 - **Parentheses and general expression trees**.
-- **SSA / phi nodes**.
-- **Interprocedural calls and summaries**.
