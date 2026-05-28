@@ -387,6 +387,16 @@ namespace symir {
         return make(TokenKind::KwPtrIndex, name, b, pos());
       if (name == "ptrfield")
         return make(TokenKind::KwPtrField, name, b, pos());
+      if (name == "call")
+        return make(TokenKind::KwCall, name, b, pos());
+      if (name == "decl")
+        return make(TokenKind::KwDecl, name, b, pos());
+      if (name == "intrinsic")
+        return make(TokenKind::KwIntrinsic, name, b, pos());
+      if (name == "pre")
+        return make(TokenKind::KwPre, name, b, pos());
+      if (name == "post")
+        return make(TokenKind::KwPost, name, b, pos());
 
       if (name.size() >= 2 && name[0] == 'i' && std::isdigit(static_cast<unsigned char>(name[1]))) {
         bool allDigits = true;

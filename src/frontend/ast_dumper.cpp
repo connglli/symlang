@@ -145,6 +145,67 @@ namespace symir {
       }
       indent_level_--;
     }
+
+    for (const auto &d: p.extDecls) {
+      indent();
+      out_ << "ExtDecl: " << d.name.name << " : ";
+      dumpType(d.retType);
+      out_ << (d.contract ? " (contract form)" : " (link form)") << "\n";
+      indent_level_++;
+      if (!d.params.empty()) {
+        indent();
+        out_ << "Params:\n";
+        indent_level_++;
+        for (const auto &p: d.params) {
+          indent();
+          out_ << p.name.name << " : ";
+          dumpType(p.type);
+          out_ << "\n";
+        }
+        indent_level_--;
+      }
+      if (d.contract) {
+        for (const auto &pre: d.contract->pres) {
+          indent();
+          out_ << "pre ";
+          dumpCond(pre.cond);
+          if (pre.message)
+            out_ << ", \"" << *pre.message << "\"";
+          out_ << "\n";
+        }
+        for (const auto &post: d.contract->posts) {
+          indent();
+          out_ << "post ";
+          dumpCond(post.cond);
+          if (post.message)
+            out_ << ", \"" << *post.message << "\"";
+          out_ << "\n";
+        }
+      }
+      indent_level_--;
+    }
+
+    for (const auto &in: p.intrinsics) {
+      indent();
+      out_ << "IntrinsicDecl: " << in.name.name << " : ";
+      dumpType(in.retType);
+      out_ << "\n";
+      if (!in.params.empty()) {
+        indent_level_++;
+        indent();
+        out_ << "Params:\n";
+        indent_level_++;
+        for (const auto &p: in.params) {
+          indent();
+          out_ << p.name.name << " : ";
+          dumpType(p.type);
+          out_ << "\n";
+        }
+        indent_level_--;
+        indent_level_--;
+      }
+    }
+
     indent_level_--;
   }
 
@@ -269,6 +330,14 @@ namespace symir {
             out_ << "ptrfield ";
             dumpLValue(arg.rval);
             out_ << ", " << arg.field;
+          } else if constexpr (std::is_same_v<T, CallAtom>) {
+            out_ << "call " << arg.callee.name << "(";
+            for (size_t i = 0; i < arg.args.size(); ++i) {
+              if (i)
+                out_ << ", ";
+              dumpExpr(*arg.args[i]);
+            }
+            out_ << ")";
           }
         },
         a.v

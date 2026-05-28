@@ -71,15 +71,20 @@ namespace symir {
     IntType,   // i1, i8, i16, i32, i64, iN
     FloatType, // f32, f64
     KwUndef,
-    KwAs,       // "as"
-    KwPtr,      // "ptr"   [v0.2.0]
-    KwAddr,     // "addr"  [v0.2.0]
-    KwLoad,     // "load"  [v0.2.0]
-    KwStore,    // "store" [v0.2.0]
-    KwNull,     // "null"  [v0.2.0]
-    KwCmp,      // "cmp"       [v0.2.1]
-    KwPtrIndex, // "ptrindex"  [v0.2.1]
-    KwPtrField, // "ptrfield"  [v0.2.1]
+    KwAs,        // "as"
+    KwPtr,       // "ptr"   [v0.2.0]
+    KwAddr,      // "addr"  [v0.2.0]
+    KwLoad,      // "load"  [v0.2.0]
+    KwStore,     // "store" [v0.2.0]
+    KwNull,      // "null"  [v0.2.0]
+    KwCmp,       // "cmp"       [v0.2.1]
+    KwPtrIndex,  // "ptrindex"  [v0.2.1]
+    KwPtrField,  // "ptrfield"  [v0.2.1]
+    KwCall,      // "call"      [v0.2.2]
+    KwDecl,      // "decl"      [v0.2.2]
+    KwIntrinsic, // "intrinsic" [v0.2.2]
+    KwPre,       // "pre"       [v0.2.2]
+    KwPost,      // "post"      [v0.2.2]
   };
 
   /**

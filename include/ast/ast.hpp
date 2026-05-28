@@ -373,12 +373,25 @@ namespace symir {
   };
 
   /**
+   * [v0.2.2] Function call atom: `call @name(args...)`.
+   * The callee is resolved by name at typecheck time against the visible
+   * `fun`/`decl`/`intrinsic` declarations. Arguments are evaluated
+   * left-to-right; side effects (memory mutation, PC/REQ updates) commit
+   * unconditionally as part of evaluating the call.
+   */
+  struct CallAtom {
+    GlobalId callee;
+    std::vector<std::shared_ptr<Expr>> args;
+    SourceSpan span;
+  };
+
+  /**
    * The fundamental building block of expressions.
    */
   struct Atom {
     using Variant = std::variant<
         OpAtom, SelectAtom, CoefAtom, RValueAtom, CastAtom, UnaryAtom, AddrAtom, LoadAtom, CmpAtom,
-        PtrIndexAtom, PtrFieldAtom>;
+        PtrIndexAtom, PtrFieldAtom, CallAtom>;
     Variant v;
     SourceSpan span;
   };
@@ -603,11 +616,76 @@ namespace symir {
   };
 
   /**
+   * [v0.2.2] A pre-clause inside a contract: `pre <cond>(, "msg")?;`.
+   */
+  struct PreClause {
+    Cond cond;
+    std::optional<std::string> message;
+    SourceSpan span;
+  };
+
+  /**
+   * [v0.2.2] A post-clause inside a contract: `post <cond>(, "msg")?;`.
+   * `ret` may appear as a bareword identifier inside the cond, referring
+   * to the callee's return value (handled by parser via InPostClause flag).
+   */
+  struct PostClause {
+    Cond cond;
+    std::optional<std::string> message;
+    SourceSpan span;
+  };
+
+  /**
+   * [v0.2.2] A behavioral contract on an external declaration:
+   *   `{ pre... post... }` (zero or more pre, at least one post).
+   */
+  struct Contract {
+    std::vector<PreClause> pres;
+    std::vector<PostClause> posts;
+    SourceSpan span;
+  };
+
+  /**
+   * [v0.2.2] External function declaration.
+   *
+   * Two forms (mutually exclusive):
+   *   - Link form: signature only (`contract` is std::nullopt).
+   *     The body must be found in another `.sir` file via `-I`. The
+   *     LinkResolver pass attaches `resolvedBody`.
+   *   - Contract form: signature plus a `{ pre... post... }` block.
+   *     The body is NEVER expected elsewhere; the contract IS the spec.
+   *
+   * `resolvedBody` is a non-owning pointer (the resolver owns the parsed
+   * external Program). It is set only for link-form decls.
+   */
+  struct ExtDecl {
+    GlobalId name;
+    std::vector<ParamDecl> params;
+    TypePtr retType;
+    std::optional<Contract> contract;
+    const FunDecl *resolvedBody = nullptr;
+    SourceSpan span;
+  };
+
+  /**
+   * [v0.2.2] A built-in intrinsic declaration. The toolchain owns the
+   * semantics — no body, no contract, no `-I` resolution.
+   */
+  struct IntrinsicDecl {
+    GlobalId name;
+    std::vector<ParamDecl> params;
+    TypePtr retType;
+    SourceSpan span;
+  };
+
+  /**
    * Represents a complete SymIR program.
    */
   struct Program {
     std::vector<StructDecl> structs;
     std::vector<FunDecl> funs;
+    std::vector<ExtDecl> extDecls;         // [v0.2.2]
+    std::vector<IntrinsicDecl> intrinsics; // [v0.2.2]
     SourceSpan span;
   };
 

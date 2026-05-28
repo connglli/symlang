@@ -180,6 +180,55 @@ namespace symir {
       indent_level_--;
       out_ << "} \n\n";
     }
+
+    for (const auto &d: p.extDecls) {
+      out_ << "decl " << d.name.name << "(";
+      for (size_t i = 0; i < d.params.size(); ++i) {
+        out_ << d.params[i].name.name << ": ";
+        printType(d.params[i].type);
+        if (i + 1 < d.params.size())
+          out_ << ", ";
+      }
+      out_ << ") : ";
+      printType(d.retType);
+      if (!d.contract) {
+        out_ << ";\n\n";
+        continue;
+      }
+      out_ << " {\n";
+      indent_level_++;
+      for (const auto &pre: d.contract->pres) {
+        indent();
+        out_ << "pre ";
+        printCond(pre.cond);
+        if (pre.message)
+          out_ << ", \"" << *pre.message << "\"";
+        out_ << ";\n";
+      }
+      for (const auto &post: d.contract->posts) {
+        indent();
+        out_ << "post ";
+        printCond(post.cond);
+        if (post.message)
+          out_ << ", \"" << *post.message << "\"";
+        out_ << ";\n";
+      }
+      indent_level_--;
+      out_ << "};\n\n";
+    }
+
+    for (const auto &in: p.intrinsics) {
+      out_ << "intrinsic " << in.name.name << "(";
+      for (size_t i = 0; i < in.params.size(); ++i) {
+        out_ << in.params[i].name.name << ": ";
+        printType(in.params[i].type);
+        if (i + 1 < in.params.size())
+          out_ << ", ";
+      }
+      out_ << ") : ";
+      printType(in.retType);
+      out_ << ";\n\n";
+    }
   }
 
   void SIRPrinter::printType(const TypePtr &t) {
@@ -310,6 +359,14 @@ namespace symir {
             out_ << "ptrfield ";
             printLValue(arg.rval);
             out_ << ", " << arg.field;
+          } else if constexpr (std::is_same_v<T, CallAtom>) {
+            out_ << "call " << arg.callee.name << "(";
+            for (size_t i = 0; i < arg.args.size(); ++i) {
+              if (i)
+                out_ << ", ";
+              printExpr(*arg.args[i]);
+            }
+            out_ << ")";
           }
         },
         a.v
