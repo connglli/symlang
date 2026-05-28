@@ -238,7 +238,8 @@ namespace symir {
     // about post-state pointee memory are sound only when the caller
     // has already constrained it.
     SymbolicValue callContract(
-        const ExtDecl &decl, std::vector<SymbolicValue> args, smt::ISolver &solver,
+        const ExtDecl &decl, const std::vector<std::shared_ptr<Expr>> &argExprs,
+        std::vector<SymbolicValue> args, smt::ISolver &solver, SymbolicStore &callerStore,
         std::vector<smt::Term> &pc
     );
 

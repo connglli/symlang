@@ -530,7 +530,8 @@ namespace symir {
 
   // [v0.2.2 Phase 8] §9.6.2 contract-form `decl` expansion.
   SymbolicExecutor::SymbolicValue SymbolicExecutor::callContract(
-      const ExtDecl &decl, std::vector<SymbolicValue> args, smt::ISolver &solver,
+      const ExtDecl &decl, const std::vector<std::shared_ptr<Expr>> &argExprs,
+      std::vector<SymbolicValue> args, smt::ISolver &solver, SymbolicStore &callerStore,
       std::vector<smt::Term> &pc
   ) {
     if (args.size() != decl.params.size())
@@ -541,19 +542,115 @@ namespace symir {
     if (!decl.contract)
       throw std::runtime_error("Solver: callContract on non-contract decl");
 
-    // Build a temporary store with parameters bound to argument values.
-    SymbolicStore contractStore;
+    // [v0.2.2 Phase 8] §9.6.2 step 4: havoc the storage backing every
+    // pointer argument's provenance object before the post-state is
+    // assumed. The contract may write through any pointer parameter,
+    // so we replace the source local's symbolic value with a fresh
+    // constant. Resolution walks the call-site argument expression to
+    // find the root local; we handle the two most common forms:
+    //   - `addr %x` -> root is %x directly.
+    //   - plain `%p` (or `%p` with no accesses) where %p has a known
+    //     ptrProv_ entry -> reverse the FNV-1a tag against caller
+    //     locals/params to find the source.
+    // Other forms (load-derived pointers, ptr arithmetic with
+    // unknown provenance, ptrindex/ptrfield) fall back to "no havoc";
+    // callers that need them today can constrain post-state via the
+    // contract clauses directly.
+    auto findRootLocal = [&](const Expr &e) -> std::string {
+      if (!e.rest.empty())
+        return {};
+      auto &a = e.first;
+      if (auto addr = std::get_if<AddrAtom>(&a.v)) {
+        return addr->lv.base.name;
+      }
+      if (auto rv = std::get_if<RValueAtom>(&a.v)) {
+        if (!rv->rval.accesses.empty())
+          return {};
+        const std::string &name = rv->rval.base.name;
+        auto it = ptrProv_.find(name);
+        if (it == ptrProv_.end())
+          return {};
+        uint64_t targetTag = it->second.baseTag;
+        if (!currentFun_)
+          return {};
+        for (const auto &l: currentFun_->lets)
+          if (tagOfLocal(l.name.name) == targetTag)
+            return l.name.name;
+        for (const auto &p: currentFun_->params)
+          if (tagOfLocal(p.name.name) == targetTag)
+            return p.name.name;
+        return {};
+      }
+      return {};
+    };
+
+    auto havocLocal = [&](const std::string &name) {
+      auto it = callerStore.find(name);
+      if (it == callerStore.end())
+        return;
+      // Find the local's declared type.
+      TypePtr ty;
+      if (currentFun_) {
+        for (const auto &l: currentFun_->lets)
+          if (l.name.name == name) {
+            ty = l.type;
+            break;
+          }
+        if (!ty)
+          for (const auto &p: currentFun_->params)
+            if (p.name.name == name) {
+              ty = p.type;
+              break;
+            }
+      }
+      if (!ty)
+        return;
+      static std::atomic<uint64_t> havocCounter{0};
+      uint64_t n = havocCounter.fetch_add(1, std::memory_order_relaxed);
+      std::string freshName = decl.name.name + "$havoc$" + name + "$" + std::to_string(n);
+      it->second = createSymbolicValue(ty, freshName, solver, /*isSymbol=*/false);
+    };
+
+    for (size_t i = 0; i < decl.params.size(); ++i) {
+      const auto &paramTy = decl.params[i].type;
+      if (!paramTy || !std::holds_alternative<PtrType>(paramTy->v))
+        continue;
+      std::string rootName = findRootLocal(*argExprs[i]);
+      if (!rootName.empty())
+        havocLocal(rootName);
+    }
+
+    // Build the contract's eval store: start with the caller's store
+    // (so load through pointer parameters sees the caller's locals --
+    // including the freshly-havoc'd ones), then layer in the
+    // contract's parameter bindings.
+    SymbolicStore contractStore = callerStore;
     for (size_t i = 0; i < decl.params.size(); ++i) {
       contractStore[decl.params[i].name.name] = args[i];
     }
 
-    // Save caller fun context. Build a synthetic FunDecl that exposes
-    // the contract's params and a `ret` local so resolveLValueType /
-    // typeMap_-style lookups inside evalCond resolve correctly.
+    // Save caller fun context. Build a synthetic FunDecl that mixes
+    // the caller's locals (so load-enumeration inside the contract can
+    // see the caller's memory) with the decl's params and a `ret`
+    // local (so resolveLValueType picks up the contract's identifiers).
     const FunDecl *prevFun = currentFun_;
     auto synth = std::make_unique<FunDecl>();
     synth->name = decl.name;
-    synth->params = decl.params;
+    if (prevFun) {
+      synth->params = prevFun->params;
+      synth->lets.reserve(prevFun->lets.size() + 1);
+      for (const auto &l: prevFun->lets) {
+        LetDecl copy;
+        copy.isMutable = l.isMutable;
+        copy.name = l.name;
+        copy.type = l.type;
+        synth->lets.push_back(std::move(copy));
+      }
+    }
+    // Append the contract's params (won't collide with caller's name
+    // space in practice; param names are local to the contract).
+    for (const auto &p: decl.params)
+      synth->params.push_back(p);
     synth->retType = decl.retType;
     LetDecl retLet;
     retLet.isMutable = false;
@@ -2210,7 +2307,7 @@ namespace symir {
                     throw std::runtime_error(
                         "Solver: link-form `decl` has no body and no contract: " + arg.callee.name
                     );
-                  return callContract(d, std::move(argVals), solver, pc);
+                  return callContract(d, arg.args, std::move(argVals), solver, store, pc);
                 }
               throw std::runtime_error("Solver: call target not found: " + arg.callee.name);
             }

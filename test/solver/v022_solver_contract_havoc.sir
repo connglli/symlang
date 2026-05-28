@@ -1,0 +1,34 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --path ^entry,^exit
+// SKIP: INTERPRETER
+// SKIP: COMPILER
+// [v0.2.2] Phase 8 havoc (§9.6.2 step 4). The contract @incr mutates
+// the pointee through %p. After the call the caller's %x must have a
+// fresh symbolic value -- post says `ret == load %p`. The require
+// constrains the new pointee to equal (saved before-value + 1).
+// Without havoc the solver would see %x = %?init throughout and the
+// require would be vacuously SAT or trivially UNSAT depending on
+// %?init; with havoc the new value is genuinely fresh and gets
+// constrained by `ret == load %p` plus the caller's require.
+decl @incr(%p: ptr i32) : i32 {
+  pre %p != null, "non-null pointer";
+  post ret == load %p, "returns the new pointee value";
+};
+
+fun @main() : i32 {
+  sym %?init: value i32 in [0, 100];
+  let mut %x: i32 = 0;
+  let mut %p: ptr i32 = null;
+  let mut %before: i32 = 0;
+  let mut %after: i32 = 0;
+  let %one: i32 = 1;
+^entry:
+  %x = %?init;
+  %p = addr %x;
+  %before = load %p;
+  %after = call @incr(%p);
+  require %after == %before + %one, "incremented by 1";
+  br ^exit;
+^exit:
+  ret %?init;
+}
