@@ -229,6 +229,18 @@ namespace symir {
         std::vector<smt::Term> &pc
     );
 
+    // [v0.2.2 Phase 8] §9.6.2 contract-form decl expansion. `pre`
+    // clauses join PC; a fresh ret_sym stands for the return value;
+    // `post` clauses are assumed by joining PC. Memory havoc
+    // (§9.6.2.4) is the next refinement and is currently a TODO --
+    // pointer arguments are not yet havoc'd, so contracts that talk
+    // about post-state pointee memory are sound only when the caller
+    // has already constrained it.
+    SymbolicValue callContract(
+        const ExtDecl &decl, std::vector<SymbolicValue> args, smt::ISolver &solver,
+        std::vector<smt::Term> &pc
+    );
+
     // [v0.2.2] Currently active requirements vector (so nested callees
     // can push REQ terms). Set by solve() and consumed by callFunction.
     std::vector<smt::Term> *currentReq_ = nullptr;

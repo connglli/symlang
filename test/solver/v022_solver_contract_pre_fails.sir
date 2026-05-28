@@ -1,0 +1,22 @@
+// EXPECT: FAIL
+// SOLVER_ARGS: --path ^entry,^exit
+// SKIP: INTERPRETER
+// SKIP: COMPILER
+// [v0.2.2] Phase 8: a `pre` clause that contradicts the caller's
+// require statement makes the path infeasible (UNSAT).
+decl @alloc(%size: i32) : ptr i32 {
+  pre %size > 0, "size must be positive";
+  post ret != null, "non-null result";
+};
+
+fun @main() : i32 {
+  sym %?n: value i32 in [-10, 10];
+  let mut %p: ptr i32 = null;
+  let mut %zero: i32 = 0;
+^entry:
+  %p = call @alloc(%?n);
+  require %?n < %zero, "force pre violation";
+  br ^exit;
+^exit:
+  ret %?n;
+}

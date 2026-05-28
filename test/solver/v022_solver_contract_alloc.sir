@@ -1,0 +1,23 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --path ^entry,^exit
+// SKIP: INTERPRETER
+// SKIP: COMPILER
+// [v0.2.2] Phase 8: contract-form `decl`. The solver checks the `pre`
+// (size > 0) and assumes the `post` (ret >= 1024). It synthesizes a
+// %?size satisfying both the contract precondition and the caller's
+// require.
+decl @alloc(%size: i32) : ptr i32 {
+  pre %size > 0, "size must be positive";
+  post ret != null, "non-null result";
+};
+
+fun @main() : i32 {
+  sym %?size: value i32 in [1, 100];
+  let mut %p: ptr i32 = null;
+^entry:
+  %p = call @alloc(%?size);
+  require %p != null, "allocation succeeded";
+  br ^exit;
+^exit:
+  ret %?size;
+}

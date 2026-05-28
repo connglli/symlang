@@ -514,6 +514,68 @@ namespace symir {
     }
   }
 
+  // [v0.2.2 Phase 8] §9.6.2 contract-form `decl` expansion.
+  SymbolicExecutor::SymbolicValue SymbolicExecutor::callContract(
+      const ExtDecl &decl, std::vector<SymbolicValue> args, smt::ISolver &solver,
+      std::vector<smt::Term> &pc
+  ) {
+    if (args.size() != decl.params.size())
+      throw std::runtime_error(
+          "Solver: arity mismatch calling " + decl.name.name + ": expected " +
+          std::to_string(decl.params.size()) + ", got " + std::to_string(args.size())
+      );
+    if (!decl.contract)
+      throw std::runtime_error("Solver: callContract on non-contract decl");
+
+    // Build a temporary store with parameters bound to argument values.
+    SymbolicStore contractStore;
+    for (size_t i = 0; i < decl.params.size(); ++i) {
+      contractStore[decl.params[i].name.name] = args[i];
+    }
+
+    // Save caller fun context. Build a synthetic FunDecl that exposes
+    // the contract's params and a `ret` local so resolveLValueType /
+    // typeMap_-style lookups inside evalCond resolve correctly.
+    const FunDecl *prevFun = currentFun_;
+    auto synth = std::make_unique<FunDecl>();
+    synth->name = decl.name;
+    synth->params = decl.params;
+    synth->retType = decl.retType;
+    LetDecl retLet;
+    retLet.isMutable = false;
+    retLet.name = LocalId{"ret", {}};
+    retLet.type = decl.retType;
+    synth->lets.push_back(std::move(retLet));
+    currentFun_ = synth.get();
+    auto restore = [&]() { currentFun_ = prevFun; };
+
+    try {
+      // Step 1 (§9.6.2.1): evaluate each pre clause; conjoin to PC.
+      // Violation prunes the caller's path (rule 23).
+      for (const auto &pre: decl.contract->pres) {
+        auto cond = evalCond(pre.cond, solver, contractStore, pc);
+        pc.push_back(cond);
+      }
+
+      // Step 2 (§9.6.2.2): fresh symbolic ret_sym.
+      SymbolicValue retSym =
+          createSymbolicValue(decl.retType, decl.name.name + "$ret", solver, /*isSymbol=*/false);
+
+      // Step 3 (§9.6.2.3): assume each post clause with `ret` bound.
+      contractStore["ret"] = retSym;
+      for (const auto &post: decl.contract->posts) {
+        auto cond = evalCond(post.cond, solver, contractStore, pc);
+        pc.push_back(cond);
+      }
+
+      restore();
+      return retSym;
+    } catch (...) {
+      restore();
+      throw;
+    }
+  }
+
   SymbolicExecutor::Result SymbolicExecutor::solve(
       const std::string &funcName, const std::vector<std::string> &path,
       const std::unordered_map<std::string, int64_t> &fixedSyms
@@ -2125,13 +2187,16 @@ namespace symir {
                 if (f.name.name == arg.callee.name) {
                   return callFunction(f, std::move(argVals), solver, pc);
                 }
-              // Unmatched: must be a link- or contract-form decl. Phase 8 will
-              // handle contracts; link-form is resolved at -I time so should
-              // not appear here unless the resolver failed.
-              throw std::runtime_error(
-                  "Solver: call target is not a fun or intrinsic: " + arg.callee.name +
-                  " (contract-form decl handling is Phase 8)"
-              );
+              // [v0.2.2 Phase 8] Contract-form `decl` target.
+              for (const auto &d: prog_.extDecls)
+                if (d.name.name == arg.callee.name) {
+                  if (!d.contract)
+                    throw std::runtime_error(
+                        "Solver: link-form `decl` has no body and no contract: " + arg.callee.name
+                    );
+                  return callContract(d, std::move(argVals), solver, pc);
+                }
+              throw std::runtime_error("Solver: call target not found: " + arg.callee.name);
             }
             uint32_t N = 32;
             if (auto pb = TypeUtils::getBitWidth(intr->retType))

@@ -32,9 +32,12 @@ def run_symirsolve_test(symirsolve_path, symiri_path=None):
         if result.returncode == 0 and "SAT" in result.stdout:
           passed = True
 
-          # Verify concretized program with interpreter if requested
+          # Verify concretized program with interpreter if requested.
+          # SKIP: INTERPRETER lets contract-form decl tests pass without
+          # running interp on a program the interpreter cannot execute.
           if (
             symiri_path
+            and "INTERPRETER" not in skips
             and tmp_path
             and os.path.exists(tmp_path)
             and os.path.getsize(tmp_path) > 0
