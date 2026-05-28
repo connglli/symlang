@@ -13,8 +13,12 @@ namespace symir {
         prog.structs.push_back(parseStructDecl());
       } else if (is(TokenKind::KwFun)) {
         prog.funs.push_back(parseFunDecl());
+      } else if (is(TokenKind::KwDecl)) {
+        prog.extDecls.push_back(parseExtDecl());
+      } else if (is(TokenKind::KwIntrinsic)) {
+        prog.intrinsics.push_back(parseIntrinsicDecl());
       } else {
-        errorHere("Expected struct or function declaration");
+        errorHere("Expected struct, fun, decl, or intrinsic declaration");
       }
     }
     prog.span = SourceSpan{toks_.front().span.begin, prevEnd()};
@@ -187,6 +191,98 @@ namespace symir {
 
     return FunDecl{std::move(name), std::move(params), std::move(ret),          std::move(syms),
                    std::move(lets), std::move(blocks), SourceSpan{b, prevEnd()}};
+  }
+
+  ExtDecl Parser::parseExtDecl() {
+    SourcePos b = peek().span.begin;
+    consume(TokenKind::KwDecl, "'decl'");
+    GlobalId name = parseGlobalId();
+    consume(TokenKind::LParen, "'('");
+    std::vector<ParamDecl> params = parseParamList();
+    consume(TokenKind::RParen, "')'");
+    consume(TokenKind::Colon, "':'");
+    TypePtr ret = parseType();
+
+    ExtDecl d;
+    d.name = std::move(name);
+    d.params = std::move(params);
+    d.retType = std::move(ret);
+
+    if (tryConsume(TokenKind::Semicolon)) {
+      // Link form: signature only; body resolved via -I.
+      d.span = SourceSpan{b, prevEnd()};
+      return d;
+    }
+
+    // Contract form: `{ pre... post... };`
+    SourcePos cb = peek().span.begin;
+    consume(TokenKind::LBrace, "'{' or ';'");
+    Contract contract;
+    while (is(TokenKind::KwPre)) {
+      SourcePos pb = peek().span.begin;
+      consume(TokenKind::KwPre, "'pre'");
+      Cond c = parseCond();
+      std::optional<std::string> msg;
+      if (tryConsume(TokenKind::Comma)) {
+        const Token &s = consume(TokenKind::StringLit, "string literal message");
+        msg = s.lexeme;
+      }
+      consume(TokenKind::Semicolon, "';'");
+      contract.pres.push_back(PreClause{std::move(c), msg, SourceSpan{pb, prevEnd()}});
+    }
+    while (is(TokenKind::KwPost)) {
+      SourcePos pb = peek().span.begin;
+      consume(TokenKind::KwPost, "'post'");
+      inPostClause_ = true;
+      Cond c = parseCond();
+      inPostClause_ = false;
+      std::optional<std::string> msg;
+      if (tryConsume(TokenKind::Comma)) {
+        const Token &s = consume(TokenKind::StringLit, "string literal message");
+        msg = s.lexeme;
+      }
+      consume(TokenKind::Semicolon, "';'");
+      contract.posts.push_back(PostClause{std::move(c), msg, SourceSpan{pb, prevEnd()}});
+    }
+    contract.span = SourceSpan{cb, prevEnd()};
+    consume(TokenKind::RBrace, "'}'");
+    consume(TokenKind::Semicolon, "';'");
+    d.contract = std::move(contract);
+    d.span = SourceSpan{b, prevEnd()};
+    return d;
+  }
+
+  IntrinsicDecl Parser::parseIntrinsicDecl() {
+    SourcePos b = peek().span.begin;
+    consume(TokenKind::KwIntrinsic, "'intrinsic'");
+    GlobalId name = parseGlobalId();
+    consume(TokenKind::LParen, "'('");
+    std::vector<ParamDecl> params = parseParamList();
+    consume(TokenKind::RParen, "')'");
+    consume(TokenKind::Colon, "':'");
+    TypePtr ret = parseType();
+    consume(TokenKind::Semicolon, "';'");
+    return IntrinsicDecl{
+        std::move(name), std::move(params), std::move(ret), SourceSpan{b, prevEnd()}
+    };
+  }
+
+  Atom Parser::parseCallAtom() {
+    SourcePos b = peek().span.begin;
+    consume(TokenKind::KwCall, "'call'");
+    GlobalId callee = parseGlobalId();
+    consume(TokenKind::LParen, "'('");
+    std::vector<std::shared_ptr<Expr>> args;
+    if (!is(TokenKind::RParen)) {
+      while (true) {
+        args.push_back(std::make_shared<Expr>(parseExpr()));
+        if (!tryConsume(TokenKind::Comma))
+          break;
+      }
+    }
+    consume(TokenKind::RParen, "')'");
+    CallAtom ca{std::move(callee), std::move(args), SourceSpan{b, prevEnd()}};
+    return Atom{std::move(ca), ca.span};
   }
 
   std::vector<ParamDecl> Parser::parseParamList() {
@@ -384,7 +480,7 @@ namespace symir {
     // aggregate target. Forbidden inside aggregate braces.
     if (is(TokenKind::KwAddr) || is(TokenKind::KwLoad) || is(TokenKind::KwCmp) ||
         is(TokenKind::KwPtrIndex) || is(TokenKind::KwPtrField) || is(TokenKind::KwSelect) ||
-        is(TokenKind::Tilde)) {
+        is(TokenKind::KwCall) || is(TokenKind::Tilde)) {
       if (!allowAtom)
         errorHere("Atom-form initializer is not permitted inside aggregate braces (§3.4.2)");
       Atom atom = parseAtom();
@@ -541,7 +637,16 @@ namespace symir {
 
   LValue Parser::parseLValue() {
     SourcePos b = peek().span.begin;
-    LocalId base = parseLocalId();
+    LocalId base;
+    if (inPostClause_ && is(TokenKind::KwRet)) {
+      // [v0.2.2] Inside `post` clauses, the bareword `ret` is a reserved
+      // identifier referring to the callee's return value. Synthesize a
+      // LocalId so the rest of the AST/typechecker sees it uniformly.
+      const Token &t = consume(TokenKind::KwRet, "'ret'");
+      base = LocalId{"ret", t.span};
+    } else {
+      base = parseLocalId();
+    }
     std::vector<Access> acc;
 
     while (true) {
@@ -589,6 +694,10 @@ namespace symir {
     }
     if (is(TokenKind::LocalId)) {
       return Coef{LocalOrSymId{parseLocalId()}};
+    }
+    if (inPostClause_ && is(TokenKind::KwRet)) {
+      const Token &t = consume(TokenKind::KwRet, "'ret'");
+      return Coef{LocalOrSymId{LocalId{"ret", t.span}}};
     }
     if (is(TokenKind::SymId)) {
       return Coef{LocalOrSymId{parseSymId()}};
@@ -644,6 +753,10 @@ namespace symir {
 
   Atom Parser::parseAtom() {
     SourcePos b = peek().span.begin;
+
+    if (is(TokenKind::KwCall)) {
+      return parseCallAtom();
+    }
 
     if (is(TokenKind::KwAddr)) {
       consume(TokenKind::KwAddr, "'addr'");
@@ -807,7 +920,8 @@ namespace symir {
 
     // Leaf Atom
     if (is(TokenKind::IntLit) || is(TokenKind::FloatLit) || is(TokenKind::SymId) ||
-        is(TokenKind::LocalId) || is(TokenKind::KwNull)) {
+        is(TokenKind::LocalId) || is(TokenKind::KwNull) ||
+        (inPostClause_ && is(TokenKind::KwRet))) {
       std::size_t save_leaf = idx_;
       Coef c = parseCoef();
       if (auto lsid = std::get_if<LocalOrSymId>(&c)) {

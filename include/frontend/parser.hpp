@@ -39,6 +39,16 @@ namespace symir {
 
     StructDecl parseStructDecl();
     FunDecl parseFunDecl();
+    // [v0.2.2] decl @name(params): T;   OR  decl @name(params): T { pre... post... };
+    ExtDecl parseExtDecl();
+    // [v0.2.2] intrinsic @name(params): T;
+    IntrinsicDecl parseIntrinsicDecl();
+    // [v0.2.2] call @name(args) atom — parsed by parseAtom on KwCall.
+    Atom parseCallAtom();
+    // [v0.2.2] In `post` clauses the bareword `ret` is a reserved identifier
+    // referring to the callee's return value. We carry this context flag so
+    // parseCoef can synthesize a LocalId{"ret", ...} when it sees KwRet.
+    bool inPostClause_ = false;
     std::vector<ParamDecl> parseParamList();
     SymKind parseSymKind();
     std::optional<Domain> parseOptionalDomain();
