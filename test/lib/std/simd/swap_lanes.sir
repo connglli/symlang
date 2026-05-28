@@ -1,0 +1,38 @@
+// stdlib/simd/swap_lanes -- lane permutation primitives.
+
+// reverse_4_i32(v) -- reverse the lane order of a 4-lane vector.
+//
+// Inputs:
+//   %v : <4> i32 -- a fixed-width 4-lane signed integer vector.
+//
+// Output:
+//   <4> i32 -- a new vector whose lanes are v in reverse order:
+//     out[0] = v[3]
+//     out[1] = v[2]
+//     out[2] = v[1]
+//     out[3] = v[0]
+//
+// Semantics:
+//   v0.2.2 has no shuffle/swizzle intrinsic (deferred to v0.2.3).
+//   We materialize the result with whole-vector copy semantics: a
+//   freshly-zeroed <4> i32 is filled lane by lane via the subscript
+//   write form. Each scratch transit through %t is needed because
+//   `out[i] = v[j]` is not directly expressible -- the LHS lane-write
+//   accepts an RValue (LValue) on the RHS, not a lane-read expression.
+//
+// UB:
+//   - Reading a lane whose value is `undef` (spec rule 22).
+fun @reverse_4_i32(%v: <4> i32) : <4> i32 {
+  let mut %r: <4> i32 = {0, 0, 0, 0};
+  let %i0: i32 = 0;
+  let %i1: i32 = 1;
+  let %i2: i32 = 2;
+  let %i3: i32 = 3;
+  let mut %t: i32 = 0;
+^entry:
+  %t = %v[%i3]; %r[%i0] = %t;
+  %t = %v[%i2]; %r[%i1] = %t;
+  %t = %v[%i1]; %r[%i2] = %t;
+  %t = %v[%i0]; %r[%i3] = %t;
+  ret %r;
+}

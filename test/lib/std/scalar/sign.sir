@@ -1,0 +1,34 @@
+// stdlib/scalar/sign -- signum of an i32.
+
+// sign(x) -- the sign function.
+//
+// Inputs:
+//   %x : i32 -- the value to test.
+//
+// Output:
+//   i32 in {-1, 0, 1}:
+//     -1 if x < 0
+//      0 if x == 0
+//      1 if x > 0
+//
+// Semantics:
+//   Three-way branch on the sign of x. Returns one of three
+//   pre-declared immutable constants. No arithmetic UB possible
+//   because no operations are performed on x beyond comparisons.
+//
+// UB: none.
+fun @sign(%x: i32) : i32 {
+  let %one: i32 = 1;
+  let %neg_one: i32 = -1;
+  let %zero: i32 = 0;
+^entry:
+  br %x > 0, ^pos, ^chkneg;
+^pos:
+  ret %one;
+^chkneg:
+  br %x < 0, ^neg, ^zero;
+^neg:
+  ret %neg_one;
+^zero:
+  ret %zero;
+}

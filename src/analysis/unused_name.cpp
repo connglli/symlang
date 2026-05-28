@@ -87,6 +87,11 @@ namespace symir {
               );
             } else if constexpr (std::is_same_v<T, PtrFieldAtom>) {
               collectLValue(arg.rval);
+            } else if constexpr (std::is_same_v<T, CallAtom>) {
+              // [v0.2.2] Walk each argument expression so locals/params
+              // referenced inside `call @f(args...)` are marked used.
+              for (const auto &ap: arg.args)
+                recurseExpr(*ap, recurseExpr);
             }
           },
           a.v

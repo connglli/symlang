@@ -1,0 +1,55 @@
+// stdlib/scalar/avg -- signed integer average.
+
+// avg_naive(a, b) -- the textbook average, (a + b) / 2.
+//
+// Inputs:
+//   %a, %b : i32
+//
+// Output:
+//   i32 -- floor-toward-zero average of a and b.
+//
+// Semantics:
+//   Computes the sum a+b at i32 width and divides by 2 with C/SymIR
+//   truncated division (rounds toward zero, not toward -inf).
+//
+// UB:
+//   The intermediate sum a + b is signed-overflow UB if it would not
+//   fit in i32 (e.g. a == b == INT32_MAX). Use @avg_safe if either
+//   operand can be near the i32 limits.
+fun @avg_naive(%a: i32, %b: i32) : i32 {
+  let mut %s: i32 = 0;
+  let %two: i32 = 2;
+^entry:
+  %s = %a + %b;
+  ret %s / %two;
+}
+
+// avg_safe(a, b) -- overflow-safe signed average.
+//
+// Inputs:
+//   %a, %b : i32
+//
+// Output:
+//   i32 -- floor(avg(a, b)). Rounds toward -inf rather than zero, so
+//   avg_safe(-3, 0) == -2, not -1.
+//
+// Semantics:
+//   Bit-twiddling identity (a & b) + ((a ^ b) >> 1) expressed in three
+//   statements because SymIR expressions are flat with no parens.
+//   Works for any pair of i32 inputs including INT32_MIN/MAX.
+//
+// UB:
+//   None. The intermediate values stay strictly within i32 by
+//   construction. `>> 1` is a non-negative shift amount (literal),
+//   safe per spec rule 5.
+fun @avg_safe(%a: i32, %b: i32) : i32 {
+  let mut %and: i32 = 0;
+  let mut %xor: i32 = 0;
+  let mut %sh: i32 = 0;
+  let %one: i32 = 1;
+^entry:
+  %and = %a & %b;
+  %xor = %a ^ %b;
+  %sh  = %xor >> %one;
+  ret %and + %sh;
+}

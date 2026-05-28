@@ -1,0 +1,36 @@
+// stdlib/simd/reduce_add -- horizontal sum across vector lanes.
+
+// reduce_add_4_i32(v) -- sum all four lanes of v.
+//
+// Inputs:
+//   %v : <4> i32 -- a fixed-width 4-lane signed integer vector.
+//
+// Output:
+//   i32 -- the lane-wise sum v[0] + v[1] + v[2] + v[3], evaluated
+//   left-to-right at i32 width.
+//
+// Semantics:
+//   v0.2.2 has no horizontal-reduction intrinsic (deferred to v0.2.3).
+//   We read each lane individually with the subscript syntax and add
+//   into an accumulator. Each lane read is a scalar i32; signed
+//   overflow in the running sum is UB just like any other i32 +.
+//
+// UB:
+//   - Reading a lane whose value is `undef` (spec rule 22).
+//   - Signed overflow of any intermediate sum (rule 4). Callers should
+//     ensure the four input lanes don't sum past i32 range.
+fun @reduce_add_4_i32(%v: <4> i32) : i32 {
+  let %z: i32 = 0;
+  let %i0: i32 = 0;
+  let %i1: i32 = 1;
+  let %i2: i32 = 2;
+  let %i3: i32 = 3;
+  let mut %a: i32 = 0;
+  let mut %t: i32 = 0;
+^entry:
+  %t = %v[%i0]; %a = %z + %t;
+  %t = %v[%i1]; %a = %a + %t;
+  %t = %v[%i2]; %a = %a + %t;
+  %t = %v[%i3]; %a = %a + %t;
+  ret %a;
+}

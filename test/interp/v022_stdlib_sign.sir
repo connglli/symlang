@@ -1,0 +1,15 @@
+// EXPECT: PASS
+// INTERP_ARGS: -I test/lib/std/scalar
+decl @sign(%x: i32) : i32;
+
+fun @main() : i32 {
+  let mut %r: i32 = 0;
+^entry:
+  %r = call @sign(42);
+  require %r == 1, "sign positive";
+  %r = call @sign(-5);
+  require %r == -1, "sign negative";
+  %r = call @sign(0);
+  require %r == 0, "sign zero";
+  ret 0;
+}

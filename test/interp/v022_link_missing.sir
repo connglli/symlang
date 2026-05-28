@@ -1,0 +1,13 @@
+// EXPECT: FAIL
+// INTERP_ARGS: -I test/lib/std/scalar
+// A link-form `decl` whose body is not found in any -I directory must
+// fail. `@no_such_function` is not in the stdlib, so the interpreter
+// rejects the call (the decl remains link-form, no body).
+decl @no_such_function(%x: i32) : i32;
+
+fun @main() : i32 {
+  let mut %r: i32 = 0;
+^entry:
+  %r = call @no_such_function(0);
+  ret %r;
+}

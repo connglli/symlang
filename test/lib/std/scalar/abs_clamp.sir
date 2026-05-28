@@ -1,0 +1,36 @@
+// stdlib/scalar/abs_clamp -- bounded clamp built atop @min / @max.
+//
+// Consumers add `decl @clamp(...): i32;` and pass
+//   `-I test/lib/std/scalar`
+// to symiri/symirc/symirsolve. The link resolver picks up this body.
+
+intrinsic @min(%a: i32, %b: i32) : i32;
+intrinsic @max(%a: i32, %b: i32) : i32;
+
+// clamp(x, lo, hi) -- returns x clamped to the inclusive range [lo, hi].
+//
+// Inputs:
+//   %x   : i32   -- the value to clamp.
+//   %lo  : i32   -- the inclusive lower bound.
+//   %hi  : i32   -- the inclusive upper bound.
+//
+// Output:
+//   i32 -- if x < lo: lo; else if x > hi: hi; else x.
+//
+// Semantics:
+//   Implemented as min(max(x, lo), hi). Each step uses the @min / @max
+//   intrinsics whose SMT and runtime semantics are signed.
+//
+// Caller obligations:
+//   The caller must ensure `lo <= hi`. The function does not check or
+//   require this; passing `lo > hi` yields `hi` (the result of the
+//   inner `min`), which is mathematically incoherent and almost
+//   certainly a bug in the caller.
+//
+// UB: none beyond the operand types being well-defined i32 values.
+fun @clamp(%x: i32, %lo: i32, %hi: i32) : i32 {
+  let mut %t: i32 = 0;
+^entry:
+  %t = call @max(%x, %lo);
+  ret call @min(%t, %hi);
+}

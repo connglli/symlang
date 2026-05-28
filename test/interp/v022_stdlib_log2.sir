@@ -1,0 +1,17 @@
+// EXPECT: PASS
+// INTERP_ARGS: -I test/lib/std/scalar
+decl @log2_floor(%x: i32) : i32;
+
+fun @main() : i32 {
+  let mut %r: i32 = 0;
+^entry:
+  %r = call @log2_floor(1);
+  require %r == 0, "log2(1)";
+  %r = call @log2_floor(2);
+  require %r == 1, "log2(2)";
+  %r = call @log2_floor(3);
+  require %r == 1, "log2(3) floors to 1";
+  %r = call @log2_floor(1024);
+  require %r == 10, "log2(1024)";
+  ret 0;
+}

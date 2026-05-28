@@ -1,0 +1,16 @@
+// EXPECT: PASS
+// INTERP_ARGS: -I test/lib/std/scalar
+// [v0.2.2] Exercises test/lib/std/scalar/abs_clamp.sir via -I.
+decl @clamp(%x: i32, %lo: i32, %hi: i32) : i32;
+
+fun @main() : i32 {
+  let mut %r: i32 = 0;
+^entry:
+  %r = call @clamp(10, 0, 5);
+  require %r == 5, "clamp above hi";
+  %r = call @clamp(-3, 0, 5);
+  require %r == 0, "clamp below lo";
+  %r = call @clamp(3, 0, 5);
+  require %r == 3, "clamp in range";
+  ret 0;
+}

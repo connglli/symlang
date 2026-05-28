@@ -1,0 +1,31 @@
+// stdlib/scalar/log2_floor -- integer base-2 logarithm.
+
+intrinsic @clz(%x: i32) : i32;
+
+// log2_floor(x) -- floor of base-2 logarithm.
+//
+// Inputs:
+//   %x : i32 -- the value whose log is wanted. Must be > 0; see UB.
+//
+// Output:
+//   i32 -- floor(log2(x)). For x = 2^k exactly returns k.
+//          For x in (2^k, 2^(k+1)) returns k.
+//
+// Semantics:
+//   For i32, floor(log2(x)) equals 31 - clz(x) where clz is the
+//   number of leading zero bits. Delegates to the @clz intrinsic
+//   whose UB-precondition is `x != 0`.
+//
+// UB:
+//   - x == 0: @clz traps (spec section 12.2).
+//   Negative x is permitted at the i32 bit-pattern level (the highest
+//   bit is set so clz returns 0 and the function returns 31), but the
+//   semantic answer for log2 of a negative number is meaningless.
+//   Callers that want positive-only behavior should pre-check x > 0.
+fun @log2_floor(%x: i32) : i32 {
+  let %thirty_one: i32 = 31;
+  let mut %c: i32 = 0;
+^entry:
+  %c = call @clz(%x);
+  ret %thirty_one - %c;
+}

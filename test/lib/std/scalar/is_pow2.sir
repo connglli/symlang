@@ -1,0 +1,35 @@
+// stdlib/scalar/is_pow2 -- power-of-two test.
+
+intrinsic @popcount(%x: i32) : i32;
+
+// is_pow2(x) -- tests whether x is a positive power of two.
+//
+// Inputs:
+//   %x : i32 -- the value to test (any signed 32-bit integer).
+//
+// Output:
+//   i32 in {0, 1}:
+//     1 if x in {1, 2, 4, 8, ..., 2^30} (positive single-bit values).
+//     0 otherwise, including for x <= 0 and for x with mixed bits.
+//
+// Semantics:
+//   A two-step check:
+//     (a) reject non-positive x via a branch;
+//     (b) ask the @popcount intrinsic and accept iff the popcount is 1.
+//   Equivalent to `x > 0 && (x & (x - 1)) == 0`, but using popcount
+//   avoids the awkward two-statement form needed to express
+//   `x & (x - 1)` in SymIR's flat expression grammar.
+//
+// UB: none.
+fun @is_pow2(%x: i32) : i32 {
+  let mut %pc: i32 = 0;
+^entry:
+  br %x > 0, ^cnt, ^no;
+^cnt:
+  %pc = call @popcount(%x);
+  br %pc == 1, ^yes, ^no;
+^yes:
+  ret 1;
+^no:
+  ret 0;
+}

@@ -1,0 +1,42 @@
+// stdlib/collections/array_sum -- sum an array via pointer parameter.
+
+// array_sum_4_i32(p) -- sum the four i32 elements of an array.
+//
+// Inputs:
+//   %p : ptr [4] i32 -- a non-null pointer to a length-4 i32 array.
+//
+// Output:
+//   i32 -- the sum p[0] + p[1] + p[2] + p[3], computed left-to-right
+//   at i32 width.
+//
+// Semantics:
+//   v0.2.2 does not permit aggregate-typed parameters of array type
+//   directly. Functions that need to read an array take a pointer to
+//   it (ptr [N] T). Inside the body, ptrindex navigates to each
+//   element pointer and load yields the scalar value.
+//
+// Caller obligations:
+//   - %p must be non-null (otherwise UB at the first ptrindex).
+//   - The pointee storage at *p must have been initialized; reading
+//     an undef element is UB (rule 3).
+//
+// UB:
+//   - p == null (rule 17, navigation through null).
+//   - p is one-past-the-end of its provenance object (rule 19).
+//   - Reading an undef element (rule 3).
+//   - Signed overflow in any intermediate sum (rule 4).
+fun @array_sum_4_i32(%p: ptr [4] i32) : i32 {
+  let %i0: i32 = 0;
+  let %i1: i32 = 1;
+  let %i2: i32 = 2;
+  let %i3: i32 = 3;
+  let mut %s: i32 = 0;
+  let mut %elt: ptr i32 = null;
+  let mut %v: i32 = 0;
+^entry:
+  %elt = ptrindex %p, %i0; %v = load %elt; %s = %s + %v;
+  %elt = ptrindex %p, %i1; %v = load %elt; %s = %s + %v;
+  %elt = ptrindex %p, %i2; %v = load %elt; %s = %s + %v;
+  %elt = ptrindex %p, %i3; %v = load %elt; %s = %s + %v;
+  ret %s;
+}

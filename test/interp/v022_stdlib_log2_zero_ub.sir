@@ -1,0 +1,11 @@
+// EXPECT: FAIL:UndefinedBehavior
+// INTERP_ARGS: -I test/lib/std/scalar
+// log2_floor(0) propagates UB from @clz(0) per spec section 12.2.
+decl @log2_floor(%x: i32) : i32;
+
+fun @main() : i32 {
+  let mut %r: i32 = 0;
+^entry:
+  %r = call @log2_floor(0);
+  ret %r;
+}

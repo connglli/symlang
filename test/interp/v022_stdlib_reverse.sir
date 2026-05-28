@@ -1,0 +1,20 @@
+// EXPECT: PASS
+// INTERP_ARGS: -I test/lib/std/simd
+decl @reverse_4_i32(%v: <4> i32) : <4> i32;
+
+fun @main() : i32 {
+  let mut %v: <4> i32 = {10, 20, 30, 40};
+  let mut %w: <4> i32 = {0, 0, 0, 0};
+  let %i0: i32 = 0;
+  let %i1: i32 = 1;
+  let %i2: i32 = 2;
+  let %i3: i32 = 3;
+  let mut %t: i32 = 0;
+^entry:
+  %w = call @reverse_4_i32(%v);
+  %t = %w[%i0]; require %t == 40, "reverse[0]";
+  %t = %w[%i1]; require %t == 30, "reverse[1]";
+  %t = %w[%i2]; require %t == 20, "reverse[2]";
+  %t = %w[%i3]; require %t == 10, "reverse[3]";
+  ret 0;
+}

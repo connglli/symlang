@@ -1,0 +1,15 @@
+// EXPECT: PASS
+// INTERP_ARGS: -I test/lib/std/simd
+decl @reduce_add_4_i32(%v: <4> i32) : i32;
+
+fun @main() : i32 {
+  let mut %v: <4> i32 = {1, 2, 3, 4};
+  let mut %w: <4> i32 = {10, 20, 30, 40};
+  let mut %s: i32 = 0;
+^entry:
+  %s = call @reduce_add_4_i32(%v);
+  require %s == 10, "reduce_add 1+2+3+4";
+  %s = call @reduce_add_4_i32(%w);
+  require %s == 100, "reduce_add 10+20+30+40";
+  ret 0;
+}

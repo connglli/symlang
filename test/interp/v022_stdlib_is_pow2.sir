@@ -1,0 +1,23 @@
+// EXPECT: PASS
+// INTERP_ARGS: -I test/lib/std/scalar
+decl @is_pow2(%x: i32) : i32;
+
+fun @main() : i32 {
+  let mut %r: i32 = 0;
+^entry:
+  %r = call @is_pow2(1);
+  require %r == 1, "1 is 2^0";
+  %r = call @is_pow2(2);
+  require %r == 1, "2 is pow2";
+  %r = call @is_pow2(64);
+  require %r == 1, "64 is pow2";
+  %r = call @is_pow2(1073741824);
+  require %r == 1, "2^30 is pow2";
+  %r = call @is_pow2(0);
+  require %r == 0, "0 is not pow2";
+  %r = call @is_pow2(3);
+  require %r == 0, "3 is not pow2";
+  %r = call @is_pow2(-4);
+  require %r == 0, "negative is not pow2";
+  ret 0;
+}

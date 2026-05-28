@@ -2140,9 +2140,7 @@ namespace symir {
                   );
                 }
                 throw std::runtime_error(
-                    "Interpreter: link-form `decl` resolution is not yet "
-                    "implemented (Phase 7): " +
-                    arg.callee.name
+                    "Interpreter: link-form `decl` has no body in any -I path: " + arg.callee.name
                 );
               }
             throw std::runtime_error("Call to undeclared function: " + arg.callee.name);

@@ -1,0 +1,18 @@
+// EXPECT: PASS
+// INTERP_ARGS: -I test/lib/std/scalar
+decl @avg_naive(%a: i32, %b: i32) : i32;
+decl @avg_safe(%a: i32, %b: i32) : i32;
+
+fun @main() : i32 {
+  let mut %r: i32 = 0;
+^entry:
+  %r = call @avg_naive(4, 6);
+  require %r == 5, "avg naive 4,6";
+  %r = call @avg_naive(7, 3);
+  require %r == 5, "avg naive 7,3 truncates toward 0";
+  %r = call @avg_safe(4, 6);
+  require %r == 5, "avg safe 4,6";
+  %r = call @avg_safe(2147483647, 2147483647);
+  require %r == 2147483647, "avg safe avoids overflow";
+  ret 0;
+}
