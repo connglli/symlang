@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <random>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -244,6 +245,12 @@ namespace symir {
     // [v0.2.2] Currently active requirements vector (so nested callees
     // can push REQ terms). Set by solve() and consumed by callFunction.
     std::vector<smt::Term> *currentReq_ = nullptr;
+
+    // [v0.2.2] Per-solve RNG used by callFunction to pick a branch when
+    // a callee has a non-straight CFG. Seeded from config_.seed at the
+    // start of solve(). A future sub-path syntax (see SPEC §13) will
+    // replace this random sampling with a user-supplied callee path.
+    std::mt19937 calleeRng_;
   };
 
 } // namespace symir

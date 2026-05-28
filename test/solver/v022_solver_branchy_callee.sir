@@ -1,0 +1,32 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --path ^entry,^exit --seed 5
+// SKIP: COMPILER
+// [v0.2.2] Branchy callee: @sign has conditional branches. The solver
+// samples one path randomly (seeded by --seed). With seed=5 the path
+// reaches `^pos`, satisfying require r==1 by constraining %?k > 0.
+// SPEC §13 reserves user-supplied sub-paths to make this deterministic.
+fun @sign(%x: i32) : i32 {
+  let %one: i32 = 1;
+  let %neg_one: i32 = -1;
+  let %zero: i32 = 0;
+^entry:
+  br %x > 0, ^pos, ^chkneg;
+^pos:
+  ret %one;
+^chkneg:
+  br %x < 0, ^neg, ^zero;
+^neg:
+  ret %neg_one;
+^zero:
+  ret %zero;
+}
+fun @main() : i32 {
+  sym %?k: value i32 in [-10, 10];
+  let mut %r: i32 = 0;
+^entry:
+  %r = call @sign(%?k);
+  require %r == 1, "sign must be 1";
+  br ^exit;
+^exit:
+  ret %?k;
+}

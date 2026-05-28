@@ -440,17 +440,22 @@ namespace symir {
         throw std::runtime_error("CFG build failed for callee " + callee.name.name);
 
       std::size_t pcIdx = cfg.entry;
-      std::unordered_set<std::size_t> seen;
+      // [v0.2.2] Cap each block at a small number of visits so the
+      // random-sampling walker terminates even on callees with CFG
+      // back-edges. SPEC §13 reserves user-supplied sub-path syntax to
+      // make the choice exact -- this bound is the interim.
+      constexpr int kMaxBlockVisits = 4;
+      std::unordered_map<std::size_t, int> visitCount;
       SymbolicValue retVal(SymbolicValue::Kind::Undef);
       bool returned = false;
 
       while (!returned) {
-        if (!seen.insert(pcIdx).second)
+        if (++visitCount[pcIdx] > kMaxBlockVisits)
           throw std::runtime_error(
-              "Solver: callee " + callee.name.name +
-              " has a loop -- multi-block paths require an explicit sub-path spec (Phase 6 "
-              "supports "
-              "straight-line CFG only)"
+              "Solver: callee " + callee.name.name + " exceeded " +
+              std::to_string(kMaxBlockVisits) +
+              " visits per block (loop unrolling cap reached -- use a sub-path "
+              "spec when SPEC §13 lands)"
           );
         const Block &block = callee.blocks[pcIdx];
 
@@ -491,11 +496,20 @@ namespace symir {
                 if (!t.isConditional) {
                   pcIdx = cfg.indexOf.at(t.dest.name);
                 } else {
-                  throw std::runtime_error(
-                      "Solver: callee " + callee.name.name +
-                      " has a conditional branch -- sub-path spec required (Phase 6 supports "
-                      "straight-line CFG only)"
-                  );
+                  // [v0.2.2] Conditional branch in callee: sample one
+                  // path randomly. The chosen branch's cond is
+                  // conjoined to PC so the SMT search stays consistent.
+                  // SPEC §13 lists user-supplied sub-paths as planned
+                  // future work; random sampling is the interim.
+                  smt::Term condTerm = evalCond(*t.cond, solver, calleeStore, pc);
+                  bool takeThen = std::uniform_int_distribution<int>(0, 1)(calleeRng_) == 0;
+                  if (takeThen) {
+                    pc.push_back(condTerm);
+                    pcIdx = cfg.indexOf.at(t.thenLabel.name);
+                  } else {
+                    pc.push_back(solver.make_term(smt::Kind::NOT, {condTerm}));
+                    pcIdx = cfg.indexOf.at(t.elseLabel.name);
+                  }
                 }
               } else if constexpr (std::is_same_v<T, UnreachableTerm>) {
                 pc.push_back(solver.make_false());
@@ -623,6 +637,8 @@ namespace symir {
     // start AND on scope exit so the smt::Term destructors fire while
     // their owning solver is still alive (declared above).
     calleeSyms_.clear();
+    // [v0.2.2] Seed the callee-branch RNG. Same seed reproduces.
+    calleeRng_.seed(config_.seed ? config_.seed : 0xC0DEFACE);
 
     struct CacheGuard {
       std::unordered_map<const FunDecl *, std::unordered_map<std::string, SymbolicValue>> &cache;
