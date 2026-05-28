@@ -570,6 +570,61 @@ namespace symir {
             }
             indent();
             out_ << "i32.add\n";
+          } else if constexpr (std::is_same_v<T, CallAtom>) {
+            // [v0.2.2] Push arguments left-to-right then `call $name`.
+            const IntrinsicDecl *intr = nullptr;
+            if (prog_) {
+              for (const auto &i: prog_->intrinsics)
+                if (i.name.name == arg.callee.name) {
+                  intr = &i;
+                  break;
+                }
+            }
+            // Determine the parameter types so we can pass argWidth correctly.
+            std::vector<TypePtr> ptypes;
+            if (intr) {
+              for (const auto &p: intr->params)
+                ptypes.push_back(p.type);
+            } else if (prog_) {
+              for (const auto &f: prog_->funs)
+                if (f.name.name == arg.callee.name) {
+                  for (const auto &p: f.params)
+                    ptypes.push_back(p.type);
+                  break;
+                }
+              if (ptypes.empty()) {
+                for (const auto &d: prog_->extDecls)
+                  if (d.name.name == arg.callee.name) {
+                    for (const auto &p: d.params)
+                      ptypes.push_back(p.type);
+                    break;
+                  }
+              }
+            }
+            for (size_t i = 0; i < arg.args.size(); ++i) {
+              uint32_t pw = 32;
+              bool pf = false;
+              if (i < ptypes.size() && ptypes[i]) {
+                pw = getIntWidth(ptypes[i]);
+                if (pw == 0) {
+                  if (std::holds_alternative<FloatType>(ptypes[i]->v)) {
+                    auto &ft = std::get<FloatType>(ptypes[i]->v);
+                    pw = (ft.kind == FloatType::Kind::F32) ? 32 : 64;
+                    pf = true;
+                  } else {
+                    pw = 32;
+                  }
+                }
+              }
+              emitExpr(*arg.args[i], pw, pf);
+            }
+            indent();
+            if (intr) {
+              auto rb = getIntWidth(intr->retType);
+              out_ << "call " << intrinsicHelperName(arg.callee.name, rb) << "\n";
+            } else {
+              out_ << "call " << mangleName(arg.callee.name) << "\n";
+            }
           } else if constexpr (std::is_same_v<T, PtrFieldAtom>) {
             uint32_t fieldOffset = 0;
             auto rvTy = getLValueType(arg.rval);
@@ -1507,7 +1562,159 @@ namespace symir {
     }
   }
 
+  std::string WasmBackend::intrinsicHelperName(const std::string &intrName, uint32_t bits) const {
+    std::string base = intrName;
+    if (!base.empty() && base[0] == '@')
+      base.erase(0, 1);
+    return "$_symir_" + base + "_i" + std::to_string(bits);
+  }
+
+  // [v0.2.2] §11.5 widening-and-mask. WASM has native i32/i64 popcnt/clz/ctz
+  // but no abs/min/max for ints — those are emitted via select / branches.
+  // The helper widens iN to i32 or i64, computes, and sign-masks back to N.
+  void WasmBackend::emitIntrinsicHelper(const IntrinsicDecl &intr) {
+    auto rb = getIntWidth(intr.retType);
+    if (rb == 0)
+      return;
+    uint32_t N = rb;
+    uint32_t W = (N <= 32) ? 32 : 64;
+    std::string ity = (W == 32) ? "i32" : "i64";
+    std::string name = intrinsicHelperName(intr.name.name, N);
+
+    indent();
+    out_ << "(func " << name;
+    for (size_t i = 0; i < intr.params.size(); ++i) {
+      out_ << " (param $a" << i << " " << ity << ")";
+    }
+    out_ << " (result " << ity << ")\n";
+    indent_level_++;
+    // Declare a scratch local for @clz/@ctz (UB-check on zero).
+    const std::string &intrN = intr.name.name;
+    if (intrN == "@clz" || intrN == "@ctz") {
+      indent();
+      out_ << "(local $tmp0 " << ity << ")\n";
+    }
+
+    auto pushArg = [&](size_t i) {
+      indent();
+      out_ << "local.get $a" << i << "\n";
+    };
+    // Mask top bits back to N (sign-extended).
+    auto sextN = [&]() {
+      if (N == W)
+        return;
+      indent();
+      out_ << ity << ".const " << (W - N) << "\n";
+      indent();
+      out_ << ity << ".shl\n";
+      indent();
+      out_ << ity << ".const " << (W - N) << "\n";
+      indent();
+      out_ << ity << ".shr_s\n";
+    };
+    // Lower N-bit mask: (1 << N) - 1, only needed when N < W.
+    auto pushMask = [&]() {
+      if (N == W) {
+        indent();
+        out_ << ity << ".const -1\n";
+      } else {
+        indent();
+        out_ << ity << ".const " << ((uint64_t(1) << N) - 1) << "\n";
+      }
+    };
+
+    const std::string &n = intr.name.name;
+    if (n == "@abs") {
+      // if (a0 == INT_MIN_N) unreachable; r = a0 < 0 ? -a0 : a0;
+      int64_t int_min_N = (N == 64) ? INT64_MIN : -(INT64_C(1) << (N - 1));
+      pushArg(0);
+      indent();
+      out_ << ity << ".const " << int_min_N << "\n";
+      indent();
+      out_ << ity << ".eq\n";
+      indent();
+      out_ << "if\n";
+      indent_level_++;
+      indent();
+      out_ << "unreachable\n";
+      indent_level_--;
+      indent();
+      out_ << "end\n";
+      // r = a0 < 0 ? -a0 : a0  →  push -a0, a0, (a0 < 0), select
+      indent();
+      out_ << ity << ".const 0\n";
+      pushArg(0);
+      indent();
+      out_ << ity << ".sub\n";
+      pushArg(0);
+      pushArg(0);
+      indent();
+      out_ << ity << ".const 0\n";
+      indent();
+      out_ << ity << ".lt_s\n";
+      indent();
+      out_ << "select\n";
+      sextN();
+    } else if (n == "@min" || n == "@max") {
+      bool isMin = (n == "@min");
+      pushArg(0);
+      pushArg(1);
+      pushArg(0);
+      pushArg(1);
+      indent();
+      out_ << ity << "." << (isMin ? "lt_s" : "gt_s") << "\n";
+      indent();
+      out_ << "select\n";
+      sextN();
+    } else if (n == "@popcount") {
+      pushArg(0);
+      pushMask();
+      indent();
+      out_ << ity << ".and\n";
+      indent();
+      out_ << ity << ".popcnt\n";
+      sextN();
+    } else if (n == "@clz" || n == "@ctz") {
+      pushArg(0);
+      pushMask();
+      indent();
+      out_ << ity << ".and\n";
+      indent();
+      out_ << "local.tee $tmp0\n";
+      indent();
+      out_ << ity << ".eqz\n";
+      indent();
+      out_ << "if\n";
+      indent_level_++;
+      indent();
+      out_ << "unreachable\n";
+      indent_level_--;
+      indent();
+      out_ << "end\n";
+      indent();
+      out_ << "local.get $tmp0\n";
+      indent();
+      out_ << ity << "." << (n == "@clz" ? "clz" : "ctz") << "\n";
+      // For clz, subtract (W-N) so leading zeros above bit N-1 aren't counted.
+      if (n == "@clz" && N != W) {
+        indent();
+        out_ << ity << ".const " << (W - N) << "\n";
+        indent();
+        out_ << ity << ".sub\n";
+      }
+      sextN();
+    } else {
+      indent();
+      out_ << "unreachable\n";
+    }
+
+    indent_level_--;
+    indent();
+    out_ << ")\n";
+  }
+
   void WasmBackend::emit(const Program &prog) {
+    prog_ = &prog;
     computeLayouts(prog);
     if (!noModuleTags_) {
       out_ << "(module\n";
@@ -1537,6 +1744,21 @@ namespace symir {
     out_ << "(memory 16)\n"; // 1MB
     indent();
     out_ << "(global $__stack_pointer (mut i32) (i32.const 1048576))\n";
+
+    // [v0.2.2] Emit intrinsic helper functions and import link-form decls.
+    for (const auto &intr: prog.intrinsics) {
+      emitIntrinsicHelper(intr);
+    }
+    for (const auto &d: prog.extDecls) {
+      indent();
+      out_ << "(import \"\" \"" << stripSigil(d.name.name) << "\" (func "
+           << mangleName(d.name.name);
+      for (const auto &p: d.params) {
+        out_ << " (param " << getWasmType(p.type) << ")";
+        (void) p;
+      }
+      out_ << " (result " << getWasmType(d.retType) << ")))\n";
+    }
 
     for (const auto &f: prog.funs) {
       curFuncName_ = f.name.name;

@@ -1,0 +1,14 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --path ^entry,^exit
+// [v0.2.2] Solver synthesizes a value for %?x such that abs(%?x) == 5.
+intrinsic @abs(%x: i32) : i32;
+fun @main() : i32 {
+  sym %?x: value i32 in [-100, 100];
+  let mut %r: i32 = 0;
+^entry:
+  %r = call @abs(%?x);
+  require %r == 5, "abs(?x) must equal 5";
+  br ^exit;
+^exit:
+  ret %?x;
+}

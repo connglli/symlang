@@ -38,6 +38,7 @@ namespace symir {
     std::ostream &out_;
     int indent_level_ = 0;
     bool noRequire_ = false;
+    const Program *prog_ = nullptr; // [v0.2.2] for callee lookup in emitAtom
     std::string curFuncName_;
     std::unique_ptr<VecLowering> vecLowering_; // [v0.2.1] strategy, see vec_lowering.hpp
     std::unordered_map<std::string, std::uint32_t> varWidths_;
@@ -65,6 +66,11 @@ namespace symir {
     void emitSelectVal(const SelectVal &sv);
     void emitIndex(const Index &idx);
     void emitInitVal(const InitVal &iv, TypePtr expectedType = nullptr);
+
+    // [v0.2.2] Helpers for new top-level decls.
+    void emitIntrinsicHelper(const IntrinsicDecl &intr);
+    void emitExtDecl(const ExtDecl &d);
+    std::string intrinsicHelperName(const std::string &intrName, std::uint32_t bits) const;
 
     // --- Type query helpers ---
     // Resolve the static type of an lvalue / atom / expression. Used to

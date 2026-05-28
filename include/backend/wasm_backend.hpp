@@ -37,6 +37,7 @@ namespace symir {
     std::string curFuncName_;
     bool noModuleTags_ = false;
     bool noRequire_ = false;
+    const Program *prog_ = nullptr; // [v0.2.2] for callee lookup in emitAtom
 
     // Maps local/param names to their WASM local index or info
     struct LocalInfo {
@@ -87,6 +88,9 @@ namespace symir {
     void emitSelectVal(const SelectVal &sv, std::uint32_t targetWidth, bool isFloat = false);
     void emitIndex(const Index &idx);
     void emitInitVal(const InitVal &iv, const TypePtr &type, std::uint32_t offset);
+    // [v0.2.2] Emit a WASM helper function for one intrinsic.
+    void emitIntrinsicHelper(const IntrinsicDecl &intr);
+    std::string intrinsicHelperName(const std::string &intrName, std::uint32_t bits) const;
     void emitCopy(
         const TypePtr &type, std::uint32_t dstOffset, const std::string &srcName,
         std::uint32_t srcOffset

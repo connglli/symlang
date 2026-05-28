@@ -1,0 +1,9 @@
+// EXPECT: FAIL:UndefinedBehavior
+// [v0.2.2] @abs(INT_MIN) is UB per rule 25 (intrinsic result-overflow).
+intrinsic @abs(%x: i32) : i32;
+fun @main() : i32 {
+  let mut %v: i32 = 0;
+^entry:
+  %v = call @abs(0 - 2147483648);
+  ret %v;
+}

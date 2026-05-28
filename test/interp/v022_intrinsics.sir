@@ -1,0 +1,25 @@
+// EXPECT: PASS
+// [v0.2.2] Verifies all six standard intrinsics in the interpreter.
+intrinsic @abs(%x: i32) : i32;
+intrinsic @min(%a: i32, %b: i32) : i32;
+intrinsic @max(%a: i32, %b: i32) : i32;
+intrinsic @popcount(%x: i32) : i32;
+intrinsic @clz(%x: i32) : i32;
+intrinsic @ctz(%x: i32) : i32;
+fun @main() : i32 {
+  let mut %v: i32 = 0;
+^entry:
+  %v = call @abs(0 - 5);
+  require %v == 5, "abs(-5) == 5";
+  %v = call @min(3, 7);
+  require %v == 3, "min";
+  %v = call @max(3, 7);
+  require %v == 7, "max";
+  %v = call @popcount(0xff);
+  require %v == 8, "popcount";
+  %v = call @clz(1);
+  require %v == 31, "clz(1) == 31";
+  %v = call @ctz(8);
+  require %v == 3, "ctz(8) == 3";
+  ret 0;
+}

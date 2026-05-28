@@ -183,7 +183,127 @@ namespace symir {
     return out;
   }
 
+  std::string CBackend::intrinsicHelperName(const std::string &intrName, uint32_t bits) const {
+    // intrName begins with '@'; drop it.
+    std::string base = intrName;
+    if (!base.empty() && base[0] == '@')
+      base.erase(0, 1);
+    return "_symir_" + base + "_i" + std::to_string(bits);
+  }
+
+  // [v0.2.2] §11.5 widening-and-mask lowering. We emit one static inline
+  // helper per (intrinsic, bit-width). Each helper widens to the next
+  // larger machine width, performs the operation, then sign-extends /
+  // masks the result back to N bits. UB-preconditions abort via
+  // __builtin_trap (matches the `assert`-on-violation pattern other UB
+  // sites use).
+  void CBackend::emitIntrinsicHelper(const IntrinsicDecl &intr) {
+    auto rb = TypeUtils::getBitWidth(intr.retType);
+    if (!rb)
+      return; // non-integer intrinsics aren't supported in v0.2.2
+    uint32_t N = *rb;
+    uint32_t W = (N <= 8) ? 8 : (N <= 16) ? 16 : (N <= 32) ? 32 : 64;
+    std::string sty = "int" + std::to_string(W) + "_t";
+    std::string uty = "uint" + std::to_string(W) + "_t";
+    std::string outTy = "int" + std::to_string(W) + "_t"; // matches emitType for iN
+    std::string name = intrinsicHelperName(intr.name.name, N);
+
+    out_ << "static inline " << outTy << " " << name << "(";
+    for (size_t i = 0; i < intr.params.size(); ++i) {
+      if (i)
+        out_ << ", ";
+      out_ << sty << " a" << i;
+    }
+    out_ << ") {\n";
+
+    // Sign-mask helper to N bits.
+    auto sextN = [&](const std::string &expr) -> std::string {
+      if (N == W)
+        return expr;
+      // (sty)((uty)expr << (W-N)) >> (W-N)  — arithmetic shift restores sign.
+      return "(" + sty + ")((" + uty + ")(" + expr + ") << " + std::to_string(W - N) + ") >> " +
+             std::to_string(W - N);
+    };
+    auto maskU = [&](const std::string &expr) -> std::string {
+      if (N == W)
+        return "(" + uty + ")(" + expr + ")";
+      // (uty)expr & ((1<<N) - 1)
+      return "((" + uty + ")(" + expr + ") & ((" + uty + ")1 << " + std::to_string(N) + ") - 1)";
+    };
+
+    const std::string &n = intr.name.name;
+    if (n == "@abs") {
+      int64_t int_min_N = (N == 64) ? INT64_MIN : -(INT64_C(1) << (N - 1));
+      out_ << "  if (a0 == (" << sty << ")" << int_min_N << "LL) __builtin_trap();\n";
+      out_ << "  " << sty << " r = a0 < 0 ? -a0 : a0;\n";
+      out_ << "  return " << sextN("r") << ";\n";
+    } else if (n == "@min") {
+      out_ << "  " << sty << " r = a0 < a1 ? a0 : a1;\n";
+      out_ << "  return " << sextN("r") << ";\n";
+    } else if (n == "@max") {
+      out_ << "  " << sty << " r = a0 > a1 ? a0 : a1;\n";
+      out_ << "  return " << sextN("r") << ";\n";
+    } else if (n == "@popcount") {
+      out_ << "  " << uty << " u = " << maskU("a0") << ";\n";
+      if (W <= 32)
+        out_ << "  " << sty << " r = (" << sty << ")__builtin_popcount(u);\n";
+      else
+        out_ << "  " << sty << " r = (" << sty << ")__builtin_popcountll((uint64_t)u);\n";
+      out_ << "  return " << sextN("r") << ";\n";
+    } else if (n == "@clz") {
+      out_ << "  " << uty << " u = " << maskU("a0") << ";\n";
+      out_ << "  if (u == 0) __builtin_trap();\n";
+      if (W <= 32) {
+        out_ << "  " << sty << " r = (" << sty << ")__builtin_clz((uint32_t)u) - "
+             << std::to_string(32 - N) << ";\n";
+      } else {
+        out_ << "  " << sty << " r = (" << sty << ")__builtin_clzll((uint64_t)u) - "
+             << std::to_string(64 - N) << ";\n";
+      }
+      out_ << "  return " << sextN("r") << ";\n";
+    } else if (n == "@ctz") {
+      out_ << "  " << uty << " u = " << maskU("a0") << ";\n";
+      out_ << "  if (u == 0) __builtin_trap();\n";
+      if (W <= 32)
+        out_ << "  " << sty << " r = (" << sty << ")__builtin_ctz((uint32_t)u);\n";
+      else
+        out_ << "  " << sty << " r = (" << sty << ")__builtin_ctzll((uint64_t)u);\n";
+      out_ << "  return " << sextN("r") << ";\n";
+    } else {
+      out_ << "  __builtin_trap(); /* unknown intrinsic */\n";
+    }
+    out_ << "}\n\n";
+  }
+
+  // [v0.2.2] §11.2 lowering for `decl`. Link-form decls become `extern`
+  // prototypes (linker resolves them). Contract-form decls also emit an
+  // `extern` plus a `// contract:` summary comment.
+  void CBackend::emitExtDecl(const ExtDecl &d) {
+    if (d.contract) {
+      out_ << "// contract: " << d.name.name << "\n";
+      for (const auto &pre: d.contract->pres)
+        out_ << "//   pre  " << (pre.message ? *pre.message : "") << "\n";
+      for (const auto &post: d.contract->posts)
+        out_ << "//   post " << (post.message ? *post.message : "") << "\n";
+    }
+    out_ << "extern ";
+    emitType(d.retType);
+    out_ << " " << mangleName(d.name.name) << "(";
+    if (d.params.empty()) {
+      out_ << "void";
+    } else {
+      for (size_t i = 0; i < d.params.size(); ++i) {
+        if (i)
+          out_ << ", ";
+        emitType(d.params[i].type);
+        out_ << " " << mangleName(d.params[i].name.name);
+      }
+    }
+    out_ << ");\n\n";
+  }
+
   void CBackend::emit(const Program &prog) {
+    prog_ = &prog;
     out_ << "#include <stdint.h>\n";
     out_ << "#include <stddef.h>\n";
     out_ << "#include <stdbool.h>\n";
@@ -257,6 +377,16 @@ namespace symir {
       out_ << "struct " << mangleName(s.name.name) << ";\n";
     }
     out_ << "\n";
+
+    // 1b. [v0.2.2] Emit intrinsic helpers and extern decls for link-form
+    //     `decl`s. Contract-form `decl`s lower with extern + a structured
+    //     comment summarizing the contract (§11.2).
+    for (const auto &intr: prog.intrinsics) {
+      emitIntrinsicHelper(intr);
+    }
+    for (const auto &d: prog.extDecls) {
+      emitExtDecl(d);
+    }
 
     // 2. Struct definitions
     for (const auto &s: prog.structs) {
@@ -904,6 +1034,30 @@ namespace symir {
             out_ << "; if (!_pf) __builtin_trap();"
                  << " if (__builtin_object_size(_pf, 0) < sizeof(*_pf)) __builtin_trap();"
                  << " &(_pf->" << arg.field << "); })";
+          } else if constexpr (std::is_same_v<T, CallAtom>) {
+            // [v0.2.2] Lower `call @f(args...)` to a C call expression.
+            // For intrinsics, dispatch to the helper emitted in emit() §1b.
+            // For other targets, use the mangled name directly (link-form
+            // decls have extern prototypes; fun bodies are emitted later).
+            const IntrinsicDecl *intr = nullptr;
+            for (const auto &i: prog_->intrinsics)
+              if (i.name.name == arg.callee.name) {
+                intr = &i;
+                break;
+              }
+            if (intr) {
+              auto rb = TypeUtils::getBitWidth(intr->retType);
+              out_ << intrinsicHelperName(arg.callee.name, rb.value_or(32));
+            } else {
+              out_ << mangleName(arg.callee.name);
+            }
+            out_ << "(";
+            for (size_t i = 0; i < arg.args.size(); ++i) {
+              if (i)
+                out_ << ", ";
+              emitExpr(*arg.args[i]);
+            }
+            out_ << ")";
           } else if constexpr (std::is_same_v<T, CastAtom>) {
             // [v0.2.1] Vector cast: a C-style `(target_vec_t)(src_vec)`
             // is a *bitcast* in GCC vec-ext, not a per-lane conversion.

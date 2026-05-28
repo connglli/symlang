@@ -120,6 +120,11 @@ namespace symir {
 
     RuntimeValue evalExpr(const Expr &e, const Store &store);
     RuntimeValue evalAtom(const Atom &a, const Store &store);
+    // [v0.2.2] Execute a built-in intrinsic. Argument values are already
+    // evaluated. Result has the intrinsic's declared return bitwidth.
+    RuntimeValue callIntrinsic(
+        const IntrinsicDecl &intr, const std::vector<RuntimeValue> &args, SourceSpan callSpan
+    );
     RuntimeValue evalCoef(const Coef &c, const Store &store);
     RuntimeValue evalSelectVal(const SelectVal &sv, const Store &store);
     RuntimeValue evalLValue(const LValue &lv, const Store &store);

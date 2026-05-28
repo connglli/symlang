@@ -486,6 +486,97 @@ namespace symir {
     return static_cast<std::int64_t>(uval);
   }
 
+  // [v0.2.2] Built-in intrinsics. The widening-and-mask strategy lets us
+  // compute every operation at int64 width and sign-mask to N bits at the
+  // end. UB-preconditions (e.g. `@abs(INT_MIN_N)`, `@ctz(0)`, `@clz(0)`)
+  // throw `UndefinedBehaviorError`, which makes the path infeasible.
+  Interpreter::RuntimeValue Interpreter::callIntrinsic(
+      const IntrinsicDecl &intr, const std::vector<RuntimeValue> &args, SourceSpan
+  ) {
+    auto rbits = TypeUtils::getBitWidth(intr.retType);
+    if (!rbits)
+      throw std::runtime_error(
+          "Intrinsic " + intr.name.name + " has non-integer return type (unsupported in v0.2.2)"
+      );
+    uint32_t N = *rbits;
+    int64_t int_min_N = (N == 64) ? INT64_MIN : (-(INT64_C(1) << (N - 1)));
+    int64_t mask = (N == 64) ? -1LL : ((INT64_C(1) << N) - 1);
+    auto sext = [&](int64_t v) -> int64_t {
+      // sign-extend a value to int64 based on bit N-1.
+      if (N == 64)
+        return v;
+      v &= mask;
+      if (v & (INT64_C(1) << (N - 1)))
+        v |= ~mask;
+      return v;
+    };
+
+    auto intVal = [&](size_t i) -> int64_t {
+      if (i >= args.size())
+        throw std::runtime_error("Intrinsic " + intr.name.name + ": argument count error");
+      if (args[i].kind != RuntimeValue::Kind::Int)
+        throw std::runtime_error("Intrinsic " + intr.name.name + ": non-integer argument");
+      return sext(args[i].intVal);
+    };
+
+    RuntimeValue res;
+    res.kind = RuntimeValue::Kind::Int;
+    res.bits = N;
+
+    const std::string &name = intr.name.name;
+    if (name == "@abs") {
+      int64_t x = intVal(0);
+      if (x == int_min_N)
+        throw UndefinedBehaviorError("UB: @abs result not representable (-INT_MIN_N overflow)");
+      res.intVal = sext(x < 0 ? -x : x);
+      return res;
+    }
+    if (name == "@min") {
+      int64_t a = intVal(0), b = intVal(1);
+      res.intVal = sext(a < b ? a : b);
+      return res;
+    }
+    if (name == "@max") {
+      int64_t a = intVal(0), b = intVal(1);
+      res.intVal = sext(a > b ? a : b);
+      return res;
+    }
+    if (name == "@popcount") {
+      uint64_t u = static_cast<uint64_t>(intVal(0)) & static_cast<uint64_t>(mask);
+      int64_t c = __builtin_popcountll(u);
+      res.intVal = sext(c);
+      return res;
+    }
+    if (name == "@clz") {
+      uint64_t u = static_cast<uint64_t>(intVal(0)) & static_cast<uint64_t>(mask);
+      if (u == 0)
+        throw UndefinedBehaviorError("UB: @clz requires non-zero input (§12.2)");
+      // Count leading zeros in N bits.
+      int64_t c = 0;
+      for (int b = (int) N - 1; b >= 0; --b) {
+        if ((u >> b) & 1ULL)
+          break;
+        ++c;
+      }
+      res.intVal = sext(c);
+      return res;
+    }
+    if (name == "@ctz") {
+      uint64_t u = static_cast<uint64_t>(intVal(0)) & static_cast<uint64_t>(mask);
+      if (u == 0)
+        throw UndefinedBehaviorError("UB: @ctz requires non-zero input (§12.2)");
+      int64_t c = 0;
+      for (uint32_t b = 0; b < N; ++b) {
+        if ((u >> b) & 1ULL)
+          break;
+        ++c;
+      }
+      res.intVal = sext(c);
+      return res;
+    }
+    throw std::runtime_error("Unknown intrinsic: " + intr.name.name);
+  }
+
   Interpreter::RuntimeValue Interpreter::makeUndef(const TypePtr &t) {
     RuntimeValue res;
     if (auto vt = TypeUtils::asVec(t)) {
@@ -1909,6 +2000,48 @@ namespace symir {
                 throw UndefinedBehaviorError("UB: Float narrowing cast overflows to infinity");
             }
             return res;
+          } else if constexpr (std::is_same_v<T, CallAtom>) {
+            // [v0.2.2] Function call. Phase 4 only handles intrinsics; fun
+            // calls and contract/link `decl` calls land in Phases 5/7/8.
+            // §2.12 strict left-to-right evaluation order.
+            std::vector<RuntimeValue> argVals;
+            argVals.reserve(arg.args.size());
+            for (const auto &ap: arg.args) {
+              argVals.push_back(evalExpr(*ap, store));
+            }
+            // Look up callee.
+            const IntrinsicDecl *intr = nullptr;
+            for (const auto &i: prog_.intrinsics)
+              if (i.name.name == arg.callee.name) {
+                intr = &i;
+                break;
+              }
+            if (intr) {
+              return callIntrinsic(*intr, argVals, arg.span);
+            }
+            // fun / decl targets: defer to later phases.
+            for (const auto &f: prog_.funs)
+              if (f.name.name == arg.callee.name) {
+                throw std::runtime_error(
+                    "Interpreter: `fun` calls are not yet implemented (Phase 5): " + arg.callee.name
+                );
+              }
+            for (const auto &d: prog_.extDecls)
+              if (d.name.name == arg.callee.name) {
+                if (d.contract) {
+                  // [v0.2.2] §11.3: interpreter rejects contract-form decl calls.
+                  throw std::runtime_error(
+                      "Interpreter rejects call to contract-form `decl` (no body): " +
+                      arg.callee.name
+                  );
+                }
+                throw std::runtime_error(
+                    "Interpreter: link-form `decl` resolution is not yet "
+                    "implemented (Phase 7): " +
+                    arg.callee.name
+                );
+              }
+            throw std::runtime_error("Call to undeclared function: " + arg.callee.name);
           }
           return RuntimeValue{};
         },

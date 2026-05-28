@@ -1,0 +1,9 @@
+// EXPECT: FAIL:UndefinedBehavior
+// [v0.2.2] @ctz(0) is UB (§12.2).
+intrinsic @ctz(%x: i32) : i32;
+fun @main() : i32 {
+  let mut %v: i32 = 0;
+^entry:
+  %v = call @ctz(0);
+  ret %v;
+}
