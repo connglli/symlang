@@ -1,4 +1,6 @@
 #include "frontend/typechecker.hpp"
+#include <algorithm>
+#include <functional>
 #include "analysis/cfg.hpp"
 #include "analysis/type_utils.hpp"
 
@@ -6,10 +8,19 @@ namespace symir {
 
   symir::PassResult TypeChecker::run(Program &prog, DiagBag &diags) {
     collectStructs(prog, diags);
+    collectCallees(prog, diags);
     for (const auto &f: prog.funs) {
       TypeAnnotations ann;
       checkFunction(f, ann, diags);
     }
+    // [v0.2.2] Contract well-formedness uses the callee registry.
+    for (const auto &d: prog.extDecls) {
+      if (d.contract) {
+        TypeAnnotations ann;
+        checkContract(d, ann, diags);
+      }
+    }
+    checkNoRecursion(prog, diags);
     return diags.hasErrors() ? symir::PassResult::Error : symir::PassResult::Success;
   }
 
@@ -71,6 +82,271 @@ namespace symir {
         si.fieldList.push_back({fd.name, fd.type});
       }
       structs_[sd.name.name] = std::move(si);
+    }
+  }
+
+  void TypeChecker::collectCallees(const Program &prog, DiagBag &diags) {
+    // 1. Funs.
+    for (const auto &f: prog.funs) {
+      CalleeInfo ci;
+      ci.kind = CalleeInfo::Kind::Fun;
+      ci.retType = f.retType;
+      ci.declSpan = f.span;
+      ci.fun = &f;
+      for (const auto &p: f.params)
+        ci.paramTypes.push_back(p.type);
+      callees_[f.name.name] = std::move(ci);
+    }
+    // 2. Ext decls.
+    for (const auto &d: prog.extDecls) {
+      // Validate signatures.
+      validateTypeWF(d.retType, diags);
+      for (const auto &p: d.params)
+        validateTypeWF(p.type, diags);
+      auto it = callees_.find(d.name.name);
+      if (it != callees_.end()) {
+        diags.error("`decl " + d.name.name + "` conflicts with a `fun` of the same name", d.span);
+      }
+      CalleeInfo ci;
+      ci.kind = d.contract ? CalleeInfo::Kind::ExtContract : CalleeInfo::Kind::ExtLink;
+      ci.retType = d.retType;
+      ci.declSpan = d.span;
+      ci.ext = &d;
+      for (const auto &p: d.params)
+        ci.paramTypes.push_back(p.type);
+      if (it == callees_.end())
+        callees_[d.name.name] = std::move(ci);
+    }
+    // 3. Intrinsics.
+    for (const auto &i: prog.intrinsics) {
+      validateTypeWF(i.retType, diags);
+      for (const auto &p: i.params)
+        validateTypeWF(p.type, diags);
+      auto it = callees_.find(i.name.name);
+      if (it != callees_.end()) {
+        diags.error(
+            "`intrinsic " + i.name.name + "` conflicts with another declaration of the same name",
+            i.span
+        );
+      }
+      CalleeInfo ci;
+      ci.kind = CalleeInfo::Kind::Intrinsic;
+      ci.retType = i.retType;
+      ci.declSpan = i.span;
+      ci.intr = &i;
+      for (const auto &p: i.params)
+        ci.paramTypes.push_back(p.type);
+      if (it == callees_.end())
+        callees_[i.name.name] = std::move(ci);
+    }
+  }
+
+  // [v0.2.2] §6.11 Contract well-formedness:
+  //   - Each `pre` cond's free variables ⊆ params (no `ret`).
+  //   - Each `post` cond's free variables ⊆ params ∪ {ret}.
+  //   - `ret` has the declared return type.
+  void TypeChecker::checkContract(const ExtDecl &d, TypeAnnotations &ann, DiagBag &diags) {
+    if (!d.contract)
+      return;
+    std::unordered_map<std::string, VarInfo> vars;
+    std::unordered_map<std::string, SymInfo> syms;
+    for (const auto &p: d.params) {
+      vars[p.name.name] = VarInfo{p.type, /*isMutable=*/false, /*isParam=*/true, p.span};
+    }
+
+    // Pre clauses: `ret` must not appear.
+    for (const auto &pre: d.contract->pres) {
+      // Check that `ret` isn't referenced in the cond.
+      auto exprMentionsRet = [](const Expr &e) -> bool {
+        // Walk atoms/coefs/lvalues looking for LocalId "ret".
+        auto checkLV = [](const LValue &lv) { return lv.base.name == "ret"; };
+        auto checkCoef = [](const Coef &c) {
+          if (auto lsid = std::get_if<LocalOrSymId>(&c))
+            if (auto lid = std::get_if<LocalId>(lsid))
+              return lid->name == "ret";
+          return false;
+        };
+        auto checkAtom = [&](const Atom &a) {
+          return std::visit(
+              [&](auto &&x) -> bool {
+                using T = std::decay_t<decltype(x)>;
+                if constexpr (std::is_same_v<T, CoefAtom>)
+                  return checkCoef(x.coef);
+                if constexpr (std::is_same_v<T, RValueAtom>)
+                  return checkLV(x.rval);
+                if constexpr (std::is_same_v<T, OpAtom>)
+                  return checkCoef(x.coef) || checkLV(x.rval);
+                if constexpr (std::is_same_v<T, UnaryAtom>)
+                  return checkLV(x.rval);
+                if constexpr (std::is_same_v<T, LoadAtom>)
+                  return checkLV(x.rval);
+                if constexpr (std::is_same_v<T, AddrAtom>)
+                  return checkLV(x.lv);
+                return false;
+              },
+              a.v
+          );
+        };
+        if (checkAtom(e.first))
+          return true;
+        for (const auto &t: e.rest)
+          if (checkAtom(t.atom))
+            return true;
+        return false;
+      };
+      if (exprMentionsRet(pre.cond.lhs) || exprMentionsRet(pre.cond.rhs)) {
+        diags.error("`ret` may not appear in `pre` clauses (§6.11)", pre.span);
+      }
+      checkCond(pre.cond, vars, syms, ann, diags);
+    }
+
+    // Post clauses: `ret` is a synthetic immutable local of declared return type.
+    vars["ret"] = VarInfo{d.retType, /*isMutable=*/false, /*isParam=*/true, d.span};
+    for (const auto &post: d.contract->posts) {
+      checkCond(post.cond, vars, syms, ann, diags);
+    }
+    vars.erase("ret");
+  }
+
+  // [v0.2.2] §9.7 No recursion. Build the call graph from fun bodies and
+  // contract bodies (which can transitively `call` other functions via
+  // `pre`/`post` clauses — though uncommon, the spec covers it). Tarjan's
+  // SCC catches both self-edges and mutual cycles.
+  void TypeChecker::checkNoRecursion(const Program &prog, DiagBag &diags) {
+    // Build adjacency.
+    std::unordered_map<std::string, std::vector<std::string>> adj;
+    std::function<void(const std::string &, const Atom &)> walkAtom;
+    walkAtom = [&](const std::string &caller, const Atom &a) {
+      std::visit(
+          [&](auto &&x) {
+            using T = std::decay_t<decltype(x)>;
+            if constexpr (std::is_same_v<T, CallAtom>) {
+              adj[caller].push_back(x.callee.name);
+              for (const auto &arg: x.args) {
+                walkAtom(caller, arg->first);
+                for (const auto &t: arg->rest)
+                  walkAtom(caller, t.atom);
+              }
+            }
+          },
+          a.v
+      );
+    };
+    auto addCalls = [&](const std::string &caller, const Expr &e) {
+      walkAtom(caller, e.first);
+      for (const auto &t: e.rest)
+        walkAtom(caller, t.atom);
+    };
+    for (const auto &f: prog.funs) {
+      adj[f.name.name]; // ensure node exists
+      // Walk lets initializers, instructions, and terminators.
+      for (const auto &l: f.lets) {
+        if (l.init && l.init->kind == InitVal::Kind::Atom) {
+          const auto &atom = *std::get<AtomPtr>(l.init->value);
+          walkAtom(f.name.name, atom);
+        }
+      }
+      for (const auto &b: f.blocks) {
+        for (const auto &ins: b.instrs) {
+          std::visit(
+              [&](auto &&arg) {
+                using T = std::decay_t<decltype(arg)>;
+                if constexpr (std::is_same_v<T, AssignInstr>) {
+                  addCalls(f.name.name, arg.rhs);
+                } else if constexpr (std::is_same_v<T, AssumeInstr>) {
+                  addCalls(f.name.name, arg.cond.lhs);
+                  addCalls(f.name.name, arg.cond.rhs);
+                } else if constexpr (std::is_same_v<T, RequireInstr>) {
+                  addCalls(f.name.name, arg.cond.lhs);
+                  addCalls(f.name.name, arg.cond.rhs);
+                } else if constexpr (std::is_same_v<T, StoreInstr>) {
+                  addCalls(f.name.name, arg.ptr);
+                  addCalls(f.name.name, arg.val);
+                }
+              },
+              ins
+          );
+        }
+        std::visit(
+            [&](auto &&arg) {
+              using T = std::decay_t<decltype(arg)>;
+              if constexpr (std::is_same_v<T, BrTerm>) {
+                if (arg.cond) {
+                  addCalls(f.name.name, arg.cond->lhs);
+                  addCalls(f.name.name, arg.cond->rhs);
+                }
+              } else if constexpr (std::is_same_v<T, RetTerm>) {
+                if (arg.value)
+                  addCalls(f.name.name, *arg.value);
+              }
+            },
+            b.term
+        );
+      }
+    }
+    for (const auto &d: prog.extDecls) {
+      adj[d.name.name];
+      if (d.contract) {
+        for (const auto &pre: d.contract->pres) {
+          addCalls(d.name.name, pre.cond.lhs);
+          addCalls(d.name.name, pre.cond.rhs);
+        }
+        for (const auto &post: d.contract->posts) {
+          addCalls(d.name.name, post.cond.lhs);
+          addCalls(d.name.name, post.cond.rhs);
+        }
+      }
+    }
+
+    // Tarjan SCC.
+    std::unordered_map<std::string, int> idx, low;
+    std::unordered_map<std::string, bool> onStack;
+    std::vector<std::string> stack;
+    int counter = 0;
+    std::function<void(const std::string &)> strongConnect = [&](const std::string &v) {
+      idx[v] = counter;
+      low[v] = counter;
+      counter++;
+      stack.push_back(v);
+      onStack[v] = true;
+      for (const auto &w: adj[v]) {
+        if (!idx.count(w)) {
+          strongConnect(w);
+          low[v] = std::min(low[v], low[w]);
+        } else if (onStack[w]) {
+          low[v] = std::min(low[v], idx[w]);
+        }
+      }
+      if (low[v] == idx[v]) {
+        std::vector<std::string> comp;
+        while (true) {
+          std::string w = stack.back();
+          stack.pop_back();
+          onStack[w] = false;
+          comp.push_back(w);
+          if (w == v)
+            break;
+        }
+        bool selfEdge = false;
+        for (const auto &x: adj[v])
+          if (x == v)
+            selfEdge = true;
+        if (comp.size() > 1 || selfEdge) {
+          std::string cycle;
+          for (size_t i = 0; i < comp.size(); ++i) {
+            if (i)
+              cycle += " -> ";
+            cycle += comp[i];
+          }
+          auto cit = callees_.find(v);
+          SourceSpan sp = (cit != callees_.end()) ? cit->second.declSpan : SourceSpan{};
+          diags.error("Recursion is not supported in v0.2.2 (cycle: " + cycle + ")", sp);
+        }
+      }
+    };
+    for (const auto &kv: adj) {
+      if (!idx.count(kv.first))
+        strongConnect(kv.first);
     }
   }
 
@@ -969,6 +1245,77 @@ namespace symir {
             }
             auto resultPtr = std::make_shared<Type>(PtrType{fit->second, arg.span}, arg.span);
             return Ty{Ty::PtrTy{resultPtr}};
+          } else if constexpr (std::is_same_v<T, CallAtom>) {
+            // [v0.2.2] §6.10 Call typing. Resolve callee against the
+            // registry built in collectCallees, verify arity and exact
+            // parameter-type match.
+            auto it = callees_.find(arg.callee.name);
+            if (it == callees_.end()) {
+              diags.error("Call to undeclared function: " + arg.callee.name, arg.span);
+              return Ty{std::monostate{}};
+            }
+            const auto &ci = it->second;
+            if (arg.args.size() != ci.paramTypes.size()) {
+              diags.error(
+                  "Argument count mismatch in call to " + arg.callee.name + ": expected " +
+                      std::to_string(ci.paramTypes.size()) + ", got " +
+                      std::to_string(arg.args.size()),
+                  arg.span
+              );
+              return Ty{std::monostate{}};
+            }
+            for (size_t k = 0; k < arg.args.size(); ++k) {
+              const auto &paramT = ci.paramTypes[k];
+              auto pbits = TypeUtils::getBitWidth(paramT);
+              Ty argTy = typeOfExpr(*arg.args[k], vars, syms, ann, diags, pbits, paramT);
+              // Check exact type match.
+              bool ok = false;
+              if (argTy.isPtr() && paramT && std::holds_alternative<PtrType>(paramT->v)) {
+                ok = TypeUtils::areTypesEqual(argTy.ptrType(), paramT);
+              } else if (argTy.isVec() && paramT && std::holds_alternative<VecType>(paramT->v)) {
+                ok = TypeUtils::areTypesEqual(argTy.vecType(), paramT);
+              } else if (argTy.isBV() && paramT && std::holds_alternative<IntType>(paramT->v)) {
+                auto pb = TypeUtils::getBitWidth(paramT);
+                ok = pb && argTy.bvBits() == *pb;
+              } else if (argTy.isFloat() && paramT &&
+                         std::holds_alternative<FloatType>(paramT->v)) {
+                auto &ft = std::get<FloatType>(paramT->v);
+                uint32_t pb = (ft.kind == FloatType::Kind::F32) ? 32u : 64u;
+                ok = argTy.floatBits() == pb;
+              } else if (argTy.isStruct() && paramT &&
+                         std::holds_alternative<StructType>(paramT->v)) {
+                ok = TypeUtils::areTypesEqual(argTy.structType(), paramT);
+              } else if (argTy.isArray() && paramT &&
+                         std::holds_alternative<ArrayType>(paramT->v)) {
+                ok = TypeUtils::areTypesEqual(argTy.arrayType(), paramT);
+              }
+              if (!ok) {
+                diags.error(
+                    "Argument " + std::to_string(k) + " type mismatch in call to " +
+                        arg.callee.name,
+                    arg.args[k]->span
+                );
+              }
+            }
+            // Result type.
+            const auto &rt = ci.retType;
+            if (!rt)
+              return Ty{std::monostate{}};
+            if (auto pb = TypeUtils::getBitWidth(rt))
+              return Ty{Ty::BVTy{*pb}};
+            if (std::holds_alternative<FloatType>(rt->v)) {
+              auto &ft = std::get<FloatType>(rt->v);
+              return Ty{Ty::FloatTy{ft.kind == FloatType::Kind::F32 ? 32u : 64u}};
+            }
+            if (std::holds_alternative<PtrType>(rt->v))
+              return Ty{Ty::PtrTy{rt}};
+            if (std::holds_alternative<VecType>(rt->v))
+              return Ty{Ty::VecTy{rt}};
+            if (std::holds_alternative<StructType>(rt->v))
+              return Ty{Ty::StructTy{rt}};
+            if (std::holds_alternative<ArrayType>(rt->v))
+              return Ty{Ty::ArrayTy{rt}};
+            return Ty{std::monostate{}};
           }
           return Ty{std::monostate{}};
         },

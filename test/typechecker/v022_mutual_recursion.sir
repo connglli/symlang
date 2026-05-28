@@ -1,0 +1,14 @@
+// EXPECT: FAIL
+// [v0.2.2] §9.7: mutual recursion cycles in the call graph are forbidden.
+fun @a(%x: i32) : i32 {
+^entry:
+  ret call @b(%x);
+}
+fun @b(%x: i32) : i32 {
+^entry:
+  ret call @a(%x);
+}
+fun @main(%x: i32) : i32 {
+^entry:
+  ret call @a(%x);
+}

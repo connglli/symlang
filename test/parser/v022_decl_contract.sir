@@ -1,0 +1,13 @@
+// EXPECT: PASS
+// [v0.2.2] Contract-form `decl` with pre and post (including `ret` keyword).
+decl @alloc(%size: i32) : ptr i32 {
+  pre %size > 0, "size must be positive";
+  post ret != null, "allocation never returns null";
+};
+fun @main(%n: i32) : i32 {
+  let mut %p: ptr i32 = null;
+  let %zero: i32 = 0;
+^entry:
+  %p = call @alloc(%n);
+  ret %zero;
+}

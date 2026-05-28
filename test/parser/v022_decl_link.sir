@@ -1,0 +1,9 @@
+// EXPECT: PASS
+// [v0.2.2] Link-form `decl` (signature only, body resolved via -I in Phase 7).
+decl @helper(%x: i32) : i32;
+fun @main(%a: i32) : i32 {
+  let mut %y: i32 = 0;
+^entry:
+  %y = call @helper(%a);
+  ret %y;
+}

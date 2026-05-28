@@ -21,6 +21,27 @@ namespace symir {
       globalNames.insert(f.name.name);
       checkFunction(f, diags);
     }
+
+    // [v0.2.2] External declarations: each `decl @name` is a global name and
+    // must not collide with any struct/fun/intrinsic. A contract-form `decl`
+    // and a `fun` with the same name within the same file is rejected (the
+    // cross-file body+contract conflict is enforced by the link resolver).
+    for (const auto &d: prog.extDecls) {
+      if (globalNames.count(d.name.name)) {
+        diags.error("Duplicate global name (decl): " + d.name.name, d.span);
+      }
+      globalNames.insert(d.name.name);
+      checkExtDecl(d, diags);
+    }
+
+    // [v0.2.2] Intrinsic declarations.
+    for (const auto &d: prog.intrinsics) {
+      if (globalNames.count(d.name.name)) {
+        diags.error("Duplicate global name (intrinsic): " + d.name.name, d.span);
+      }
+      globalNames.insert(d.name.name);
+      checkIntrinsicDecl(d, diags);
+    }
     return diags.hasErrors() ? symir::PassResult::Error : symir::PassResult::Success;
   }
 
@@ -97,6 +118,35 @@ namespace symir {
         diags.error("Duplicate block label: " + b.label.name, b.label.span);
       }
       labels.insert(b.label.name);
+    }
+  }
+
+  // [v0.2.2] §3.4: a contract must have at least one `post` clause. `pre`
+  // clauses are optional. Parameter names must be unique.
+  void SemChecker::checkExtDecl(const ExtDecl &d, DiagBag &diags) {
+    std::unordered_set<std::string> params;
+    for (const auto &p: d.params) {
+      if (params.count(p.name.name)) {
+        diags.error("Duplicate parameter name: " + p.name.name, p.span);
+      }
+      params.insert(p.name.name);
+    }
+    if (d.contract) {
+      if (d.contract->posts.empty()) {
+        diags.error(
+            "Contract on '" + d.name.name + "' must contain at least one `post` clause", d.span
+        );
+      }
+    }
+  }
+
+  void SemChecker::checkIntrinsicDecl(const IntrinsicDecl &d, DiagBag &diags) {
+    std::unordered_set<std::string> params;
+    for (const auto &p: d.params) {
+      if (params.count(p.name.name)) {
+        diags.error("Duplicate parameter name: " + p.name.name, p.span);
+      }
+      params.insert(p.name.name);
     }
   }
 

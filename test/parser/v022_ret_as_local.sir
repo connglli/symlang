@@ -1,0 +1,9 @@
+// EXPECT: PASS
+// [v0.2.2] §5.4: outside `post` clauses, `%ret` (sigil-bearing) is a normal
+// local. Bare `ret` is still the terminator. Both coexist with no confusion.
+fun @main(%a: i32) : i32 {
+  let mut %ret: i32 = 0;
+^entry:
+  %ret = %a + 1;
+  ret %ret;
+}

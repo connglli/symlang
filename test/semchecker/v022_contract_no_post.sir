@@ -1,0 +1,9 @@
+// EXPECT: FAIL
+// [v0.2.2] §3.4: a contract must contain at least one `post` clause.
+decl @bogus(%x: i32) : i32 {
+  pre %x > 0;
+};
+fun @main(%a: i32) : i32 {
+^entry:
+  ret %a;
+}

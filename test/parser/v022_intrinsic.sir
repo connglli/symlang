@@ -1,0 +1,15 @@
+// EXPECT: PASS
+// [v0.2.2] All six standard intrinsics declared (semantics arrive in Phase 4).
+intrinsic @abs(%x: i32) : i32;
+intrinsic @min(%a: i32, %b: i32) : i32;
+intrinsic @max(%a: i32, %b: i32) : i32;
+intrinsic @clz(%x: i32) : i32;
+intrinsic @ctz(%x: i32) : i32;
+intrinsic @popcount(%x: i32) : i32;
+
+fun @main(%a: i32, %b: i32) : i32 {
+  let mut %r: i32 = 0;
+^entry:
+  %r = call @min(%a, %b) + call @max(%a, %b);
+  ret %r;
+}

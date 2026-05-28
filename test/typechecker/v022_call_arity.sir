@@ -1,0 +1,9 @@
+// EXPECT: FAIL
+// [v0.2.2] §6.10: argument count must match the callee signature.
+intrinsic @abs(%x: i32) : i32;
+fun @main(%a: i32) : i32 {
+  let mut %y: i32 = 0;
+^entry:
+  %y = call @abs(%a, %a);
+  ret %y;
+}

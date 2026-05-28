@@ -1,0 +1,8 @@
+// EXPECT: FAIL
+// [v0.2.2] Two declarations with the same global name are rejected.
+intrinsic @abs(%x: i32) : i32;
+intrinsic @abs(%x: i32) : i32;
+fun @main(%a: i32) : i32 {
+^entry:
+  ret %a;
+}

@@ -1,0 +1,10 @@
+// EXPECT: FAIL
+// [v0.2.2] §6.11: `ret` may not appear in `pre` clauses.
+decl @bad(%x: i32) : i32 {
+  pre ret > 0;
+  post ret >= 0;
+};
+fun @main(%a: i32) : i32 {
+^entry:
+  ret %a;
+}

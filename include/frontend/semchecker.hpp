@@ -25,6 +25,9 @@ namespace symir {
     void checkFunction(const FunDecl &f, DiagBag &diags);
     void checkSigils(const FunDecl &f, DiagBag &diags);
     void checkDuplicates(const FunDecl &f, DiagBag &diags);
+    // [v0.2.2]
+    void checkExtDecl(const ExtDecl &d, DiagBag &diags);
+    void checkIntrinsicDecl(const IntrinsicDecl &d, DiagBag &diags);
   };
 
 } // namespace symir

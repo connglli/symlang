@@ -97,6 +97,23 @@ namespace symir {
 
     std::unordered_map<std::string, StructInfo> structs_;
 
+    // [v0.2.2] Callable registry — populated up-front from all `fun`,
+    // `decl`, and `intrinsic` declarations. Used by `call @name(...)` to
+    // resolve the callee, validate arity/types, and produce the result
+    // type without depending on declaration order.
+    struct CalleeInfo {
+      enum class Kind { Fun, ExtLink, ExtContract, Intrinsic } kind;
+      std::vector<TypePtr> paramTypes;
+      TypePtr retType;
+      SourceSpan declSpan;
+      // Non-owning back-pointers for downstream phases.
+      const FunDecl *fun = nullptr;
+      const ExtDecl *ext = nullptr;
+      const IntrinsicDecl *intr = nullptr;
+    };
+
+    std::unordered_map<std::string, CalleeInfo> callees_;
+
     struct VarInfo {
       TypePtr type;
       bool isMutable;
@@ -112,6 +129,12 @@ namespace symir {
 
     // --- Internal type checking helpers ---
     void collectStructs(const Program &prog, DiagBag &diags);
+    // [v0.2.2] Build the callable registry; check ext/intrinsic signatures.
+    void collectCallees(const Program &prog, DiagBag &diags);
+    // [v0.2.2] Validate contract well-formedness for one ExtDecl.
+    void checkContract(const ExtDecl &d, TypeAnnotations &ann, DiagBag &diags);
+    // [v0.2.2] Build the call graph and reject any cycle (no recursion).
+    void checkNoRecursion(const Program &prog, DiagBag &diags);
     void checkFunction(const FunDecl &f, TypeAnnotations &ann, DiagBag &diags);
 
     void checkInitVal(
