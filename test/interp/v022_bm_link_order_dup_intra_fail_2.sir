@@ -1,7 +1,8 @@
 // EXPECT: FAIL
-// SKIP: COMPILER
+
 // SPEC v0.2.2 §11.1
 // INTERP_ARGS: -I test/tmp/bm_link_dup_intra
+// COMPILER_ARGS: -I test/tmp/bm_link_dup_intra
 // Intention: Two files in one -I dir both define fun @bm_dup_intra -> ambiguity.
 decl @bm_dup_intra(%x: i32) : i32;
 

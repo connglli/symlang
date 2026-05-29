@@ -1,5 +1,6 @@
 // EXPECT: FAIL:UndefinedBehavior
-// SKIP: COMPILER
+// SKIP: WASM — narrow-width @popcount semantics differ from WASM; i1 not faithfully representable in `i32.popcnt`
+// SKIP: COMPILER — narrow-width @popcount semantics differ from C; iN<8 not faithfully representable
 // SPEC v0.2.2 §12.2 @popcount at i1
 intrinsic @popcount(%x: i1) : i1;
 fun @main() : i32 {

@@ -1,5 +1,6 @@
 // EXPECT: FAIL:UndefinedBehavior
-// SKIP: COMPILER
+// SKIP: WASM — WASM runtime cannot detect undef propagation through call args (SymIR-specific UB)
+// SKIP: COMPILER — undef propagation through call args is SymIR-specific; C runtime cannot reproduce
 // SPEC v0.2.2 §7.1 rule 3 - undef passed into a chain
 intrinsic @abs(%x: i32) : i32;
 fun @main() : i32 {

@@ -1,4 +1,5 @@
 // EXPECT: PASS
+// SKIP: WASM — wasmtime cannot link an unused contract decl's emitted `import` without a host implementation
 // SPEC v0.2.2 §11.3
 // Intention: multiple contract-form decls present, none called.
 decl @a(%x: i32) : i32 { post ret == 0, "zero"; };

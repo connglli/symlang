@@ -1,5 +1,5 @@
 // EXPECT: FAIL
-// SKIP: COMPILER
+// SKIP: COMPILER — compile runner has no INTERP_ARGS; recursion-of-scan behaviour only observable via interp
 // SPEC v0.2.2 §11.1
 // INTERP_ARGS: -I test/lib/std
 // Intention: Pointing -I at a parent of stdlib subdirs. Per spec, resolver scans .sir files in the given dir (not recursive). The fn name lives in a child dir, so should be unresolved.

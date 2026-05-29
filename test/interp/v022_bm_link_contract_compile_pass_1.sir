@@ -1,6 +1,6 @@
 // EXPECT: PASS
-// SKIP: COMPILER
-// SKIP: INTERPRETER, SOLVER
+// SKIP: COMPILER — WASM-only test; C compile path uses its own dedicated v022_bm_compile_C_pass_* tests
+// SKIP: INTERPRETER, SOLVER — compiler test: contract decl is interpreter-rejected per §11.3 so interp would error before the compile assertion runs
 // Rationale: interpreter rejects contract-form calls per §11.3; solver expands contract but symiri/symirsolve check elsewhere.
 // SPEC v0.2.2 §11.2
 // Intention: symirc must compile a contract-form decl by emitting extern.

@@ -1,4 +1,5 @@
 // EXPECT: PASS
+// SKIP: WASM — wasmtime cannot link an unused contract decl's emitted `import` without a host implementation
 // SPEC v0.2.2 §11.3
 // Intention: contract-form decl declared but never called - interpreter must accept.
 decl @oracle(%x: i32) : i32 {

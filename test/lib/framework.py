@@ -47,7 +47,13 @@ def get_metadata(file_path):
       if "// SKIP:" in line:
         # Allow comma-separated tags on a single line:
         #   // SKIP: SOLVER, COMPILER
+        # Also allow an inline reason after `—`, `--`, `#`, or `(`:
+        #   // SKIP: WASM — reason here
         raw = line.split("SKIP:")[1].strip()
+        for sep in ("—", "--", "#", "("):
+          if sep in raw:
+            raw = raw.split(sep, 1)[0].strip()
+            break
         for tag in raw.split(","):
           tag = tag.strip()
           if tag:

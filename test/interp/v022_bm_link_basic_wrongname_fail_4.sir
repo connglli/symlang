@@ -1,5 +1,5 @@
 // EXPECT: FAIL
-// SKIP: COMPILER
+// SKIP: COMPILER — compile runner has no INTERP_ARGS; missing-body diagnostic only fires via interp's `-I` path
 // SPEC v0.2.2 §11.1
 // INTERP_ARGS: -I test/tmp/bm_link_single
 // Intention: Name not present in any -I file -> unresolvable.

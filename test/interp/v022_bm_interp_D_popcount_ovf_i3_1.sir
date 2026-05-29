@@ -1,5 +1,6 @@
 // EXPECT: FAIL:UndefinedBehavior
-// SKIP: COMPILER
+// SKIP: WASM — narrow-width @popcount overflow is a SymIR semantic UB; WASM `i32.popcnt` does not trap on narrow widths
+// SKIP: COMPILER — narrow-width @popcount overflow is a SymIR semantic UB; C runtime has no equivalent check
 // SPEC v0.2.2 §12 rule 25 - popcount result overflow in i3
 // i3 signed range is [-4, 3]; -1 is all-ones (7 in unsigned view), popcount=3, that fits.
 // Use a value with popcount=4? In i3 max bits=3 so max popcount=3. So no overflow here.

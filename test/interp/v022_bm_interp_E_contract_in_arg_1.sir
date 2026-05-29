@@ -1,5 +1,5 @@
 // EXPECT: FAIL
-// SKIP: COMPILER
+// SKIP: COMPILER — contract-form `decl` argument; C runtime linker cannot resolve the missing body
 // SPEC v0.2.2 §11.3 - contract decl called as nested arg
 decl @ora() : i32 { post ret == 1, "one"; };
 fun @id(%x: i32) : i32 {

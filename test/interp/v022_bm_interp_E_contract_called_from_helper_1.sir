@@ -1,5 +1,5 @@
 // EXPECT: FAIL
-// SKIP: COMPILER
+// SKIP: COMPILER — contract-form `decl` is interpreter-only; C runtime linker cannot resolve the missing body
 // SPEC v0.2.2 §11.3
 // Intention: calling contract-form decl from a non-main fun must be rejected.
 decl @ora(%x: i32) : i32 {

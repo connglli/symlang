@@ -1,5 +1,5 @@
 // EXPECT: FAIL
-// SKIP: COMPILER
+// SKIP: COMPILER — compile runner has no INTERP_ARGS; missing-body diagnostic only fires via interp's `-I` path
 // SPEC v0.2.2 §11.1
 // Intention: No -I provided; link-form decl with no body must error in interpreter.
 decl @bm_inc(%x: i32) : i32;

@@ -1,7 +1,8 @@
 // EXPECT: FAIL
-// SKIP: COMPILER
+
 // SPEC v0.2.2 §11.1
 // INTERP_ARGS: -I test/tmp/bm_malformed_lib
+// COMPILER_ARGS: -I test/tmp/bm_malformed_lib
 // Intention: -I dir contains a malformed .sir file -- pre-scan should error.
 decl @bm_malformed_sibling(%x: i32) : i32;
 

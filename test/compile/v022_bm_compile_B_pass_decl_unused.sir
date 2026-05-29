@@ -1,7 +1,8 @@
 // EXPECT: PASS
+// SKIP: WASM — wasmtime cannot link a program with an unresolved import; the compile-time assertion is what this test exercises
 // SPEC v0.2.2 §11.2
-// SKIP: INTERPRETER
-// SKIP: SOLVER
+// SKIP: INTERPRETER — compile-only assertion (no `@main` runtime payload — interpreter has nothing to execute)
+// SKIP: SOLVER — compile-only assertion; solver has nothing to synthesise here
 // Intention: unused link-form decl still lowers cleanly to extern/import.
 
 decl @helper_unused(%x: i32) : i32;

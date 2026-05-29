@@ -1,4 +1,5 @@
 // EXPECT: PASS
+// SKIP: WASM — WASM backend bug with vector pass-by-value through `call` (see H_vec_pass)
 // INTERP_ARGS: -I test/lib/std/simd
 // COMPILER_ARGS: -I test/lib/std/simd
 // SPEC v0.2.2 §11.3

@@ -1,5 +1,5 @@
 // EXPECT: FAIL
-// SKIP: COMPILER
+// SKIP: COMPILER — interpreter rejects contract-form `decl` calls per §11.3 (compiler emits extern instead)
 // SPEC v0.2.2 §11.3
 // Intention: Interpreter rejects call to contract-form decl (variant: integer return).
 decl @bm_oracle(%x: i32) : i32 {

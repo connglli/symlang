@@ -1,5 +1,6 @@
 // EXPECT: FAIL:UndefinedBehavior
-// SKIP: COMPILER
+// SKIP: WASM — WASM runtime has no UBSan-equivalent for reading undef values
+// SKIP: COMPILER — callee-undef-read UB is SymIR-specific; C UBSan does not detect every undef path
 // SPEC v0.2.2 §7.1 rule 3
 // Intention: callee loads from a let mut left as undef -> UB.
 fun @read(%p: ptr i32) : i32 {

@@ -1,5 +1,5 @@
 // EXPECT: PASS
-// SKIP: COMPILER
+// SKIP: COMPILER — intrinsic+decl same-name conflict surfaces in semchecker (--check); compile path does the same check but via INTERP_ARGS metadata
 // SPEC v0.2.2 §3.3
 // Intention: intrinsic and link-form decl with same name in the same file -> conflict.
 intrinsic @abs(%x: i32) : i32;

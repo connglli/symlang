@@ -1,6 +1,7 @@
 // EXPECT: PASS
 // SPEC v0.2.2 §3.3
-// SKIP: INTERPRETER, COMPILER
+// SKIP: INTERPRETER — contract-only decl: interpreter rejects per §11.3 (this test asserts --check accepts it)
+// SKIP: COMPILER — contract decl emitted as `extern` but no host implementation; link/run unsupported (interp also rejects per §11.3)
 // Intention: contract-only decl with no body anywhere (legal for solver; --check should accept).
 decl @abstract_only(%n: i32) : i32 {
   pre %n > 0, "positive";

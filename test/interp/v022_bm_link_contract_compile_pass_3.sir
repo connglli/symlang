@@ -1,6 +1,6 @@
 // EXPECT: PASS
-// SKIP: COMPILER
-// SKIP: INTERPRETER, SOLVER
+// SKIP: COMPILER — WASM-only test; C compile path uses its own dedicated v022_bm_compile_C_pass_* tests
+// SKIP: INTERPRETER, SOLVER — compiler test: contract decl is interpreter-rejected per §11.3 so interp would error before the compile assertion runs
 // SPEC v0.2.2 §11.2
 // Intention: symirc compiles ptr-returning contract-form decl.
 decl @bm_extern_alloc(%n: i32) : ptr i32 {

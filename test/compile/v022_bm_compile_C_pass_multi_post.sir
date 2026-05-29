@@ -1,6 +1,7 @@
 // EXPECT: PASS
-// SKIP: INTERPRETER
-// SKIP: SOLVER
+// SKIP: WASM — wasmtime cannot link unresolved imports (contract decls emit `import` with no host implementation)
+// SKIP: INTERPRETER — compile-only assertion (no `@main` runtime payload — interpreter has nothing to execute)
+// SKIP: SOLVER — compile-only assertion; solver has nothing to synthesise here
 // SPEC v0.2.2 §11.2
 // Intention: multiple post clauses.
 

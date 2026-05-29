@@ -1,7 +1,8 @@
 // EXPECT: FAIL
-// SKIP: COMPILER
+
 // SPEC v0.2.2 §11.1
 // INTERP_ARGS: -I test/tmp/bm_link_dup_a -I test/tmp/bm_link_dup_b
+// COMPILER_ARGS: -I test/tmp/bm_link_dup_a -I test/tmp/bm_link_dup_b
 // Intention: Same fun @bm_dup_fn body in TWO -I dirs -> ambiguity error.
 decl @bm_dup_fn(%x: i32) : i32;
 

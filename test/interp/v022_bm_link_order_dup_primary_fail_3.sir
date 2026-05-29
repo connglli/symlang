@@ -1,7 +1,8 @@
 // EXPECT: FAIL
-// SKIP: COMPILER
+
 // SPEC v0.2.2 §11.1, §3.3
 // INTERP_ARGS: -I test/tmp/bm_link_single
+// COMPILER_ARGS: -I test/tmp/bm_link_single
 // Intention: link-form decl + a local fun @bm_inc in primary -> conflict.
 decl @bm_inc(%x: i32) : i32;
 

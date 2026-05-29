@@ -1,7 +1,8 @@
 // EXPECT: FAIL
-// SKIP: COMPILER
+
 // SPEC v0.2.2 §3.3, §3.4
 // INTERP_ARGS: -I test/tmp/bm_link_contract_a
+// COMPILER_ARGS: -I test/tmp/bm_link_contract_a
 // Intention: Primary file has contract-form decl @bm_contract_clash; -I dir has a fun with same name -> error.
 decl @bm_contract_clash(%x: i32) : i32 {
   pre %x >= 0, "nonneg";

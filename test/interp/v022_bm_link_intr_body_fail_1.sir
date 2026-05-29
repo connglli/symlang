@@ -1,7 +1,8 @@
 // EXPECT: FAIL
-// SKIP: COMPILER
+
 // SPEC v0.2.2 §3.3, §11.4
 // INTERP_ARGS: -I test/tmp/bm_link_intr_a
+// COMPILER_ARGS: -I test/tmp/bm_link_intr_a
 // Intention: intrinsic @abs in primary + fun @abs body in -I -> conflict.
 intrinsic @abs(%x: i32) : i32;
 

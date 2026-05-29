@@ -1,7 +1,8 @@
 // EXPECT: FAIL
-// SKIP: COMPILER
+
 // SPEC v0.2.2 §9.7
 // INTERP_ARGS: -I test/tmp/bm_link_cyc1
+// COMPILER_ARGS: -I test/tmp/bm_link_cyc1
 // Intention: Cycle entirely within one -I file (self-recursion).
 decl @bm_self_cycle(%x: i32) : i32;
 

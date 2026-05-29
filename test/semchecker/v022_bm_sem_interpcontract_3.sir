@@ -1,6 +1,6 @@
 // EXPECT: PASS
 // SPEC v0.2.2 §11.3
-// SKIP: INTERPRETER, COMPILER
+// SKIP: INTERPRETER, COMPILER — contract-only decl: interpreter rejects per §11.3; semchecker is the layer under test here
 // Intention: contract-only decl unused (not called); sem-check should still accept.
 decl @abstract(%x: i32) : i32 {
   post ret == %x;

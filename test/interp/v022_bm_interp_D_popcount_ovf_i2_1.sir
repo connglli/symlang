@@ -1,5 +1,6 @@
 // EXPECT: FAIL:UndefinedBehavior
-// SKIP: COMPILER
+// SKIP: WASM — narrow-width @popcount overflow is a SymIR semantic UB; WASM `i32.popcnt` does not trap on narrow widths
+// SKIP: COMPILER — narrow-width @popcount overflow is a SymIR semantic UB; C runtime has no equivalent check
 // SPEC v0.2.2 §12 rule 25 - popcount result not representable in signed i2
 // i2 signed range is [-2, 1]; popcount(3) = 2 -> overflow.
 intrinsic @popcount(%x: i2) : i2;

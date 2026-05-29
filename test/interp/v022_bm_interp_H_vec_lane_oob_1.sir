@@ -1,4 +1,5 @@
 // EXPECT: FAIL:UndefinedBehavior
+// SKIP: WASM — WASM runtime has no UBSan-equivalent for vector lane OOB
 // SPEC v0.2.2 §7.6 rule 20 inside callee
 fun @bad_lane(%v: <4> i32) : i32 {
   let %i: i32 = 5;

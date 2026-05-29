@@ -1,7 +1,8 @@
 // EXPECT: FAIL
-// SKIP: COMPILER
+
 // SPEC v0.2.2 §11.1
 // INTERP_ARGS: -I test/tmp/bm_link_single/inc.sir
+// COMPILER_ARGS: -I test/tmp/bm_link_single/inc.sir
 // Intention: -I pointing at a regular file (not a dir) -- should error.
 decl @bm_inc(%x: i32) : i32;
 

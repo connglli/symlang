@@ -1,4 +1,5 @@
 // EXPECT: FAIL:UndefinedBehavior
+// SKIP: WASM — WASM runtime has no UBSan-equivalent for signed integer overflow
 // SPEC v0.2.2 §7.7 rule 24 + rule 4 (signed overflow)
 fun @ovf() : i32 {
   let %m: i32 = 2147483647;

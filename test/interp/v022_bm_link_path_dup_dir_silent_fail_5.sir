@@ -1,5 +1,6 @@
 // EXPECT: PASS
-// SKIP: COMPILER
+// SKIP: WASM — compile runner has no INTERP_ARGS; -I dedup behaviour observable via interp only
+// SKIP: COMPILER — compile runner has no INTERP_ARGS; dedup behaviour only observable via interp's `-I` path
 // SPEC v0.2.2 §11.1
 // INTERP_ARGS: -I test/tmp/bm_link_dir_a -I test/tmp/bm_link_dir_a
 // Intention: Same dir twice -- ambiguity should arise if resolver enumerates dirs without dedup.

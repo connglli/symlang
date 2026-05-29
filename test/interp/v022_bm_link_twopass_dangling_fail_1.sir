@@ -1,7 +1,8 @@
 // EXPECT: FAIL
-// SKIP: COMPILER
+
 // SPEC v0.2.2 §3.3
 // INTERP_ARGS: -I test/tmp/bm_link_dangling
+// COMPILER_ARGS: -I test/tmp/bm_link_dangling
 // Intention: A lib fn body references an undefined name; pre-scan must detect it.
 decl @bm_dangling(%x: i32) : i32;
 

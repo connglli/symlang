@@ -1,7 +1,8 @@
 // EXPECT: FAIL
-// SKIP: COMPILER
+
 // SPEC v0.2.2 §9.7
 // INTERP_ARGS: -I test/tmp/bm_link_cyc2
+// COMPILER_ARGS: -I test/tmp/bm_link_cyc2
 // Intention: 2-cycle a<->b across one -I dir (two files).
 decl @bm_cyc_a(%x: i32) : i32;
 

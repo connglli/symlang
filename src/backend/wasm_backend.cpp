@@ -1788,6 +1788,13 @@ namespace symir {
                 if (arg.maskExpr) {
                   scanExpr(*arg.maskExpr);
                 }
+              } else if constexpr (std::is_same_v<T, CallAtom>) {
+                // [v0.2.2 §2.12 fix] A call argument may itself contain
+                // `addr <lv>`, which must spill <lv> onto the shadow
+                // stack. Recurse into every argument expression.
+                for (const auto &ap: arg.args) {
+                  scanExpr(*ap);
+                }
               }
             },
             a.v
@@ -1828,6 +1835,13 @@ namespace symir {
                 } else if constexpr (std::is_same_v<IT, StoreInstr>) {
                   scanExpr(instr.ptr);
                   scanExpr(instr.val);
+                } else if constexpr (std::is_same_v<IT, AssumeInstr>) {
+                  // [v0.2.2 fix] assume cond may contain `call @f(addr %x)`
+                  scanExpr(instr.cond.lhs);
+                  scanExpr(instr.cond.rhs);
+                } else if constexpr (std::is_same_v<IT, RequireInstr>) {
+                  scanExpr(instr.cond.lhs);
+                  scanExpr(instr.cond.rhs);
                 }
               },
               ins
@@ -1836,6 +1850,12 @@ namespace symir {
         if (auto rt = std::get_if<RetTerm>(&b.term)) {
           if (rt->value) {
             scanExpr(*rt->value);
+          }
+        } else if (auto bt = std::get_if<BrTerm>(&b.term)) {
+          // [v0.2.2 fix] conditional br's predicate may contain `call`.
+          if (bt->isConditional && bt->cond) {
+            scanExpr(bt->cond->lhs);
+            scanExpr(bt->cond->rhs);
           }
         }
       }

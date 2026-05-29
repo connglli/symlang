@@ -1,5 +1,5 @@
 // EXPECT: FAIL
-// SKIP: COMPILER
+// SKIP: COMPILER — compile runner has no INTERP_ARGS; missing-body diagnostic only fires via interp's `-I` path
 // SPEC v0.2.2 §11.1
 // INTERP_ARGS: -I test/tmp/bm_link_empty
 // Intention: -I points to empty dir; link-form decl unresolvable.
