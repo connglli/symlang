@@ -57,10 +57,29 @@ namespace symir::reify {
 
     std::vector<Struct> structs;
 
-    // Filenames of the concrete `.sir` realizations the solver
-    // produced for this function (relative to the descriptor's
-    // directory). May be more than one when rysmith used `--n-inits`.
-    std::vector<std::string> concretes;
+    // [v0.2.2] One per-init record. Carries the concrete .sir file
+    // the solver produced for this realization plus the solver-
+    // synthesised values for each parameter and the return
+    // expression. Values are stringified in the same format
+    // rysmith writes into the SOLVED header (decimal ints / hex
+    // floats / std::to_string(double) full-precision), so a
+    // consumer can hand them straight to `symiri ... -- v0 v1`.
+    struct Realization {
+      std::string file; // basename only, relative to descriptor dir
+      // Parameter values keyed by the parameter's local-id (e.g.
+      // `%pa0`). Empty when the function takes no parameters.
+      std::vector<std::pair<std::string, std::string>> paramValues;
+      // Sym values keyed by the sym's local-id (e.g. `%?s0`). Each
+      // sym in the function's `syms` list above gets one entry per
+      // realization. Different realizations correspond to different
+      // solver seeds, so the same sym may take different values.
+      std::vector<std::pair<std::string, std::string>> symValues;
+      // Solved value of the `ret` expression on the chosen path.
+      // Empty string when the path's terminator is not `ret <expr>;`.
+      std::string retValue;
+    };
+
+    std::vector<Realization> realizations;
   };
 
   // Serialize a descriptor as JSON to `outPath`. Overwrites any
@@ -74,7 +93,7 @@ namespace symir::reify {
   bool writeFuncDescriptorFromProgram(
       const std::filesystem::path &outPath, const std::string &funcName, const symir::Program &prog,
       const std::vector<std::string> &pathLabels,
-      const std::vector<std::filesystem::path> &concreteFiles, const std::string &genId
+      const std::vector<FuncDescriptor::Realization> &realizations, const std::string &genId
   );
 
   // Parse a descriptor JSON. Returns nullopt on parse error (callers

@@ -43,3 +43,6 @@ __pycache__/
 
 # Others
 fuzzout
+reify_out
+rysmith_out
+rylink_out

@@ -68,10 +68,12 @@ def test_id_prefix(rysmith):
     files = sorted(os.listdir(d))
     expected_sirs = {"func_abc123_0", "func_abc123_1"}
     sir_stems = {f.rsplit(".", 1)[0] for f in files if f.endswith(".sir")}
-    # nInits>1 means stems include `_<initIdx>` suffix; trim to base
+    # Single-init produces `func_abc123_<i>.sir`; multi-init produces
+    # `func_abc123_<i><a..z>.sir`. Trim a trailing init-letter to
+    # recover the base name in both cases.
     base_stems = set()
     for s in sir_stems:
-      m = re.match(r"(func_abc123_\d+)(_\d+)?$", s)
+      m = re.match(r"(func_abc123_\d+)[a-z]?$", s)
       if m:
         base_stems.add(m.group(1))
     check(
@@ -177,18 +179,32 @@ def test_descriptor_schema(rysmith):
       "syms",
       "path",
       "structs",
-      "concretes",
+      "realizations",
     ):
       check(f"descriptor field `{k}` present", k in desc, str(list(desc.keys())))
     check("id matches CLI --id", desc.get("id") == "feed42", desc.get("id"))
     check(
       "name is @func_feed42_0", desc.get("name") == "@func_feed42_0", desc.get("name")
     )
+    rzs = desc.get("realizations")
     check(
-      "at least one concrete listed in `concretes`",
-      isinstance(desc.get("concretes"), list) and desc["concretes"],
-      str(desc.get("concretes")),
+      "at least one realization listed",
+      isinstance(rzs, list) and rzs,
+      str(rzs),
     )
+    if rzs:
+      rz = rzs[0]
+      check("realization has file", "file" in rz, str(rz))
+      check("realization has params dict", isinstance(rz.get("params"), dict), str(rz))
+      check("realization has syms dict", isinstance(rz.get("syms"), dict), str(rz))
+      check("realization has ret", "ret" in rz, str(rz))
+      # All declared params have a value
+      param_names = [p["name"] for p in desc.get("params", [])]
+      check(
+        "every declared param has a solved value",
+        all(n in rz.get("params", {}) for n in param_names),
+        f"params={rz.get('params')}",
+      )
 
 
 def test_solved_replay(rysmith, symiri):

@@ -87,11 +87,26 @@ namespace symir::reify {
     }
     ofs << "],\n";
 
-    ofs << "  \"concretes\": [";
-    for (size_t i = 0; i < d.concretes.size(); ++i) {
+    ofs << "  \"realizations\": [";
+    for (size_t i = 0; i < d.realizations.size(); ++i) {
       if (i)
         ofs << ", ";
-      ofs << "\"" << jsonEscape(d.concretes[i]) << "\"";
+      const auto &r = d.realizations[i];
+      ofs << "{\"file\": \"" << jsonEscape(r.file) << "\", \"params\": {";
+      for (size_t j = 0; j < r.paramValues.size(); ++j) {
+        if (j)
+          ofs << ", ";
+        ofs << "\"" << r.paramValues[j].first << "\": \"" << jsonEscape(r.paramValues[j].second)
+            << "\"";
+      }
+      ofs << "}, \"syms\": {";
+      for (size_t j = 0; j < r.symValues.size(); ++j) {
+        if (j)
+          ofs << ", ";
+        ofs << "\"" << r.symValues[j].first << "\": \"" << jsonEscape(r.symValues[j].second)
+            << "\"";
+      }
+      ofs << "}, \"ret\": \"" << jsonEscape(r.retValue) << "\"}";
     }
     ofs << "]\n";
     ofs << "}\n";
@@ -100,7 +115,7 @@ namespace symir::reify {
   bool writeFuncDescriptorFromProgram(
       const std::filesystem::path &outPath, const std::string &funcName, const symir::Program &prog,
       const std::vector<std::string> &pathLabels,
-      const std::vector<std::filesystem::path> &concreteFiles, const std::string &genId
+      const std::vector<FuncDescriptor::Realization> &realizations, const std::string &genId
   ) {
     const symir::FunDecl *fn = nullptr;
     const std::string mangled = "@" + funcName;
@@ -141,8 +156,7 @@ namespace symir::reify {
         sd.fields.push_back({f.name, typeToSir(f.type)});
       d.structs.push_back(std::move(sd));
     }
-    for (const auto &cf: concreteFiles)
-      d.concretes.push_back(cf.filename().string());
+    d.realizations = realizations;
 
     writeFuncDescriptor(outPath, d);
     return true;
@@ -408,7 +422,7 @@ namespace symir::reify {
         }
         if (!p.match(']'))
           return std::nullopt;
-      } else if (key == "path" || key == "concretes") {
+      } else if (key == "path") {
         if (!p.match('['))
           return std::nullopt;
         bool c = false;
@@ -418,7 +432,68 @@ namespace symir::reify {
           std::string v;
           if (!p.parseString(v))
             return std::nullopt;
-          (key == "path" ? d.path : d.concretes).push_back(std::move(v));
+          d.path.push_back(std::move(v));
+          c = true;
+        }
+        if (!p.match(']'))
+          return std::nullopt;
+      } else if (key == "realizations") {
+        if (!p.match('['))
+          return std::nullopt;
+        bool c = false;
+        while (!p.peek(']')) {
+          if (c && !p.match(','))
+            return std::nullopt;
+          if (!p.match('{'))
+            return std::nullopt;
+          FuncDescriptor::Realization rz;
+          bool rc = false;
+          // Each realization is `{"file": "...", "params": {...},
+          // "syms": {...}, "ret": "..."}` — a flat object of string-
+          // valued fields plus two key→string maps. We accept the
+          // keys in any order.
+          auto parseStrMap = [&](std::vector<std::pair<std::string, std::string>> &out) -> bool {
+            if (!p.match('{'))
+              return false;
+            bool mc = false;
+            while (!p.peek('}')) {
+              if (mc && !p.match(','))
+                return false;
+              std::string k, v;
+              if (!p.parseString(k) || !p.match(':') || !p.parseString(v))
+                return false;
+              out.emplace_back(std::move(k), std::move(v));
+              mc = true;
+            }
+            return p.match('}');
+          };
+          while (!p.peek('}')) {
+            if (rc && !p.match(','))
+              return std::nullopt;
+            std::string k;
+            if (!p.parseString(k) || !p.match(':'))
+              return std::nullopt;
+            if (k == "file") {
+              if (!p.parseString(rz.file))
+                return std::nullopt;
+            } else if (k == "params") {
+              if (!parseStrMap(rz.paramValues))
+                return std::nullopt;
+            } else if (k == "syms") {
+              if (!parseStrMap(rz.symValues))
+                return std::nullopt;
+            } else if (k == "ret") {
+              if (!p.parseString(rz.retValue))
+                return std::nullopt;
+            } else {
+              if (!p.skipValue())
+                return std::nullopt;
+            }
+            rc = true;
+          }
+          if (!p.match('}'))
+            return std::nullopt;
+          d.realizations.push_back(std::move(rz));
           c = true;
         }
         if (!p.match(']'))

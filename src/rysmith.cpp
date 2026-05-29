@@ -78,10 +78,19 @@ static auto makeSolverFactory() {
 }
 
 static bool validateWithSymiri(
-    const fs::path &symiriPath, const fs::path &sirPath, const std::string &funcName, bool verbose
+    const fs::path &symiriPath, const fs::path &sirPath, const std::string &funcName,
+    const std::vector<std::string> &paramArgs, bool verbose
 ) {
   std::string cmd =
       "\"" + symiriPath.string() + "\" --main @" + funcName + " \"" + sirPath.string() + "\"";
+  // [v0.2.2] Forward the solver-synthesised parameter values as
+  // positional CLI args (after `--` to escape negatives). Without
+  // this a fn that takes any parameter would arity-error.
+  if (!paramArgs.empty()) {
+    cmd += " --";
+    for (const auto &a: paramArgs)
+      cmd += " " + a;
+  }
   if (!verbose)
     cmd += " > /dev/null 2>&1";
   int status = std::system(cmd.c_str());
@@ -112,8 +121,19 @@ static std::string pickVecLowering(std::mt19937 &rng, const std::string &request
   return strategies[d(rng)];
 }
 
+// [v0.2.2] One per concretized .sir file. Bundles the on-disk path
+// with the per-init solved values (parameter args, sym values,
+// return value) so consumers (--validate, --emit-desc) don't need
+// to re-parse the SOLVED header. `rz.paramValues` is in declaration
+// order; rysmith --validate flattens it for `symiri ... -- arg0
+// arg1`.
+struct ConcreteFile {
+  fs::path path;
+  FuncDescriptor::Realization rz;
+};
+
 struct GenerateResult {
-  std::vector<fs::path> produced;
+  std::vector<ConcreteFile> produced;
 };
 
 static GenerateResult generateLeaf(
@@ -181,7 +201,7 @@ static GenerateResult generateLeaf(
       std::cout << "[sampler] attempt=" << attempt << " EP len=" << path.size() << "\n";
 
     // Generate nInits independently-seeded programs
-    std::vector<fs::path> produced;
+    std::vector<ConcreteFile> produced;
     for (int initIdx = 0; initIdx < nInits; initIdx++) {
       FuncGenConfig fcfg;
       fcfg.funcName = funcName;
@@ -201,7 +221,7 @@ static GenerateResult generateLeaf(
       auto [prog, pathLabels] = genFunction(cfg, path, vars, fcfg);
 
       auto writePathHeader = [&](std::ostream &os) {
-        os << "// path:";
+        os << "// PATH:";
         for (std::size_t k = 0; k < path.size(); k++)
           os << (k == 0 ? " " : " -> ") << path[k];
         os << "\n\n";
@@ -257,8 +277,12 @@ static GenerateResult generateLeaf(
       }
 
       if (res.sat) {
-        std::string outName =
-            nInits > 1 ? funcName + "_" + std::to_string(initIdx) + ".sir" : funcName + ".sir";
+        // [v0.2.2] Init suffix is a lowercase letter a..z so descriptor
+        // consumers (rylink) can address a specific concretization by
+        // `<funcName><letter>`. nInits is clamped to [1, 26] at CLI
+        // parse time, so initIdx is always in range.
+        char letter = static_cast<char>('a' + initIdx);
+        std::string outName = nInits > 1 ? funcName + letter + ".sir" : funcName + ".sir";
         auto concretePath = outDir / outName;
         {
           std::ofstream ofs(concretePath);
@@ -295,17 +319,58 @@ static GenerateResult generateLeaf(
           SIRPrinter printer(ofs, res.model);
           printer.print(prog);
         }
-        // [v0.2.2] Write the per-function descriptor (rylink consumer)
-        // when --emit-desc is set. The signature, sym list, struct
-        // layout, and path are identical across inits — only sym
-        // values differ — so we re-write the same descriptor each
-        // time, the `concretes` array just grows. Gated by --emit-desc
-        // so the common standalone-rysmith path doesn't litter the
-        // output dir with unused JSON sidecars.
-        produced.push_back(concretePath);
+        // [v0.2.2] Capture the solver-synthesised parameter, sym
+        // and return values alongside the concrete file path. We
+        // pull them straight from res.paramModel / res.model /
+        // res.retModel — same source the SOLVED header serialises
+        // from. Downstream consumers (--validate, --emit-desc) use
+        // them directly without re-parsing the .sir.
+        auto fmtVal = [](const SymbolicExecutor::Result::ModelVal &v) {
+          std::ostringstream os;
+          if (std::holds_alternative<int64_t>(v))
+            os << std::get<int64_t>(v);
+          else {
+            os.precision(17);
+            os << std::get<double>(v);
+          }
+          return os.str();
+        };
+        ConcreteFile cf;
+        cf.path = concretePath;
+        cf.rz.file = concretePath.filename().string();
+        const FunDecl *entry = nullptr;
+        for (const auto &f: prog.funs)
+          if (f.name.name == "@" + funcName) {
+            entry = &f;
+            break;
+          }
+        if (entry) {
+          // Params in declaration order — symiri positional args
+          // need that ordering at validate time.
+          for (const auto &p: entry->params) {
+            auto it = res.paramModel.find(p.name.name);
+            if (it != res.paramModel.end())
+              cf.rz.paramValues.emplace_back(p.name.name, fmtVal(it->second));
+          }
+          // Syms in declaration order so the descriptor's
+          // top-level `syms` list and the per-realization
+          // `symValues` line up positionally.
+          for (const auto &s: entry->syms) {
+            auto it = res.model.find(s.name.name);
+            if (it != res.model.end())
+              cf.rz.symValues.emplace_back(s.name.name, fmtVal(it->second));
+          }
+        }
+        if (res.retModel.has_value())
+          cf.rz.retValue = fmtVal(*res.retModel);
+        produced.push_back(std::move(cf));
         if (emitDesc) {
+          std::vector<FuncDescriptor::Realization> realizations;
+          realizations.reserve(produced.size());
+          for (const auto &x: produced)
+            realizations.push_back(x.rz);
           auto descPath = outDir / (funcName + ".json");
-          writeFuncDescriptorFromProgram(descPath, funcName, prog, pathLabels, produced, genId);
+          writeFuncDescriptorFromProgram(descPath, funcName, prog, pathLabels, realizations, genId);
         }
         if (verbose)
           std::cout << "[emit] init " << initIdx << ": " << concretePath << "\n";
@@ -484,7 +549,17 @@ int main(int argc, char **argv) {
   int nStmts = result["n-stmts"].as<int>();
   int maxLoopIter = result["max-loop-iter"].as<int>();
   int minLoopIter = result.count("min-loop-iter") ? result["min-loop-iter"].as<int>() : 0;
+  // [v0.2.2] Clamp to [1, 26] — each init's concrete file is named
+  // with a lowercase-letter suffix `func_<id>_<i><a..z>.sir`, so
+  // 26 is the natural cap. 0 is meaningless (no concretization).
   int nInits = result["n-inits"].as<int>();
+  if (nInits < 1) {
+    std::cerr << "warning: --n-inits clamped to 1 (was " << nInits << ")\n";
+    nInits = 1;
+  } else if (nInits > 26) {
+    std::cerr << "warning: --n-inits clamped to 26 (was " << nInits << ")\n";
+    nInits = 26;
+  }
   int maxRetries = result["max-retries"].as<int>();
   double pBranch = result["p-branch"].as<double>();
   double pBackedge = result["p-backedge"].as<double>();
@@ -586,7 +661,8 @@ int main(int argc, char **argv) {
       continue;
     }
 
-    for (const auto &p: genRes.produced) {
+    for (const auto &cf: genRes.produced) {
+      const fs::path &p = cf.path;
       std::cout << "  concrete: " << p << "\n";
 
       if (target != "sir") {
@@ -606,21 +682,31 @@ int main(int argc, char **argv) {
 
     if (doValidate) {
       bool allOk = true;
-      for (const auto &p: genRes.produced) {
-        // Strip "_N" suffix from stem to get base function name
+      for (const auto &cf: genRes.produced) {
+        const fs::path &p = cf.path;
+        // [v0.2.2] Strip the trailing init-letter suffix (`a`..`z`)
+        // from the stem to recover the base function name. Stems are
+        // either `func_<id>_<i>` (single init) or `func_<id>_<i><a..z>`
+        // (multi-init); drop one trailing lowercase letter when the
+        // last char is a letter and the char before it is a digit
+        // (so the trailing `<id>_<i>` digit run is preserved).
         std::string stem = p.stem().string();
         std::string baseFuncName = stem;
-        if (auto pos = stem.rfind('_'); pos != std::string::npos) {
-          bool isNum = true;
-          for (std::size_t j = pos + 1; j < stem.size(); j++)
-            if (!std::isdigit((unsigned char) stem[j])) {
-              isNum = false;
-              break;
-            }
-          if (isNum)
-            baseFuncName = stem.substr(0, pos);
+        if (stem.size() >= 2) {
+          char last = stem.back();
+          char prev = stem[stem.size() - 2];
+          if (last >= 'a' && last <= 'z' && std::isdigit((unsigned char) prev))
+            baseFuncName = stem.substr(0, stem.size() - 1);
         }
-        bool ok = validateWithSymiri(symiriPath, p, baseFuncName, verbose);
+        // Param values came straight from the solver's model — no
+        // need to re-parse the SOLVED header. Flatten the
+        // declaration-order (name, value) pairs into the bare
+        // value list `symiri --` expects.
+        std::vector<std::string> paramArgs;
+        paramArgs.reserve(cf.rz.paramValues.size());
+        for (const auto &pv: cf.rz.paramValues)
+          paramArgs.push_back(pv.second);
+        bool ok = validateWithSymiri(symiriPath, p, baseFuncName, paramArgs, verbose);
         std::cout << "  validated: " << (ok ? "OK" : "FAIL") << " (" << p.filename() << ")\n";
         if (!ok) {
           allOk = false;
