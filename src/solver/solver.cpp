@@ -746,17 +746,13 @@ namespace symir {
     // [v0.2.1] Reset per-solve provenance tracking. Each call to solve()
     // walks a fresh CFG path, so prior provenance state must not leak.
     ptrProv_.clear();
-    // [v0.2.2] Local slot the RetTerm visitor writes into; cleared
-    // back to nullptr before solve() returns so the smt::Term doesn't
-    // outlive solve()'s stack frame.
+    // [v0.2.2] Local for the captured top-level RetTerm term. The
+    // path-traversal lambda captures by reference and writes into it
+    // when it sees `ret <expr>;`. Lives on the stack of solve() so
+    // the shared_ptr<bitwuzla::Term> goes away before the solver
+    // does. Storing it as a class member would race when sample()
+    // runs workers concurrently against the same SymbolicExecutor.
     smt::Term retTermLocal;
-    retTermSlot_ = &retTermLocal;
-
-    struct SlotGuard {
-      smt::Term *&slot;
-
-      ~SlotGuard() { slot = nullptr; }
-    } slotGuard{retTermSlot_};
 
     // 1. Declare symbols and fix values if requested
     for (const auto &s: entry->syms) {
@@ -1222,9 +1218,7 @@ namespace symir {
               // caller of this lambda) so the SOLVED header can extract
               // its model value.
               if (term.value) {
-                auto t = evalExpr(*term.value, solver, store, pathConstraints).term;
-                if (retTermSlot_)
-                  *retTermSlot_ = t;
+                retTermLocal = evalExpr(*term.value, solver, store, pathConstraints).term;
               }
             } else {
               if (nextLabel)

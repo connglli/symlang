@@ -197,7 +197,7 @@ def main():
 
   passed = sum(1 for _, ok, _ in results if ok)
   total = len(results)
-  print(f"\nSummary (param_features_tests): {passed}/{total} passed.")
+  print(f"\nSummary (param_features_tests): {passed}/{total} passed.\n")
   sys.exit(0 if passed == total else 1)
 
 

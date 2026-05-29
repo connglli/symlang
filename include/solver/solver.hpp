@@ -256,12 +256,6 @@ namespace symir {
     // can push REQ terms). Set by solve() and consumed by callFunction.
     std::vector<smt::Term> *currentReq_ = nullptr;
 
-    // [v0.2.2] Top-level entry-fun return-value term captured during
-    // path traversal. Used to populate Result::retModel after solving.
-    // Pointer to a local in solve() — set before the RetTerm visitor
-    // fires, cleared back to nullptr immediately after model extraction.
-    // No ownership: the smt::Term shared_ptr lives on solve()'s stack.
-    smt::Term *retTermSlot_ = nullptr;
 
     // [v0.2.2] Per-solve RNG used by callFunction to pick a branch when
     // a callee has a non-straight CFG. Seeded from config_.seed at the
