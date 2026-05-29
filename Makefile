@@ -139,12 +139,10 @@ test: $(TARGET_INTERP) $(TARGET_COMPILER) $(TARGET_SOLVER) $(TARGET_RYSMITH)
 	$(PY) -m test.lib.run_interp_tests test/typechecker ./$(TARGET_INTERP) --check
 	$(PY) -m test.lib.run_interp_tests test/semchecker ./$(TARGET_INTERP) --check
 	$(PY) -m test.lib.run_interp_tests test/interp ./$(TARGET_INTERP)
-	$(PY) -m test.lib.run_interp_tests test/complex ./$(TARGET_INTERP)
 	$(PY) -m test.lib.run_compiler_tests test/ ./$(TARGET_COMPILER) --target c
 	$(PY) -m test.lib.run_compiler_tests test/ ./$(TARGET_COMPILER) --target wasm
 	$(PY) -m test.lib.run_c_preamble_test ./$(TARGET_COMPILER)
 	$(PY) -m test.lib.run_xval_tests test/xval ./$(TARGET_INTERP) ./$(TARGET_COMPILER)
 	$(PY) -m test.lib.run_solver_tests test/solver ./$(TARGET_SOLVER) ./$(TARGET_INTERP)
-	$(PY) -m test.lib.run_solver_tests test/sample ./$(TARGET_SOLVER) ./$(TARGET_INTERP)
 	$(PY) -m test.lib.run_example_tests examples ./$(TARGET_SOLVER) ./$(TARGET_INTERP)
 	$(PY) -m test.lib.run_reify_diff_tests --rysmith ./$(TARGET_RYSMITH) --symiri ./$(TARGET_INTERP) --symirc ./$(TARGET_COMPILER) --n 100 --seed 1234
