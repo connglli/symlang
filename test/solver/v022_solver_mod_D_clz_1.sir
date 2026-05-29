@@ -1,0 +1,40 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^exit
+// SPEC v0.2.2 §12.2 (@clz)
+// Intention: Scenario D3 -- synthesize a value with a specific number
+// of leading zeros. clz(?x) == 28 means the high 28 bits of ?x are 0
+// and bit 3 is set => ?x in [8, 15]. Combined with bounded domain.
+intrinsic @clz(%x: i32) : i32;
+
+fun @inc(%v: i32) : i32 {
+^entry:
+  ret %v + 1;
+}
+
+fun @main() : i32 {
+  sym %?x: value i32 in [1, 256];
+  let mut %lz: i32 = 0;
+  let mut %lz2: i32 = 0;
+  let mut %inc_r: i32 = 0;
+  let mut %final: i32 = 0;
+  let %target_clz: i32 = 28;
+^entry:
+  %lz = call @clz(%?x);
+  require %lz == %target_clz, "clz(?x) == 28 implies ?x in [8, 15]";
+  br ^stage1;
+^stage1:
+  // Cross-check: re-call clz to validate shared-symbol behavior.
+  %lz2 = call @clz(%?x);
+  require %lz2 == %lz, "same result on re-call";
+  br ^stage2;
+^stage2:
+  %inc_r = call @inc(%lz);
+  require %inc_r == 29, "inc(28) == 29";
+  %final = %inc_r - 1;
+  require %final == %target_clz, "round trip";
+  require %?x >= 8, "?x >= 8 by clz bound";
+  require %?x <= 15, "?x <= 15 by clz bound";
+  br ^exit;
+^exit:
+  ret %?x;
+}

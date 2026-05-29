@@ -1,0 +1,62 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path ^entry,^neg_branch,^stage2,^stage3,^exit
+// SKIP: INTERPRETER — contract-form decl is interp-rejected per §11.3
+// SKIP: COMPILER — UB only observable via solver SMT reasoning
+// SPEC v0.2.2 §7.7 rule 23
+// Intention: contract called inside a conditional branch; the chosen
+// branch implies a sym sign that violates the pre.
+decl @sqrt_like(%x: i32) : i32 {
+  pre %x >= 0, "non-negative input";
+  post ret * ret <= %x, "lower bound";
+};
+
+fun @prep(%v: i32) : i32 {
+  let mut %t: i32 = 0;
+^entry:
+  %t = %v + 5;
+  br %t > 0, ^pos, ^neg;
+^pos:
+  %t = %t - 1;
+  br %t < 100, ^cap, ^done;
+^cap:
+  %t = %t + 2;
+  ret %t;
+^neg:
+  %t = 0 - %t;
+  ret %t;
+^done:
+  ret %t;
+}
+
+fun @main() : i32 {
+  sym %?k: value i32 in [-50, 50];
+  let mut %x: i32 = 0;
+  let mut %y: i32 = 0;
+  let mut %r: i32 = 0;
+  let mut %sum: i32 = 0;
+  let mut %final: i32 = 0;
+  let %zero: i32 = 0;
+^entry:
+  %x = call @prep(%?k);
+  br %?k < %zero, ^neg_branch, ^pos_branch;
+^neg_branch:
+  // On this branch ?k < 0; contract pre %x >= 0 fails because we pass ?k.
+  %y = %x - 1;
+  br %y != 12345, ^stage2, ^skip;
+^pos_branch:
+  %y = %x + 1;
+  ret %y;
+^stage2:
+  // UB: contract called with definitely-negative ?k on the chosen path.
+  %r = call @sqrt_like(%?k);
+  %sum = %r + %y;
+  br %sum != -7777, ^stage3, ^skip;
+^stage3:
+  %final = 1 * %sum;
+  require %final >= 0, "non-negative final";
+  br ^exit;
+^skip:
+  ret 0;
+^exit:
+  ret %?k;
+}

@@ -1,0 +1,40 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^after,^check,^exit
+// SKIP: INTERPRETER
+// SKIP: COMPILER
+// SPEC v0.2.2 §9.6.2 step 4 (memory havoc through ptr param)
+// Intention: Scenario C5 -- contract `post ret == load %p` with havoc
+// through ptr parameter. The caller saves the pre-call value, calls
+// the contract, and validates that the new pointee equals the saved
+// value + 2 via the post.
+decl @incr_by_two(%p: ptr i32) : i32 {
+  pre %p != null, "non-null pointer";
+  post ret == load %p, "return value equals new pointee";
+};
+
+fun @main() : i32 {
+  sym %?init: value i32 in [0, 50];
+  let mut %x: i32 = 0;
+  let mut %p: ptr i32 = null;
+  let mut %before: i32 = 0;
+  let mut %after: i32 = 0;
+  let mut %diff: i32 = 0;
+  let %two: i32 = 2;
+^entry:
+  %x = %?init;
+  %p = addr %x;
+  %before = load %p;
+  %after = call @incr_by_two(%p);
+  // Without havoc, %after would equal %before; with havoc, the new
+  // pointee value is fresh and only constrained by the post.
+  require %after == %before + %two, "callee added exactly 2";
+  br ^after;
+^after:
+  br ^check;
+^check:
+  %diff = %after - %before;
+  require %diff == %two, "diff confirms increment";
+  br ^exit;
+^exit:
+  ret %?init;
+}

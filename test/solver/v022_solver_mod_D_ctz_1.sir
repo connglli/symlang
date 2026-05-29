@@ -1,0 +1,34 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^exit
+// SPEC v0.2.2 §12.2 (@ctz)
+// Intention: Scenario D4 -- synthesize a value with a specific number
+// of trailing zeros. ctz(?x) == 4 means bits [0,3] of ?x are 0 and
+// bit 4 is set => ?x is a multiple of 16 with bit 4 set.
+intrinsic @ctz(%x: i32) : i32;
+
+fun @plus_one(%v: i32) : i32 {
+^entry:
+  ret %v + 1;
+}
+
+fun @main() : i32 {
+  sym %?x: value i32 in [1, 1024];
+  let mut %tz: i32 = 0;
+  let mut %p1: i32 = 0;
+  let mut %final: i32 = 0;
+  let %target_ctz: i32 = 4;
+^entry:
+  %tz = call @ctz(%?x);
+  require %tz == %target_ctz, "ctz(?x) == 4";
+  br ^stage1;
+^stage1:
+  %p1 = call @plus_one(%tz);
+  require %p1 == 5, "plus_one(4) == 5";
+  br ^stage2;
+^stage2:
+  %final = %p1 - 1;
+  require %final == %target_ctz, "round trip";
+  br ^exit;
+^exit:
+  ret %?x;
+}

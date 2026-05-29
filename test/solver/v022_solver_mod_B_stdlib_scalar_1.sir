@@ -1,0 +1,41 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^exit -I test/lib/std/scalar
+// SPEC v0.2.2 §9.6.1 + §11.1 (-I link-form resolution)
+// Intention: Scenario B1 -- two straight-line scalar stdlib helpers
+// (@avg_naive, @avg_safe) plus an in-module helper. The solver
+// resolves both via -I and synthesizes symbols satisfying a pair of
+// average constraints.
+decl @avg_naive(%a: i32, %b: i32) : i32;
+decl @avg_safe(%a: i32, %b: i32) : i32;
+
+fun @plus_one(%v: i32) : i32 {
+^entry:
+  ret %v + 1;
+}
+
+fun @main() : i32 {
+  sym %?a: value i32 in [0, 50];
+  sym %?b: value i32 in [0, 50];
+  let mut %avg1: i32 = 0;
+  let mut %avg2: i32 = 0;
+  let mut %check: i32 = 0;
+  let mut %sumcheck: i32 = 0;
+  let %target: i32 = 11;
+^entry:
+  %avg1 = call @avg_naive(%?a, %?b);
+  require %avg1 == %target, "avg_naive(?a, ?b) == 11";
+  br ^stage1;
+^stage1:
+  %avg2 = call @avg_safe(%?a, %?b);
+  // For positive inputs both averages agree.
+  require %avg2 == %target, "avg_safe(?a, ?b) == 11";
+  br ^stage2;
+^stage2:
+  %check = call @plus_one(%avg1);
+  require %check == 12, "plus_one(11) == 12";
+  %sumcheck = %?a + %?b;
+  require %sumcheck >= 22, "?a + ?b >= 22";
+  br ^exit;
+^exit:
+  ret %avg1;
+}

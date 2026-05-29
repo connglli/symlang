@@ -1,0 +1,39 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^exit
+// SKIP: INTERPRETER
+// SKIP: COMPILER
+// SPEC v0.2.2 §9.6.2 step 3 (post assumption + fresh ret_sym)
+// Intention: Scenario C2 -- contract with `post` only (no `pre`). The
+// solver introduces a fresh ret_sym constrained by the post and
+// satisfies the caller's require by picking matching input + ret_sym.
+decl @range_pick(%x: i32) : i32 {
+  post ret >= 0, "non-negative";
+  post ret <= 100, "bounded by 100";
+};
+
+fun @doubler(%v: i32) : i32 {
+^entry:
+  ret %v + %v;
+}
+
+fun @main() : i32 {
+  sym %?k: value i32 in [-50, 50];
+  let mut %r: i32 = 0;
+  let mut %dbl: i32 = 0;
+  let mut %final: i32 = 0;
+  let %target: i32 = 42;
+^entry:
+  %r = call @range_pick(%?k);
+  require %r == %target, "ret_sym constrained to 42";
+  br ^stage1;
+^stage1:
+  %dbl = call @doubler(%r);
+  require %dbl == 84, "double of 42";
+  br ^stage2;
+^stage2:
+  %final = %dbl - %target;
+  require %final == %target, "round trip";
+  br ^exit;
+^exit:
+  ret %?k;
+}

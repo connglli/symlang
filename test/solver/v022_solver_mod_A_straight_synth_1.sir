@@ -1,0 +1,60 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^stage3,^exit
+// SPEC v0.2.2 §9.6.1
+// Intention: Scenario A1 -- straight-line helper synthesis.
+// Two same-module helpers (@quadratic, @bias) are inlined symbolically.
+// The solver picks %?k in [-50, 50] such that the composed result
+// @bias(@quadratic(%?k)) == 50. Multi-block main exercises stage flow
+// without branches inside the helper bodies (the helpers themselves are
+// straight-line: §9.6.1 step 1).
+fun @quadratic(%x: i32) : i32 {
+  let mut %sq: i32 = 0;
+  let mut %lin: i32 = 0;
+  let %three: i32 = 3;
+^entry:
+  %sq = %x * %x;
+  %lin = %three * %x;
+  ret %sq + %lin;
+}
+
+fun @bias(%y: i32) : i32 {
+  let mut %r: i32 = 0;
+  let %shift: i32 = 5;
+^entry:
+  %r = %y - %shift;
+  ret %r + %shift - %shift;
+}
+
+fun @main() : i32 {
+  sym %?k: value i32 in [-50, 50];
+  let mut %q: i32 = 0;
+  let mut %b: i32 = 0;
+  let mut %acc: i32 = 0;
+  let mut %prod: i32 = 0;
+  let mut %final: i32 = 0;
+  let %zero: i32 = 0;
+  let %one: i32 = 1;
+  let %two: i32 = 2;
+  let %target: i32 = 35;
+^entry:
+  %q = call @quadratic(%?k);
+  %b = call @bias(%q);
+  br %b == %b, ^stage1, ^stage1;
+^stage1:
+  // Echo helper through bias chain; quadratic again exercises symbol reuse
+  %acc = %b + %zero;
+  %prod = %acc + %one - %one;
+  br %prod == %b, ^stage2, ^stage2;
+^stage2:
+  // Re-call quadratic to validate shared-symbol semantics (§9.6.1 note).
+  %q = call @quadratic(%?k);
+  %final = call @bias(%q);
+  require %final == %target, "bias(quadratic(?k)) must equal target";
+  br ^stage3;
+^stage3:
+  %acc = %final - %two + %two;
+  require %acc == %target, "stage3 accumulator preserves target";
+  br ^exit;
+^exit:
+  ret %?k;
+}

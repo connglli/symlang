@@ -1,0 +1,42 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path ^entry,^use,^exit -I test/lib/std/scalar
+// SKIP: INTERPRETER — UB triggered only on the symbolic path the solver explores
+// SKIP: COMPILER — UB only observable via solver SMT reasoning
+// SPEC v0.2.2 §7.7 rule 24
+// Intention: callee performs `%v / %d` unconditionally; caller's
+// require forces %?d == 0 so the div-by-zero (rule 1) inside the
+// callee makes the calling path infeasible (rule 24 propagation).
+// Callee is straight-line to avoid spec §13 random sub-path sampling.
+intrinsic @abs(%x: i32) : i32;
+decl @clamp(%x: i32, %lo: i32, %hi: i32) : i32;
+
+fun @divider(%v: i32, %d: i32) : i32 {
+  let mut %a: i32 = 0;
+  let mut %b: i32 = 0;
+  let %one: i32 = 1;
+^entry:
+  %a = %v + %one;
+  %b = call @abs(%a);
+  %a = %b / %d;       // rule 1: div by zero when %d == 0; rule 24 propagates
+  ret %a;
+}
+
+fun @main() : i32 {
+  sym %?d: value i32 in [-5, 5];
+  let mut %v: i32 = 10;
+  let mut %r: i32 = 0;
+  let mut %c: i32 = 0;
+^entry:
+  %v = call @clamp(%v, 1, 100);
+  %c = %v + %?d;
+  br %c >= 0, ^use, ^skip_path;
+^use:
+  require %?d == 0, "force divisor to zero in callee";
+  %r = call @divider(%v, %?d);
+  br ^exit;
+^skip_path:
+  %r = 0;
+  br ^exit;
+^exit:
+  ret %r;
+}

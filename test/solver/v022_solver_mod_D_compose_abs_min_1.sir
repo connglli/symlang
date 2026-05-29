@@ -1,0 +1,39 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^exit
+// SPEC v0.2.2 §12.1 (@abs, @min)
+// Intention: Scenario D6 -- composition of intrinsics nested in a
+// single expression. @abs(@min(?a, ?b)) == 3 means min(?a, ?b) in
+// {-3, 3}. With both syms in [-50, 50] many solutions exist.
+intrinsic @abs(%x: i32) : i32;
+intrinsic @min(%a: i32, %b: i32) : i32;
+
+fun @doubler(%v: i32) : i32 {
+^entry:
+  ret %v + %v;
+}
+
+fun @main() : i32 {
+  sym %?a: value i32 in [-50, 50];
+  sym %?b: value i32 in [-50, 50];
+  let mut %mn: i32 = 0;
+  let mut %a_mn: i32 = 0;
+  let mut %dbl: i32 = 0;
+  let mut %final: i32 = 0;
+  let %target: i32 = 3;
+^entry:
+  // Nested intrinsic call: %?a / %?b first into min, then abs.
+  %mn = call @min(%?a, %?b);
+  %a_mn = call @abs(%mn);
+  require %a_mn == %target, "abs(min(?a, ?b)) == 3";
+  br ^stage1;
+^stage1:
+  %dbl = call @doubler(%a_mn);
+  require %dbl == 6, "double 3 == 6";
+  br ^stage2;
+^stage2:
+  %final = %dbl - %target;
+  require %final == %target, "round trip";
+  br ^exit;
+^exit:
+  ret %mn;
+}

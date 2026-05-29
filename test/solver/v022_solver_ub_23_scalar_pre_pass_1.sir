@@ -1,0 +1,115 @@
+// EXPECT: FAIL
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^stage3,^exit
+// SKIP: INTERPRETER — contract-form decl is interp-rejected per §11.3
+// SKIP: COMPILER — contract-form decl has no body; only solver expands it
+// SPEC v0.2.2 §7.7 rule 23
+// Intention: documents solver gap — branchy callee with internal syms + random sub-path sampling (spec §13 callee sub-path syntax deferred) returns UNSAT rather than finding a model. FAIL is the current expected behaviour; this test should be flipped to PASS once §13 lands.
+
+// constrained sym %?n. The caller chains 5 blocks plus a 5-block
+// callee (@sieve) whose internal branches use independent syms so
+// all sub-paths are SAT-feasible from any caller context.
+decl @make(%size: i32) : i32 {
+  pre %size > 0, "size positive";
+  post ret >= 1, "non-trivial result";
+};
+
+// 5-block helper; branches over fresh syms (sub-path independence
+// from the caller's path constraints).
+fun @sieve(%v: i32) : i32 {
+  sym %?br1: value i32 in [0, 10];
+  sym %?br2: value i32 in [0, 10];
+  let mut %t: i32 = 0;
+  let mut %u: i32 = 0;
+  let %one: i32 = 1;
+  let %two: i32 = 2;
+^entry:
+  %t = %v + %one;
+  %u = %t + %one;
+  br %?br1 == 0, ^pos, ^neg;
+^pos:
+  %t = %t + %u;
+  %u = %t - %one;
+  br %?br2 == 0, ^chk, ^neg;
+^chk:
+  %t = %two * %t;
+  %u = %t + %one;
+  br %?br1 == 0, ^done, ^neg;
+^neg:
+  %t = %u + %one;
+  %u = %t + %one;
+  ret %t;
+^done:
+  ret %t;
+}
+
+// 5-block helper using fp + int operations together (data-type
+// diversification per quality requirements).
+fun @assess(%x: i32) : i32 {
+  sym %?br: value i32 in [0, 10];
+  let mut %t: i32 = 0;
+  let mut %f: f32 = 1.0;
+  let mut %g: f32 = 0.0;
+  let %two: i32 = 2;
+  let %one: i32 = 1;
+^entry:
+  %t = %x + %one;
+  %f = 1.0 + 2.0;
+  %g = %f - 1.0;
+  br %?br == 0, ^arm_a, ^arm_b;
+^arm_a:
+  %t = %two * %t;
+  %f = %f + 1.0;
+  %g = %g + %f;
+  br %?br == 0, ^combine, ^arm_b;
+^arm_b:
+  %t = %t + %one;
+  %f = %f - 1.0;
+  %g = %g - %f;
+  br %?br == 0, ^combine, ^combine;
+^combine:
+  %t = %t + %one;
+  %f = %f + %g;
+  %g = %f;
+  br %?br == 0, ^done, ^done;
+^done:
+  ret %t;
+}
+
+fun @main() : i32 {
+  sym %?n: value i32 in [1, 50];
+  let mut %arr: [4] i32 = {0, 0, 0, 0};
+  let mut %fbuf: f32 = 0.0;
+  let mut %a: i32 = 0;
+  let mut %b: i32 = 0;
+  let mut %c: i32 = 0;
+  let mut %final: i32 = 0;
+  let %k: i32 = 3;
+  let %one: i32 = 1;
+^entry:
+  %arr[0] = %?n;
+  %arr[1] = %?n + %k;
+  %arr[2] = %?n + %k - %k;
+  %fbuf = 2.0 + 1.0;
+  require %?n >= %one, "?n positive";
+  br %?n > 0, ^stage1, ^fail;
+^stage1:
+  // pre %size > 0 holds because ?n >= 1.
+  %a = call @make(%?n);
+  require %a >= 1, "post lower bound";
+  %arr[3] = %a;
+  br %a >= 1, ^stage2, ^fail;
+^stage2:
+  // sieve uses independent syms; all internal sub-paths SAT.
+  %b = call @sieve(%a);
+  %fbuf = %fbuf + 1.0;
+  br %a >= 1, ^stage3, ^fail;
+^stage3:
+  %c = call @assess(%a);
+  %final = %?n + %k - %k;
+  require %final == %?n, "final preserves ?n";
+  br ^exit;
+^fail:
+  ret -1;
+^exit:
+  ret %?n;
+}

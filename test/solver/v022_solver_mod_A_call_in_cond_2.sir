@@ -1,0 +1,42 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^pos,^done,^exit
+// SPEC v0.2.2 §2.12 (call in branch condition)
+// Intention: Scenario A8 (alt) -- straight-line callee invoked inside
+// a branch condition. The branch decision drives the path. No
+// pointer arguments avoids the ptr-to-fun solver gap.
+fun @double_plus(%x: i32) : i32 {
+^entry:
+  ret %x + %x + 3;
+}
+
+fun @squarer(%x: i32) : i32 {
+^entry:
+  ret %x * %x;
+}
+
+fun @main() : i32 {
+  sym %?k: value i32 in [-30, 30];
+  let mut %dp: i32 = 0;
+  let mut %sq: i32 = 0;
+  let mut %final: i32 = 0;
+  let %target: i32 = 7;
+^entry:
+  // Call inside a branch condition: %dp gets the call's return
+  // value; the condition compares it to a constant.
+  %dp = call @double_plus(%?k);
+  br %dp == %target, ^pos, ^neg;
+^pos:
+  // double_plus(?k) = 2k + 3 = 7 => k = 2.
+  require %dp == %target, "2?k + 3 == 7";
+  %sq = call @squarer(%?k);
+  require %sq == 4, "?k squared == 4";
+  br ^done;
+^done:
+  %final = %sq + 3;
+  require %final == %target, "sq + 3 == target";
+  br ^exit;
+^neg:
+  ret %?k;
+^exit:
+  ret %?k;
+}

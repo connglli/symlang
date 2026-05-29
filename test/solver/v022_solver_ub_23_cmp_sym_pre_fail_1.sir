@@ -1,0 +1,59 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^stage3,^exit
+// SKIP: INTERPRETER — contract-form decl is interp-rejected per §11.3
+// SKIP: COMPILER — UB only observable via solver SMT reasoning
+// SPEC v0.2.2 §7.7 rule 23
+// Intention: pre uses a relational comparison `cmp`-style condition;
+// caller-side syms force violation. Demonstrates that solver does not
+// silently weaken the pre.
+decl @ordered_pair(%x: i32, %y: i32) : i32 {
+  pre %x < %y, "strict order";
+  post ret == %y - %x, "delta";
+};
+
+fun @prepare(%a: i32, %b: i32) : i32 {
+  let mut %t: i32 = 0;
+^entry:
+  %t = %a + %b;
+  br %t > 0, ^pos, ^neg;
+^pos:
+  %t = 2 * %t;
+  br %t < 1000, ^cap, ^done;
+^cap:
+  %t = %t + 1;
+  ret %t;
+^neg:
+  %t = 0 - %t;
+  ret %t;
+^done:
+  ret %t;
+}
+
+fun @main() : i32 {
+  sym %?p: value i32 in [10, 100];
+  sym %?q: value i32 in [0, 100];
+  let mut %prep: i32 = 0;
+  let mut %d: i32 = 0;
+  let mut %sum: i32 = 0;
+  let mut %final: i32 = 0;
+^entry:
+  // Force ?q <= ?p so pre (x < y) cannot hold when we pass (?p, ?q).
+  require %?q <= %?p, "q below p";
+  br %?p > 0, ^stage1, ^skip;
+^stage1:
+  %prep = call @prepare(%?p, %?q);
+  br %prep != 0, ^stage2, ^skip;
+^stage2:
+  // Contract pre %x < %y is false: x=%?p, y=%?q with q <= p.
+  %d = call @ordered_pair(%?p, %?q);
+  %sum = %d + %prep;
+  br %sum != -1234, ^stage3, ^skip;
+^stage3:
+  %final = %sum + 1;
+  require %final >= 0, "final non-negative";
+  br ^exit;
+^skip:
+  ret 0;
+^exit:
+  ret %?p;
+}

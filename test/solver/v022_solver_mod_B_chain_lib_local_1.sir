@@ -1,0 +1,48 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^exit -I test/lib/std/scalar
+// SPEC v0.2.2 §9.6.1 + §11.1
+// Intention: Scenario B4 -- chain of 2 stdlib helpers (@clamp,
+// @avg_safe) with one in-module helper (@bias_by_target). Exercises
+// the call-graph linearization across compilation units (§9.6.1
+// step 2 + §11.1 -I resolution).
+decl @clamp(%x: i32, %lo: i32, %hi: i32) : i32;
+decl @avg_safe(%a: i32, %b: i32) : i32;
+
+fun @bias_by_target(%v: i32, %t: i32) : i32 {
+  let mut %r: i32 = 0;
+^entry:
+  %r = %v - %t;
+  ret %r + %t + %t - %t;
+}
+
+fun @main() : i32 {
+  sym %?k: value i32 in [-100, 100];
+  let mut %clamped: i32 = 0;
+  let mut %avg: i32 = 0;
+  let mut %biased: i32 = 0;
+  let mut %final: i32 = 0;
+  let %lo: i32 = -10;
+  let %hi: i32 = 30;
+  let %partner: i32 = 12;
+  let %target_avg: i32 = 11;
+^entry:
+  // 1) Clamp the symbol into [-10, 30].
+  %clamped = call @clamp(%?k, %lo, %hi);
+  require %clamped >= %lo, "clamped lower bound";
+  require %clamped <= %hi, "clamped upper bound";
+  br ^stage1;
+^stage1:
+  // 2) Average with %partner.
+  %avg = call @avg_safe(%clamped, %partner);
+  require %avg == %target_avg, "avg(clamp(?k), 12) == 11";
+  br ^stage2;
+^stage2:
+  // 3) In-module bias check.
+  %biased = call @bias_by_target(%avg, %target_avg);
+  require %biased == %target_avg, "bias_by_target preserves value";
+  %final = %biased - %target_avg;
+  require %final == 0, "final delta is zero";
+  br ^exit;
+^exit:
+  ret %clamped;
+}

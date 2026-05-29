@@ -1,0 +1,42 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^exit
+// SKIP: INTERPRETER
+// SKIP: COMPILER
+// SPEC v0.2.2 §9.6.2 step 1 (pre check)
+// Intention: Scenario C1 -- contract with `pre` only (still legal:
+// spec requires at least one `post`; we add a vacuous one to be
+// well-formed). The solver enforces the `pre` at the call site,
+// constraining the input symbol.
+decl @needs_positive(%x: i32) : i32 {
+  pre %x > 0, "input must be positive";
+  post ret >= 0, "non-negative result (vacuous, range hint only)";
+};
+
+fun @squarer(%v: i32) : i32 {
+^entry:
+  ret %v * %v;
+}
+
+fun @main() : i32 {
+  sym %?k: value i32 in [-50, 50];
+  let mut %r: i32 = 0;
+  let mut %sq: i32 = 0;
+  let mut %final: i32 = 0;
+^entry:
+  // The contract's pre forces ?k > 0 on this call site.
+  %r = call @needs_positive(%?k);
+  require %r >= 0, "post echoed by require";
+  require %?k > 0, "ensure caller respects pre";
+  br ^stage1;
+^stage1:
+  // Use ?k downstream to verify it is positive.
+  %sq = call @squarer(%?k);
+  require %sq > 0, "?k positive implies ?k^2 > 0";
+  br ^stage2;
+^stage2:
+  %final = %sq + %r;
+  require %final >= 1, "final is positive";
+  br ^exit;
+^exit:
+  ret %?k;
+}

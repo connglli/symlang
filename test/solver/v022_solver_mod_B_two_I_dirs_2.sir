@@ -1,0 +1,41 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^stage3,^exit -I test/lib/std/scalar -I test/lib/std/type
+// SPEC v0.2.2 §11.1 (multiple -I paths) -- scalar-only avoids the ptr-to-fun solver gap
+// Intention: Scenario B5 (alt) -- two -I directories simultaneously
+// using only straight-line scalar helpers (@avg_naive, @plus_one).
+// Demonstrates -I resolution against two distinct subdirectories.
+decl @avg_naive(%a: i32, %b: i32) : i32;
+decl @int_max_i32() : i32;
+
+fun @doubler(%x: i32) : i32 {
+^entry:
+  ret %x + %x;
+}
+
+fun @main() : i32 {
+  sym %?a: value i32 in [0, 100];
+  sym %?b: value i32 in [0, 100];
+  let mut %avg: i32 = 0;
+  let mut %mx: i32 = 0;
+  let mut %dbl: i32 = 0;
+  let mut %final: i32 = 0;
+  let %target_avg: i32 = 25;
+^entry:
+  %avg = call @avg_naive(%?a, %?b);
+  require %avg == %target_avg, "avg_naive(?a, ?b) == 25";
+  br ^stage1;
+^stage1:
+  %mx = call @int_max_i32();
+  require %mx > 0, "INT32_MAX > 0";
+  br ^stage2;
+^stage2:
+  %dbl = call @doubler(%avg);
+  require %dbl == 50, "doubler(25) == 50";
+  br ^stage3;
+^stage3:
+  %final = %dbl - %avg;
+  require %final == %target_avg, "round trip preserves target";
+  br ^exit;
+^exit:
+  ret %avg;
+}

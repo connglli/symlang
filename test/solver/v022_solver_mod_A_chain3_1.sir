@@ -1,0 +1,58 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^mid,^final,^exit
+// SPEC v0.2.2 §9.6.1 + §9.7 (acyclic call graph: c -> b -> a)
+// Intention: Scenario A7 -- a 3-helper chain in the same module
+// (@stage_a, @stage_b, @stage_c). Each helper transforms its input
+// linearly; the solver composes the three to satisfy the require.
+// Validates that the symbolic-execution context threads correctly
+// through nested calls (§9.6.1 step 2).
+fun @stage_a(%x: i32) : i32 {
+  let %two: i32 = 2;
+^entry:
+  ret %x + %two;
+}
+
+fun @stage_b(%y: i32) : i32 {
+  let %three: i32 = 3;
+  let mut %t: i32 = 0;
+^entry:
+  %t = call @stage_a(%y);
+  ret %t * %three;
+}
+
+fun @stage_c(%z: i32) : i32 {
+  let %one: i32 = 1;
+  let mut %t: i32 = 0;
+^entry:
+  %t = call @stage_b(%z);
+  ret %t - %one;
+}
+
+fun @main() : i32 {
+  sym %?k: value i32 in [-20, 20];
+  let mut %r: i32 = 0;
+  let mut %d: i32 = 0;
+  let mut %check: i32 = 0;
+  let mut %s: i32 = 0;
+  let %target: i32 = 17;
+  let %zero: i32 = 0;
+^entry:
+  %r = call @stage_c(%?k);
+  // stage_c(k) = stage_b(k) - 1 = (stage_a(k)*3) - 1 = (k+2)*3 - 1
+  //            = 3k + 5
+  // Setting 3k + 5 == 17 gives k == 4.
+  require %r == %target, "stage_c(?k) == 17";
+  br ^mid;
+^mid:
+  %d = %r - %target;
+  require %d == %zero, "diff is zero";
+  br ^final;
+^final:
+  // Independently re-derive via stage_a + arithmetic to test reuse.
+  %s = call @stage_a(%?k);
+  %check = 3 * %s - 1;
+  require %check == %target, "manual recomposition matches stage_c";
+  br ^exit;
+^exit:
+  ret %?k;
+}

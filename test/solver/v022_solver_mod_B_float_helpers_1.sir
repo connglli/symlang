@@ -1,0 +1,47 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^stage3,^exit -I test/lib/std/scalar
+// SPEC v0.2.2 §11.1 + §2.9 (finite FP)
+// Intention: Scenario B (extra) -- straight-line float stdlib
+// helpers @fabs_f32 + @clamp_f32 with a same-module helper.
+// Adds float coverage to the suite (only int coverage existed
+// otherwise).
+decl @fabs_f32(%x: f32) : f32;
+decl @clamp_f32(%x: f32, %lo: f32, %hi: f32) : f32;
+
+fun @scale_f32(%x: f32, %k: f32) : f32 {
+^entry:
+  ret %k * %x;
+}
+
+fun @main() : i32 {
+  sym %?x: value f32;
+  let mut %a: f32 = 0.0;
+  let mut %c: f32 = 0.0;
+  let mut %s: f32 = 0.0;
+  let mut %final: f32 = 0.0;
+  let mut %ok: i32 = 0;
+  let %lo: f32 = 0.0;
+  let %hi: f32 = 10.0;
+  let %target: f32 = 5.0;
+  let %two: f32 = 2.0;
+  let %ten: f32 = 10.0;
+^entry:
+  %a = call @fabs_f32(%?x);
+  require %a == %target, "fabs(?x) == 5.0";
+  br ^stage1;
+^stage1:
+  %c = call @clamp_f32(%a, %lo, %hi);
+  require %c == %target, "clamp([0,10])(5) == 5";
+  br ^stage2;
+^stage2:
+  %s = call @scale_f32(%c, %two);
+  require %s == %ten, "scale by 2 == 10";
+  br ^stage3;
+^stage3:
+  %final = %s - %target;
+  require %final == %target, "round trip preserves target";
+  %ok = 1;
+  br ^exit;
+^exit:
+  ret %ok;
+}

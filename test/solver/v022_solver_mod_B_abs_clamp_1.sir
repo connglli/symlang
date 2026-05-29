@@ -1,0 +1,40 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^check,^stage_two,^exit -I test/lib/std/scalar
+// SPEC v0.2.2 §11.1 + §12.1 (@min, @max)
+// Intention: Scenario B7 -- stdlib @clamp (which internally calls @min
+// and @max intrinsics). Composes with an in-module helper.
+decl @clamp(%x: i32, %lo: i32, %hi: i32) : i32;
+
+fun @offset(%v: i32, %k: i32) : i32 {
+^entry:
+  ret %v + %k;
+}
+
+fun @main() : i32 {
+  sym %?x: value i32 in [-100, 100];
+  let mut %c1: i32 = 0;
+  let mut %c2: i32 = 0;
+  let mut %off: i32 = 0;
+  let mut %final: i32 = 0;
+  let %lo: i32 = -5;
+  let %hi: i32 = 5;
+  let %target: i32 = 3;
+^entry:
+  %c1 = call @clamp(%?x, %lo, %hi);
+  require %c1 == %target, "clamp(?x, -5, 5) == 3";
+  // ?x in {3, ..., 5} on this require (since clamp -> 3 implies x in [3, 5]).
+  br ^check;
+^check:
+  // Run clamp again with a tighter window to validate composition.
+  %c2 = call @clamp(%c1, 0, 4);
+  require %c2 == %target, "second clamp keeps the value";
+  br ^stage_two;
+^stage_two:
+  %off = call @offset(%c2, 10);
+  require %off == 13, "offset by 10 == 13";
+  %final = %off - 10;
+  require %final == %target, "after re-subtracting 10 we recover target";
+  br ^exit;
+^exit:
+  ret %c1;
+}

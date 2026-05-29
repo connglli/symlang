@@ -1,0 +1,60 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^stage3,^exit
+// SKIP: INTERPRETER — contract-form decl is interp-rejected per §11.3
+// SKIP: COMPILER — UB only observable via solver SMT reasoning
+// SPEC v0.2.2 §7.7 rule 23
+// Intention: contract has two pre clauses; the second is forced false
+// by caller's require even though the first is satisfied.
+decl @divmod(%num: i32, %den: i32) : i32 {
+  pre %den != 0, "den non-zero";
+  pre %num >= %den, "num >= den";
+  post ret >= 0, "non-negative quotient";
+};
+
+fun @normalize(%x: i32, %y: i32) : i32 {
+  let mut %t: i32 = 0;
+^entry:
+  %t = %x - %y;
+  br %t > 0, ^pos, ^neg;
+^pos:
+  %t = %t + %y;
+  br %t < 1000, ^cap, ^done;
+^cap:
+  %t = 2 * %t;
+  ret %t;
+^neg:
+  %t = 0 - %t;
+  ret %t;
+^done:
+  ret %t;
+}
+
+fun @main() : i32 {
+  sym %?a: value i32 in [-100, 100];
+  sym %?b: value i32 in [1, 100];
+  let mut %n: i32 = 0;
+  let mut %q: i32 = 0;
+  let mut %sum: i32 = 0;
+  let mut %final: i32 = 0;
+^entry:
+  // Force %?a < %?b so pre 2 (num >= den) cannot hold.
+  require %?a < %?b, "?a strictly below ?b";
+  br %?b != 0, ^stage1, ^skip;
+^stage1:
+  // pre 1 (den != 0) holds by domain; pre 2 violated.
+  %n = call @normalize(%?a, %?b);
+  br %n >= 0, ^stage2, ^skip;
+^stage2:
+  // Trigger contract: pre 1 holds, pre 2 fails -> UB.
+  %q = call @divmod(%?a, %?b);
+  %sum = %q + %n;
+  br %sum != -9999, ^stage3, ^skip;
+^stage3:
+  %final = 1 * %sum;
+  require %final >= 0, "final non-negative";
+  br ^exit;
+^skip:
+  ret 0;
+^exit:
+  ret %?a;
+}

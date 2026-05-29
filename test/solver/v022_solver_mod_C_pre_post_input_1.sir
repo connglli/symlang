@@ -1,0 +1,41 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^exit
+// SKIP: INTERPRETER
+// SKIP: COMPILER
+// SPEC v0.2.2 §9.6.2 (post in terms of parameters + ret)
+// Intention: Scenario C8 -- contract post relates `ret` linearly to
+// the input parameter (`ret == %x + 7`). The solver must pick %?k
+// such that ret_sym == k + 7 satisfies the caller's require.
+decl @plus_seven(%x: i32) : i32 {
+  pre %x >= -100, "lower bound";
+  pre %x <= 100, "upper bound";
+  post ret == %x + 7, "linear shift";
+};
+
+fun @doubler(%v: i32) : i32 {
+^entry:
+  ret %v + %v;
+}
+
+fun @main() : i32 {
+  sym %?k: value i32 in [-50, 50];
+  let mut %r: i32 = 0;
+  let mut %dbl: i32 = 0;
+  let mut %final: i32 = 0;
+  let %target: i32 = 17;
+^entry:
+  %r = call @plus_seven(%?k);
+  require %r == %target, "?k + 7 == 17 implies ?k == 10";
+  br ^stage1;
+^stage1:
+  %dbl = call @doubler(%r);
+  require %dbl == 34, "doubled = 34";
+  br ^stage2;
+^stage2:
+  %final = %dbl - %r;
+  require %final == %target, "diff equals target";
+  require %?k == 10, "synth recovered ?k == 10";
+  br ^exit;
+^exit:
+  ret %?k;
+}

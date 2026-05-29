@@ -1,0 +1,42 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^check,^post_inc,^exit -I test/lib/std/scalar
+// SPEC v0.2.2 §11.1 + §12.2 (@clz)
+// Intention: Scenario B6 -- stdlib @log2_floor (which internally calls
+// the @clz intrinsic). Mixing link-form decl + intrinsic in a single
+// call chain. The solver must synthesize %?n in [1, 256] such that
+// log2_floor(?n) == 4 (i.e. ?n in [16, 31]).
+decl @log2_floor(%x: i32) : i32;
+
+fun @inc(%v: i32) : i32 {
+^entry:
+  ret %v + 1;
+}
+
+fun @main() : i32 {
+  sym %?n: value i32 in [1, 256];
+  let mut %lg: i32 = 0;
+  let mut %lg2: i32 = 0;
+  let mut %incr: i32 = 0;
+  let mut %final: i32 = 0;
+  let %target: i32 = 4;
+^entry:
+  %lg = call @log2_floor(%?n);
+  require %lg == %target, "log2_floor(?n) == 4";
+  // ?n in [16, 31]
+  require %?n >= 16, "?n >= 16";
+  require %?n <= 31, "?n <= 31";
+  br ^check;
+^check:
+  // Re-call to verify shared-symbol semantics.
+  %lg2 = call @log2_floor(%?n);
+  require %lg2 == %lg, "second call gives same result";
+  br ^post_inc;
+^post_inc:
+  %incr = call @inc(%lg);
+  require %incr == 5, "inc(4) == 5";
+  %final = %incr - 1;
+  require %final == %target, "final delta is target";
+  br ^exit;
+^exit:
+  ret %?n;
+}

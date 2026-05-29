@@ -1,0 +1,82 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^after_vec,^acc,^done,^exit
+// SPEC v0.2.2 §9.6.1 + §2.11
+// Intention: Scenario A6 -- helper returns an i32 produced from
+// lane-wise computation on its <4> i32 input. The caller passes a
+// vector built from symbol values and constrains the lane-wise sum to
+// a target.
+fun @lane_sum(%v: <4> i32) : i32 {
+  let mut %s: i32 = 0;
+  let mut %t: i32 = 0;
+  let %i0: i32 = 0;
+  let %i1: i32 = 1;
+  let %i2: i32 = 2;
+  let %i3: i32 = 3;
+^entry:
+  %t = %v[%i0]; %s = %s + %t;
+  %t = %v[%i1]; %s = %s + %t;
+  %t = %v[%i2]; %s = %s + %t;
+  %t = %v[%i3]; %s = %s + %t;
+  ret %s;
+}
+
+fun @lane_max(%v: <4> i32) : i32 {
+  let mut %m: i32 = 0;
+  let mut %t: i32 = 0;
+  let %i0: i32 = 0;
+  let %i1: i32 = 1;
+  let %i2: i32 = 2;
+  let %i3: i32 = 3;
+^entry:
+  %m = %v[%i0];
+  %t = %v[%i1]; br %t > %m, ^upd1, ^skip1;
+^upd1:
+  %m = %t; br ^skip1;
+^skip1:
+  %t = %v[%i2]; br %t > %m, ^upd2, ^skip2;
+^upd2:
+  %m = %t; br ^skip2;
+^skip2:
+  %t = %v[%i3]; br %t > %m, ^upd3, ^skip3;
+^upd3:
+  %m = %t; br ^skip3;
+^skip3:
+  ret %m;
+}
+
+fun @main() : i32 {
+  sym %?a: value i32 in [0, 20];
+  sym %?b: value i32 in [0, 20];
+  sym %?c: value i32 in [0, 20];
+  sym %?d: value i32 in [0, 20];
+  let mut %v: <4> i32 = { 0, 0, 0, 0 };
+  let mut %s: i32 = 0;
+  let mut %m: i32 = 0;
+  let mut %final: i32 = 0;
+  let %i0: i32 = 0;
+  let %i1: i32 = 1;
+  let %i2: i32 = 2;
+  let %i3: i32 = 3;
+  let %target_sum: i32 = 40;
+  let %target_max: i32 = 20;
+^entry:
+  %v[%i0] = %?a;
+  %v[%i1] = %?b;
+  %v[%i2] = %?c;
+  %v[%i3] = %?d;
+  %s = call @lane_sum(%v);
+  require %s == %target_sum, "lane sum equals 40";
+  br ^after_vec;
+^after_vec:
+  br ^acc;
+^acc:
+  %m = call @lane_max(%v);
+  require %m == %target_max, "max lane equals 20";
+  br ^done;
+^done:
+  %final = %s - %m;
+  require %final == 20, "sum minus max equals 20";
+  br ^exit;
+^exit:
+  ret %?a;
+}

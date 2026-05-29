@@ -1,0 +1,43 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^stage3,^exit
+// SPEC v0.2.2 §12.1 (@min, @max)
+// Intention: Scenario D2 -- synthesize a pair of values such that
+// @min(%?a, %?b) == 3 and @max(%?a, %?b) == 10. The solver must pick
+// one of {?a==3, ?b==10} or {?a==10, ?b==3}.
+intrinsic @min(%a: i32, %b: i32) : i32;
+intrinsic @max(%a: i32, %b: i32) : i32;
+
+fun @sum(%x: i32, %y: i32) : i32 {
+^entry:
+  ret %x + %y;
+}
+
+fun @main() : i32 {
+  sym %?a: value i32 in [-50, 50];
+  sym %?b: value i32 in [-50, 50];
+  let mut %mn: i32 = 0;
+  let mut %mx: i32 = 0;
+  let mut %sm: i32 = 0;
+  let mut %final: i32 = 0;
+  let %three: i32 = 3;
+  let %ten: i32 = 10;
+  let %thirteen: i32 = 13;
+^entry:
+  %mn = call @min(%?a, %?b);
+  require %mn == %three, "min(?a, ?b) == 3";
+  br ^stage1;
+^stage1:
+  %mx = call @max(%?a, %?b);
+  require %mx == %ten, "max(?a, ?b) == 10";
+  br ^stage2;
+^stage2:
+  %sm = call @sum(%mn, %mx);
+  require %sm == %thirteen, "min + max == 13";
+  br ^stage3;
+^stage3:
+  %final = %?a + %?b;
+  require %final == %thirteen, "?a + ?b == 13 by min/max identity";
+  br ^exit;
+^exit:
+  ret %mn;
+}

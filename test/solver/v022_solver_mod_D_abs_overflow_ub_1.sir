@@ -1,0 +1,18 @@
+// EXPECT: FAIL
+// SOLVER_ARGS: --main @main --path ^entry,^exit
+// SPEC v0.2.2 §7.7 rule 25 + §12.1 (@abs INT_MIN UB)
+// Intention: Scenario D8 -- @abs UB on INT_MIN (rule 25). With %?x
+// constrained to {INT_MIN} the path is infeasible, so the solver
+// returns UNSAT.
+intrinsic @abs(%x: i32) : i32;
+
+fun @main() : i32 {
+  sym %?x: value i32 in [-2147483648, -2147483648];
+  let mut %a: i32 = 0;
+^entry:
+  %a = call @abs(%?x);
+  require %a >= 0, "abs result is non-negative";
+  br ^exit;
+^exit:
+  ret %?x;
+}

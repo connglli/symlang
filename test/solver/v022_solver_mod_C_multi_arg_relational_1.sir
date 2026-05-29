@@ -1,0 +1,53 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^stage3,^exit
+// SKIP: INTERPRETER
+// SKIP: COMPILER
+// SPEC v0.2.2 §9.6.2 step 3 (post with relational form over parameters)
+// Intention: Scenario C7 -- multi-arg contract with relational post.
+// post `ret >= %a` AND `ret >= %b` AND `ret == %a + %b`. The solver
+// must satisfy the conjunction, leaving the input symbols
+// constrained by the caller's require.
+decl @combine(%a: i32, %b: i32, %c: i32) : i32 {
+  pre %a >= 0, "non-negative a";
+  pre %b >= 0, "non-negative b";
+  pre %c >= 0, "non-negative c";
+  post ret == %a + %b + %c, "sum identity";
+  post ret >= %a, "ret >= a";
+  post ret >= %b, "ret >= b";
+  post ret >= %c, "ret >= c";
+};
+
+fun @inc(%v: i32) : i32 {
+^entry:
+  ret %v + 1;
+}
+
+fun @main() : i32 {
+  sym %?a: value i32 in [-50, 50];
+  sym %?b: value i32 in [-50, 50];
+  sym %?c: value i32 in [-50, 50];
+  let mut %r: i32 = 0;
+  let mut %inc_r: i32 = 0;
+  let mut %final: i32 = 0;
+  let %target: i32 = 30;
+^entry:
+  %r = call @combine(%?a, %?b, %?c);
+  require %r == %target, "?a + ?b + ?c == 30";
+  br ^stage1;
+^stage1:
+  // Pre conditions imply all three are non-negative.
+  require %?a >= 0, "?a >= 0 by pre";
+  require %?b >= 0, "?b >= 0 by pre";
+  require %?c >= 0, "?c >= 0 by pre";
+  br ^stage2;
+^stage2:
+  %inc_r = call @inc(%r);
+  require %inc_r == 31, "inc(30) == 31";
+  br ^stage3;
+^stage3:
+  %final = %inc_r - 1;
+  require %final == %target, "round trip";
+  br ^exit;
+^exit:
+  ret %r;
+}

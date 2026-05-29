@@ -1,0 +1,41 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^stage3,^exit
+// SPEC v0.2.2 §12.2 (@popcount)
+// Intention: Scenario D5 -- synthesize a value with a specific bit
+// count: popcount(?x) == 3 means ?x has exactly 3 set bits. Combined
+// with @abs to validate cross-intrinsic interaction.
+intrinsic @popcount(%x: i32) : i32;
+intrinsic @abs(%x: i32) : i32;
+
+fun @inc(%v: i32) : i32 {
+^entry:
+  ret %v + 1;
+}
+
+fun @main() : i32 {
+  sym %?x: value i32 in [0, 256];
+  let mut %pc: i32 = 0;
+  let mut %a: i32 = 0;
+  let mut %inc_r: i32 = 0;
+  let mut %final: i32 = 0;
+  let %target_pc: i32 = 3;
+^entry:
+  %pc = call @popcount(%?x);
+  require %pc == %target_pc, "popcount(?x) == 3";
+  br ^stage1;
+^stage1:
+  // abs of a non-negative is itself.
+  %a = call @abs(%?x);
+  require %a == %?x, "abs(?x) == ?x when ?x >= 0";
+  br ^stage2;
+^stage2:
+  %inc_r = call @inc(%pc);
+  require %inc_r == 4, "inc(3) == 4";
+  br ^stage3;
+^stage3:
+  %final = %inc_r - 1;
+  require %final == %target_pc, "round trip";
+  br ^exit;
+^exit:
+  ret %?x;
+}

@@ -1,0 +1,45 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^exit
+// SPEC v0.2.2 §9.6.1 + §2.9 (finite FP)
+// Intention: Scenario A (extra) -- same-module float helper. Adds
+// float coverage to scenario A. The solver synthesizes a finite f32
+// %?x such that abs_via_select(?x) == 5.0.
+fun @abs_via_select(%x: f32) : f32 {
+  let %zero: f32 = 0.0;
+  let %neg_one: f32 = -1.0;
+  let mut %neg: f32 = 0.0;
+^entry:
+  %neg = %neg_one * %x;
+  ret select %x < %zero, %neg, %x;
+}
+
+fun @plus_two_f32(%x: f32) : f32 {
+  let %two: f32 = 2.0;
+^entry:
+  ret %x + %two;
+}
+
+fun @main() : i32 {
+  sym %?x: value f32;
+  let mut %a: f32 = 0.0;
+  let mut %p: f32 = 0.0;
+  let mut %final: f32 = 0.0;
+  let mut %ok: i32 = 0;
+  let %five: f32 = 5.0;
+  let %seven: f32 = 7.0;
+^entry:
+  %a = call @abs_via_select(%?x);
+  require %a == %five, "|?x| == 5.0";
+  br ^stage1;
+^stage1:
+  %p = call @plus_two_f32(%a);
+  require %p == %seven, "p == 7.0";
+  br ^stage2;
+^stage2:
+  %final = %p - %five;
+  require %final == 2.0, "final == 2";
+  %ok = 1;
+  br ^exit;
+^exit:
+  ret %ok;
+}

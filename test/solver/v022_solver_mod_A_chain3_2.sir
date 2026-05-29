@@ -1,0 +1,59 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^exit
+// SPEC v0.2.2 §9.6.1 + §9.7 (acyclic call graph)
+// Intention: Scenario A7 (alt) -- a 4-helper chain in the same module
+// where each layer wraps the previous (linear). Validates
+// interprocedural context threading (§9.6.1 step 2) across deeper
+// stacks than the canonical 3-layer test.
+fun @layer0(%x: i32) : i32 {
+^entry:
+  ret %x + 1;
+}
+
+fun @layer1(%x: i32) : i32 {
+  let mut %t: i32 = 0;
+^entry:
+  %t = call @layer0(%x);
+  ret %t + 2;
+}
+
+fun @layer2(%x: i32) : i32 {
+  let mut %t: i32 = 0;
+^entry:
+  %t = call @layer1(%x);
+  ret %t + 4;
+}
+
+fun @layer3(%x: i32) : i32 {
+  let mut %t: i32 = 0;
+^entry:
+  %t = call @layer2(%x);
+  ret %t + 8;
+}
+
+fun @main() : i32 {
+  sym %?k: value i32 in [-50, 50];
+  let mut %r: i32 = 0;
+  let mut %r2: i32 = 0;
+  let mut %final: i32 = 0;
+  let %offset: i32 = 15;
+  let %target: i32 = 20;
+^entry:
+  %r = call @layer3(%?k);
+  // layer3(k) = k + 1 + 2 + 4 + 8 = k + 15.
+  require %r == %target, "layer3(?k) == 20 implies ?k == 5";
+  br ^stage1;
+^stage1:
+  // Cross-check via shallower layer + adjust.
+  %r2 = call @layer1(%?k);
+  // layer1(k) = k + 3.
+  require %r2 == 8, "layer1(?k) == 8";
+  br ^stage2;
+^stage2:
+  %final = %r - %offset;
+  require %final == 5, "deducing ?k from r - offset";
+  require %?k == 5, "?k bound";
+  br ^exit;
+^exit:
+  ret %?k;
+}

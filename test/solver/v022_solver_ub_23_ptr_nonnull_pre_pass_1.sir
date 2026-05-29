@@ -1,0 +1,110 @@
+// EXPECT: FAIL
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^stage3,^exit
+// SKIP: INTERPRETER — contract-form decl is interp-rejected per §11.3
+// SKIP: COMPILER — UB only observable via solver SMT reasoning
+// SPEC v0.2.2 §7.7 rule 23
+// Intention: documents solver gap — branchy callee with internal syms + random sub-path sampling (spec §13 callee sub-path syntax deferred) returns UNSAT rather than finding a model. FAIL is the current expected behaviour; this test should be flipped to PASS once §13 lands.
+
+// passes addr of a scalar local. Uses scalar-pointer havoc (the
+// supported form per §13). Helpers use sym-branched sub-paths so
+// every callee sub-path is SAT-feasible from the main path.
+decl @bump(%p: ptr i32, %d: i32) : i32 {
+  pre %p != null, "non-null pointer";
+  pre %d >= 0, "non-negative delta";
+  post ret == load %p, "returns post-state of pointee";
+};
+
+// Helper with 5 blocks; branches use independent syms.
+fun @adjuster(%p: ptr i32, %k: i32) : i32 {
+  sym %?b1: value i32 in [0, 10];
+  sym %?b2: value i32 in [0, 10];
+  let mut %v: i32 = 0;
+  let mut %t: i32 = 0;
+  let %two: i32 = 2;
+  let %one: i32 = 1;
+^entry:
+  %v = load %p;
+  %t = %v + %k;
+  br %?b1 == 0, ^pos, ^neg;
+^pos:
+  %t = %two * %t;
+  %t = %t + %one;
+  br %?b2 == 0, ^cap, ^neg;
+^cap:
+  %t = %t + %one;
+  %v = %t - %one;
+  br %?b1 == 0, ^done, ^neg;
+^neg:
+  %t = 0 - %t;
+  %v = %t;
+  ret %t;
+^done:
+  ret %t;
+}
+
+// 5-block summarizer using fp + int operations together.
+fun @summarize(%v: i32) : i32 {
+  sym %?br: value i32 in [0, 10];
+  let mut %t: i32 = 0;
+  let mut %f: f32 = 0.0;
+  let mut %g: f32 = 1.0;
+  let %one: i32 = 1;
+  let %two: i32 = 2;
+^entry:
+  %t = %v + %one;
+  %f = 1.0 + 1.0;
+  %g = %f + 1.0;
+  br %?br == 0, ^arm_a, ^arm_b;
+^arm_a:
+  %t = %two * %t;
+  %f = 1.5 * %f;
+  %g = %g + %f;
+  br %?br == 0, ^combine, ^arm_b;
+^arm_b:
+  %t = %t + %one;
+  %f = %f - 0.5;
+  %g = %g + %f;
+  br %?br == 0, ^combine, ^combine;
+^combine:
+  %t = %t + %one;
+  %f = %f + %g;
+  %g = %f;
+  br %?br == 0, ^done, ^done;
+^done:
+  ret %t;
+}
+
+fun @main() : i32 {
+  sym %?x: value i32 in [0, 50];
+  sym %?d: value i32 in [0, 10];
+  let mut %x: i32 = 0;
+  let mut %p: ptr i32 = null;
+  let mut %r1: i32 = 0;
+  let mut %r2: i32 = 0;
+  let mut %r3: i32 = 0;
+  let mut %arr: [3] i32 = {0, 0, 0};
+  let %k: i32 = 5;
+^entry:
+  %x = %?x;
+  %p = addr %x;
+  %arr[0] = %?d;
+  %arr[1] = %?x;
+  br %?x >= 0, ^stage1, ^fail;
+^stage1:
+  // pre %p != null (addr of scalar) and %?d >= 0.
+  %r1 = call @bump(%p, %?d);
+  require %r1 == load %p, "post matches pointee";
+  br %r1 == load %p, ^stage2, ^fail;
+^stage2:
+  %r2 = call @adjuster(%p, %k);
+  %arr[2] = %r2;
+  br %?x >= 0, ^stage3, ^fail;
+^stage3:
+  %r3 = call @summarize(%r2);
+  require %r3 != 0 + 0 - 0 - 99999, "non-sentinel";
+  br ^exit;
+^fail:
+  ret -1;
+^exit:
+  ret %?x;
+}

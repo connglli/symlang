@@ -1,0 +1,41 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^exit -I test/lib/std/scalar
+// SPEC v0.2.2 §11.1 + §12.1 + §12.2
+// Intention: Scenario D7 -- stdlib helper @count_ones_i32 (link-form
+// decl, internally calls @popcount intrinsic) composed with direct
+// @abs intrinsic in the same fun. Validates that an intrinsic call
+// chained with a -I-resolved fun call works together in the solver.
+decl @count_ones_i32(%x: i32) : i32;
+intrinsic @abs(%x: i32) : i32;
+
+fun @inc(%v: i32) : i32 {
+^entry:
+  ret %v + 1;
+}
+
+fun @main() : i32 {
+  sym %?x: value i32 in [0, 256];
+  let mut %pc: i32 = 0;
+  let mut %abs_x: i32 = 0;
+  let mut %sum: i32 = 0;
+  let mut %inc_r: i32 = 0;
+  let mut %final: i32 = 0;
+  let %target: i32 = 4;
+^entry:
+  %pc = call @count_ones_i32(%?x);
+  require %pc == %target, "popcount via stdlib == 4";
+  br ^stage1;
+^stage1:
+  %abs_x = call @abs(%?x);
+  require %abs_x == %?x, "?x non-negative implies abs is identity";
+  br ^stage2;
+^stage2:
+  %sum = %pc + %abs_x;
+  %inc_r = call @inc(%sum);
+  require %inc_r >= 5, "inc result is at least 5 (pc=4 + abs >= 0 + 1)";
+  %final = %inc_r - %pc - %abs_x;
+  require %final == 1, "final is 1";
+  br ^exit;
+^exit:
+  ret %pc;
+}

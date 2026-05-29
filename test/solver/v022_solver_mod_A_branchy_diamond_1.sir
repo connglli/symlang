@@ -1,0 +1,58 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^chk,^done,^exit --seed 7
+// SKIP: COMPILER
+// SPEC v0.2.2 §9.6.1 + §13 (callee sub-path note)
+// Intention: Scenario A2 -- branchy callee with a diamond CFG. The
+// helper @classify has 4 internal blocks selected at random per
+// call site (the user-supplied callee sub-path syntax is deferred
+// per §13). With --seed 7 the sampled sub-path is feasible for
+// %?k > 0; the require forces ret == 1, constraining %?k into the
+// positive half of its domain.
+fun @classify(%x: i32) : i32 {
+  let %one: i32 = 1;
+  let %neg_one: i32 = -1;
+  let %zero: i32 = 0;
+  let mut %tmp: i32 = 0;
+^entry:
+  br %x > %zero, ^pos, ^chknz;
+^pos:
+  %tmp = %x + %zero;
+  ret %one;
+^chknz:
+  br %x < %zero, ^neg, ^iszero;
+^neg:
+  ret %neg_one;
+^iszero:
+  ret %zero;
+}
+
+fun @amplify(%y: i32) : i32 {
+  let %two: i32 = 2;
+^entry:
+  ret %y * %two;
+}
+
+fun @main() : i32 {
+  sym %?k: value i32 in [-30, 30];
+  let mut %c: i32 = 0;
+  let mut %amp: i32 = 0;
+  let mut %final: i32 = 0;
+  let %zero: i32 = 0;
+  let %one: i32 = 1;
+  let %two: i32 = 2;
+^entry:
+  %c = call @classify(%?k);
+  br %c == %one, ^chk, ^chk;
+^chk:
+  // sign returned 1 -> %?k > 0; amplify to validate.
+  %amp = call @amplify(%c);
+  require %amp == %two, "amplified positive marker == 2";
+  br %amp == %two, ^done, ^exit;
+^done:
+  %final = %amp + %?k - %?k;
+  require %final == %two, "final preserves marker";
+  require %?k > %zero, "?k is in the positive half";
+  br ^exit;
+^exit:
+  ret %?k;
+}

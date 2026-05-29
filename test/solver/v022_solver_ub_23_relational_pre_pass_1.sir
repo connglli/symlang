@@ -1,0 +1,69 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^stage3,^exit
+// SKIP: INTERPRETER — contract-form decl is interp-rejected per §11.3
+// SKIP: COMPILER — UB only observable via solver SMT reasoning
+// SPEC v0.2.2 §7.7 rule 23
+// Intention: relational pre %lo <= %hi spans two parameters; caller
+// path orders syms accordingly. Includes a fp local + array.
+decl @range_sample(%lo: i32, %hi: i32) : i32 {
+  pre %lo <= %hi, "range non-empty";
+  pre %hi - %lo <= 100, "range bounded";
+  post ret >= %lo, "result >= lo";
+  post ret <= %hi, "result <= hi";
+};
+
+fun @bracket(%mid: i32, %width: i32) : i32 {
+  let mut %t: i32 = 0;
+^entry:
+  %t = %mid - %width;
+  br %t < 0, ^clamp_lo, ^chk_hi;
+^clamp_lo:
+  %t = 0;
+  br %width > 50, ^cap_hi, ^done;
+^cap_hi:
+  %t = 50;
+  ret %t;
+^chk_hi:
+  %t = %mid + %width;
+  ret %t;
+^done:
+  ret %t;
+}
+
+fun @main() : i32 {
+  sym %?a: value i32 in [0, 40];
+  sym %?b: value i32 in [50, 100];
+  let mut %arr: [3] i32 = {0, 0, 0};
+  let mut %lo: i32 = 0;
+  let mut %hi: i32 = 0;
+  let mut %r1: i32 = 0;
+  let mut %r2: i32 = 0;
+  let mut %width: i32 = 0;
+  let %mid: i32 = 25;
+^entry:
+  %arr[0] = %?a;
+  %arr[1] = %?b;
+  %arr[2] = %?b - %?a;
+  %lo = %?a;
+  %hi = %?b;
+  br %lo <= %hi, ^stage1, ^skip;
+^stage1:
+  // pre %lo <= %hi guaranteed by domain ordering.
+  %r1 = call @range_sample(%lo, %hi);
+  require %r1 >= %lo, "post lo bound";
+  require %r1 <= %hi, "post hi bound";
+  br %r1 >= %lo, ^stage2, ^skip;
+^stage2:
+  %width = %hi - %lo;
+  %r2 = call @bracket(%mid, %width);
+  br %r2 >= 0, ^stage3, ^skip;
+^stage3:
+  // Second contract call still satisfies pre.
+  %r1 = call @range_sample(%lo, %hi);
+  require %r1 >= %lo, "second post lo bound";
+  br ^exit;
+^skip:
+  ret 0;
+^exit:
+  ret %?a;
+}

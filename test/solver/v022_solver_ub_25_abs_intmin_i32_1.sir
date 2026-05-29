@@ -1,0 +1,41 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path ^entry,^use,^exit -I test/lib/std/scalar
+// SKIP: INTERPRETER — UB requires symbolic sym = INT_MIN
+// SKIP: COMPILER — UB only observable via solver
+// SPEC v0.2.2 §7.7 rule 25 (via §12.1 @abs)
+// Intention: caller forces %?x to INT_MIN; @abs(INT_MIN) is UB
+// because the result -INT_MIN is not representable in i32.
+intrinsic @abs(%x: i32) : i32;
+decl @clamp(%x: i32, %lo: i32, %hi: i32) : i32;
+
+fun @stage(%x: i32) : i32 {
+  let mut %a: i32 = 0;
+  let mut %b: i32 = 0;
+  let %one: i32 = 1;
+^entry:
+  %a = %x + %one;
+  %b = %a - %one;
+  br %b >= 0, ^pos, ^neg;
+^pos:
+  ret %a;
+^neg:
+  ret %b;
+}
+
+fun @main() : i32 {
+  sym %?x: value i32;
+  let mut %r: i32 = 0;
+  let mut %s: i32 = 0;
+  let %imin: i32 = -2147483648;
+^entry:
+  %s = call @clamp(0, -1, 1);
+  br %s >= 0, ^use, ^skip;
+^use:
+  require %?x == %imin, "force INT_MIN";
+  %r = call @abs(%?x);   // UB: result not representable
+  br ^exit;
+^skip:
+  br ^exit;
+^exit:
+  ret %r;
+}

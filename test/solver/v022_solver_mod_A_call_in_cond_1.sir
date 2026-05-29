@@ -1,0 +1,61 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^pos,^accum,^exit --seed 2
+// SKIP: SOLVER -- ptr i32 passed to fun callee + load/store inside callee returns UNSAT (solver gap)
+// SKIP: COMPILER
+// SPEC v0.2.2 §2.12 (calls in conditions; side effects unconditional)
+// Intention: Scenario A8 -- helper called from inside a branch
+// condition AND inside an assignment. The branch predicate uses the
+// straight-line @is_positive callee (no branchy sub-paths) so the
+// solver can prove the predicate; the assignment helper
+// @track_and_bias mutates a counter through ptr i32, exercising
+// caller-store coherence (§9.6.1 step 5).
+fun @is_positive(%x: i32) : i32 {
+  let mut %r: i32 = 0;
+  let %zero: i32 = 0;
+^entry:
+  %r = select %x > %zero, 1, 0;
+  ret %r;
+}
+
+fun @track_and_bias(%p: ptr i32, %v: i32) : i32 {
+  let mut %r: i32 = 0;
+  let %two: i32 = 2;
+^entry:
+  // Side effect: bump the counter even if caller branch decides not
+  // to use the result (spec §2.12 says side effects commit).
+  %r = load %p;
+  %r = %r + 1;
+  store %p, %r;
+  ret %two * %v;
+}
+
+fun @main() : i32 {
+  sym %?k: value i32 in [1, 50];
+  let mut %counter: i32 = 0;
+  let mut %p: ptr i32 = null;
+  let mut %t: i32 = 0;
+  let mut %guard: i32 = 0;
+  let mut %sum: i32 = 0;
+  let %one: i32 = 1;
+^entry:
+  %p = addr %counter;
+  // Straight-line call in a branch condition.
+  %guard = call @is_positive(%?k);
+  br %guard == %one, ^pos, ^neg;
+^pos:
+  // ?k is positive on this branch. Issue another call in an
+  // assignment to verify Store coherence after the prior store.
+  %t = call @track_and_bias(%p, %?k);
+  require %t == 20, "2 * ?k == 20 implies ?k == 10";
+  br ^accum;
+^accum:
+  // Counter should be 1 (incremented once by track_and_bias).
+  %sum = load %p;
+  require %sum == %one, "counter incremented once by track_and_bias";
+  br ^exit;
+^neg:
+  // Unreachable on the chosen path; included to make CFG complete.
+  ret %?k;
+^exit:
+  ret %?k;
+}

@@ -1,0 +1,41 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^stage3,^exit
+// SPEC v0.2.2 §12.1 (@abs)
+// Intention: Scenario D1 -- synthesize a value for %?x such that
+// @abs(%?x) == 5. The solver should pick ?x in {-5, 5}. Composed
+// with a same-module helper to validate post-intrinsic flow.
+intrinsic @abs(%x: i32) : i32;
+
+fun @doubler(%v: i32) : i32 {
+^entry:
+  ret %v + %v;
+}
+
+fun @main() : i32 {
+  sym %?x: value i32 in [-100, 100];
+  let mut %a: i32 = 0;
+  let mut %a2: i32 = 0;
+  let mut %dbl: i32 = 0;
+  let mut %final: i32 = 0;
+  let %five: i32 = 5;
+  let %ten: i32 = 10;
+^entry:
+  %a = call @abs(%?x);
+  require %a == %five, "abs(?x) == 5";
+  br ^stage1;
+^stage1:
+  // Reapply abs to confirm idempotence on the (non-negative) result.
+  %a2 = call @abs(%a);
+  require %a2 == %five, "abs of abs == abs";
+  br ^stage2;
+^stage2:
+  %dbl = call @doubler(%a);
+  require %dbl == %ten, "doubled == 10";
+  br ^stage3;
+^stage3:
+  %final = %dbl - %five;
+  require %final == %five, "final preserves abs result";
+  br ^exit;
+^exit:
+  ret %?x;
+}

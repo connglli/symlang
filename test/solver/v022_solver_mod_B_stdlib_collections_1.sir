@@ -1,0 +1,69 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^post_sum,^post_swap,^done,^exit -I test/lib/std/collections
+// SKIP: SOLVER -- ptr [N] T + ptr i32 to fun callees returns UNSAT (solver gap)
+// SPEC v0.2.2 §9.6.1 + §11.1
+// Intention: Scenario B2 -- collections stdlib helpers @array_sum_4_i32
+// and @swap_i32 invoked over caller-side aggregates. After @swap_i32
+// the caller observes mutated state (caller Store coherence,
+// §9.6.1 step 5).
+decl @array_sum_4_i32(%p: ptr [4] i32) : i32;
+decl @swap_i32(%a: ptr i32, %b: ptr i32) : i32;
+
+fun @double_back(%x: i32) : i32 {
+  let %two: i32 = 2;
+^entry:
+  ret %x * %two;
+}
+
+fun @main() : i32 {
+  sym %?w: value i32 in [0, 20];
+  sym %?x: value i32 in [0, 20];
+  sym %?y: value i32 in [0, 20];
+  sym %?z: value i32 in [0, 20];
+  let mut %arr: [4] i32 = { 0, 0, 0, 0 };
+  let mut %p: ptr [4] i32 = null;
+  let mut %first: i32 = 0;
+  let mut %last: i32 = 0;
+  let mut %fp: ptr i32 = null;
+  let mut %lp: ptr i32 = null;
+  let mut %sum: i32 = 0;
+  let mut %swap_ret: i32 = 0;
+  let mut %new_first: i32 = 0;
+  let mut %new_last: i32 = 0;
+  let mut %doubled: i32 = 0;
+  let %i0: i32 = 0;
+  let %i3: i32 = 3;
+  let %target_sum: i32 = 30;
+^entry:
+  %arr[0] = %?w;
+  %arr[1] = %?x;
+  %arr[2] = %?y;
+  %arr[3] = %?z;
+  %p = addr %arr;
+  %sum = call @array_sum_4_i32(%p);
+  require %sum == %target_sum, "array sum equals 30";
+  br ^post_sum;
+^post_sum:
+  // Save originals then swap arr[0] <-> arr[3].
+  %fp = ptrindex %p, %i0;
+  %lp = ptrindex %p, %i3;
+  %first = load %fp;
+  %last  = load %lp;
+  %swap_ret = call @swap_i32(%fp, %lp);
+  br %swap_ret == 0, ^post_swap, ^post_swap;
+^post_swap:
+  // After swap, arr[0] should equal the old arr[3] and vice versa.
+  %new_first = load %fp;
+  %new_last  = load %lp;
+  require %new_first == %last, "after swap arr[0] == old arr[3]";
+  require %new_last == %first, "after swap arr[3] == old arr[0]";
+  br ^done;
+^done:
+  // Verify symbol values via direct reference.
+  %doubled = call @double_back(%first);
+  require %first == %?w, "saved first equals original ?w";
+  require %doubled == %?w + %?w, "doubled equals 2*?w";
+  br ^exit;
+^exit:
+  ret %sum;
+}

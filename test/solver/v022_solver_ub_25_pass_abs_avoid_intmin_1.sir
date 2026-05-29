@@ -1,0 +1,40 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^use,^exit -I test/lib/std/scalar
+// SKIP: INTERPRETER — solver-only synthesis; concretised program then runs cleanly via interp
+// SKIP: COMPILER — UB-avoidance only meaningful in the solver
+// SPEC v0.2.2 §7.7 rule 25 (positive variant: avoid the UB)
+// Intention: caller constrains %?x to be away from INT_MIN, so
+// @abs(%?x) is well-defined. Solver finds the model.
+intrinsic @abs(%x: i32) : i32;
+decl @clamp(%x: i32, %lo: i32, %hi: i32) : i32;
+
+fun @stage(%x: i32) : i32 {
+  let mut %a: i32 = 0;
+  let %one: i32 = 1;
+^entry:
+  %a = %x + %one;
+  br %a >= 0, ^p, ^n;
+^p:
+  ret %a;
+^n:
+  ret %x;
+}
+
+fun @main() : i32 {
+  sym %?x: value i32;
+  let mut %r: i32 = 0;
+  let mut %t: i32 = 0;
+^entry:
+  %t = call @clamp(%?x, -100, 100);
+  br %t >= 0, ^use, ^skip;
+^use:
+  require %?x >= -100, "avoid INT_MIN";
+  require %?x <= 100, "bound input";
+  %r = call @abs(%?x);
+  require %r == 7, "synthesise %?x s.t. |%?x| == 7";
+  br ^exit;
+^skip:
+  br ^exit;
+^exit:
+  ret %?x;
+}

@@ -1,0 +1,63 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^stage3,^exit
+// SKIP: INTERPRETER — contract-form decl is interp-rejected per §11.3
+// SKIP: COMPILER — UB only observable via solver SMT reasoning
+// SPEC v0.2.2 §7.7 rule 23
+// Intention: caller's require forces %?n to be in [-50, -1]; the
+// contract's pre %size > 0 cannot hold, so the path is infeasible.
+decl @make(%size: i32) : i32 {
+  pre %size > 0, "size positive";
+  post ret >= 1, "non-trivial result";
+};
+
+fun @scrubber(%v: i32) : i32 {
+  let mut %t: i32 = 0;
+  let %two: i32 = 2;
+^entry:
+  %t = %v - 1;
+  br %t < 0, ^neg_path, ^pos_path;
+^neg_path:
+  %t = %t * %two;
+  br %t < -10, ^clamp_neg, ^done;
+^clamp_neg:
+  %t = -10;
+  ret %t;
+^pos_path:
+  %t = %t + 1;
+  ret %t;
+^done:
+  ret %t;
+}
+
+fun @main() : i32 {
+  sym %?n: value i32 in [-50, 50];
+  let mut %a: i32 = 0;
+  let mut %b: i32 = 0;
+  let mut %c: i32 = 0;
+  let mut %sum: i32 = 0;
+  let mut %final: i32 = 0;
+  let %hi: i32 = -1;
+  let %k: i32 = 7;
+^entry:
+  // Caller path forces ?n strictly negative.
+  require %?n <= %hi, "?n negative";
+  br %?n < 0, ^stage1, ^skip;
+^stage1:
+  // Pre-compute side effects to make path richer.
+  %a = call @scrubber(%?n);
+  %b = %a + %k;
+  br %b > -100, ^stage2, ^skip;
+^stage2:
+  // Contract called with definitively non-positive argument -> UB.
+  %c = call @make(%?n);
+  %sum = %c + %b;
+  br %sum != 0, ^stage3, ^skip;
+^stage3:
+  %final = 2 * %sum;
+  require %final != 0, "final non-zero";
+  br ^exit;
+^skip:
+  ret 0;
+^exit:
+  ret %?n;
+}

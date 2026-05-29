@@ -1,0 +1,30 @@
+// EXPECT: FAIL
+// SOLVER_ARGS: --main @main --path ^entry,^post,^exit
+// SKIP: INTERPRETER
+// SKIP: COMPILER
+// SPEC v0.2.2 §9.6.2 step 1 + §7.7 rule 23
+// Intention: Scenario C4 -- the `pre` clause contradicts the caller's
+// require. The caller forces ?k < 0 via require, but the contract
+// requires %x > 0. UNSAT -- the solver reports FAIL.
+decl @needs_positive(%x: i32) : i32 {
+  pre %x > 0, "must be positive";
+  post ret == %x, "echoes input";
+};
+
+fun @main() : i32 {
+  sym %?k: value i32 in [-100, 100];
+  let mut %r: i32 = 0;
+  let mut %neg: i32 = 0;
+^entry:
+  %neg = -1;
+  // First force the symbol to be negative.
+  require %?k < %neg, "?k < -1";
+  // Then violate the contract pre.
+  %r = call @needs_positive(%?k);
+  br ^post;
+^post:
+  require %r > 0, "would be SAT if pre were ignored";
+  br ^exit;
+^exit:
+  ret %?k;
+}

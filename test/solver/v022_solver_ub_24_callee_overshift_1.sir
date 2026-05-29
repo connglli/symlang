@@ -1,0 +1,45 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path ^entry,^use,^exit -I test/lib/std/scalar
+// SKIP: INTERPRETER — UB only on symbolic path
+// SKIP: COMPILER — UB only observable via solver
+// SPEC v0.2.2 §7.7 rule 24 (via rule 5 inside callee)
+// Intention: callee's `x << n` overshifts (n >= width). Solver should
+// see the path as infeasible.
+intrinsic @max(%a: i32, %b: i32) : i32;
+decl @clamp(%x: i32, %lo: i32, %hi: i32) : i32;
+
+fun @shifter(%x: i32, %n: i32) : i32 {
+  let mut %a: i32 = 0;
+  let mut %b: i32 = 0;
+  let %one: i32 = 1;
+^entry:
+  %a = call @max(%x, %one);
+  %b = %a + %one;
+  br %b > 0, ^body, ^skip;
+^body:
+  %a = %a + %one;
+  %b = %a * %a;
+  br %n > 0, ^doshift, ^skip;
+^doshift:
+  %a = 1 << %n;   // rule 5: overshift when %n >= 32
+  ret %a;
+^skip:
+  ret %b;
+}
+
+fun @main() : i32 {
+  sym %?n: value i32 in [0, 100];
+  let mut %r: i32 = 0;
+  let %x: i32 = 7;
+^entry:
+  %r = call @clamp(%x, 1, 50);
+  br %r > 0, ^use, ^skip;
+^use:
+  require %?n >= 64, "force overshift in callee";
+  %r = call @shifter(%x, %?n);
+  br ^exit;
+^skip:
+  br ^exit;
+^exit:
+  ret %r;
+}

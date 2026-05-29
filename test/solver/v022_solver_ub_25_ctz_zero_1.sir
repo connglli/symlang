@@ -1,0 +1,38 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path ^entry,^use,^exit -I test/lib/std/scalar
+// SKIP: INTERPRETER — UB requires symbolic sym = 0
+// SKIP: COMPILER — UB only observable via solver
+// SPEC v0.2.2 §7.7 rule 25 (via §12.2 @ctz)
+// Intention: caller forces %?x = 0; @ctz(0) is UB per §12.2.
+intrinsic @ctz(%x: i32) : i32;
+decl @gcd(%a: i32, %b: i32) : i32;
+
+fun @stage(%v: i32) : i32 {
+  let mut %a: i32 = 0;
+  let %one: i32 = 1;
+^entry:
+  %a = %v + %one;
+  br %a >= 0, ^p, ^n;
+^p:
+  %a = %a + %one;
+  ret %a;
+^n:
+  ret %v;
+}
+
+fun @main() : i32 {
+  sym %?x: value i32 in [0, 100];
+  let mut %r: i32 = 0;
+  let mut %g: i32 = 0;
+^entry:
+  %g = call @gcd(8, 12);
+  br %g > 0, ^use, ^skip;
+^use:
+  require %?x == 0, "force zero input";
+  %r = call @ctz(%?x);   // UB: @ctz requires non-zero
+  br ^exit;
+^skip:
+  br ^exit;
+^exit:
+  ret %r;
+}

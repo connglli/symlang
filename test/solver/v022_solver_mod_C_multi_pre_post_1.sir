@@ -1,0 +1,51 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^stage3,^exit
+// SKIP: INTERPRETER
+// SKIP: COMPILER
+// SPEC v0.2.2 §9.6.2 (multiple pre + multiple post)
+// Intention: Scenario C3 -- contract with multiple `pre` and multiple
+// `post` clauses. Each `pre` adds a UB-conditioning check; each
+// `post` adds an assumption on the fresh ret_sym. The solver finds
+// inputs satisfying all of them simultaneously.
+decl @bounded_lookup(%key: i32, %base: i32) : i32 {
+  pre %key >= 0, "non-negative key";
+  pre %key <= 100, "bounded key";
+  pre %base > 0, "positive base";
+  post ret >= %base, "ret >= base";
+  post ret <= %base + 100, "ret <= base + 100";
+  post ret >= 0, "ret non-negative";
+};
+
+fun @inc(%v: i32) : i32 {
+^entry:
+  ret %v + 1;
+}
+
+fun @main() : i32 {
+  sym %?k: value i32 in [-50, 150];
+  sym %?b: value i32 in [-10, 50];
+  let mut %r: i32 = 0;
+  let mut %r2: i32 = 0;
+  let mut %final: i32 = 0;
+  let %target: i32 = 60;
+^entry:
+  %r = call @bounded_lookup(%?k, %?b);
+  require %r == %target, "ret_sym == 60";
+  br ^stage1;
+^stage1:
+  // Per pre, ?k in [0,100] and ?b > 0.
+  require %?k >= 0, "?k in pre range";
+  require %?k <= 100, "?k in pre range";
+  require %?b > 0, "?b in pre range";
+  br ^stage2;
+^stage2:
+  %r2 = call @inc(%r);
+  require %r2 == 61, "inc(60) == 61";
+  br ^stage3;
+^stage3:
+  %final = %r2 - 1;
+  require %final == %target, "round trip";
+  br ^exit;
+^exit:
+  ret %?k;
+}

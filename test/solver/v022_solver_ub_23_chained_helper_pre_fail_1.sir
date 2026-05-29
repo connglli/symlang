@@ -1,0 +1,62 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^stage3,^exit
+// SKIP: INTERPRETER — contract-form decl is interp-rejected per §11.3
+// SKIP: COMPILER — UB only observable via solver SMT reasoning
+// SPEC v0.2.2 §7.7 rule 23
+// Intention: caller helper @use_contract calls a contract decl whose
+// pre is unsatisfiable given caller's path constraints. UB propagates
+// through the helper to the main path (rule 23 inside helper +
+// rule 24 propagation across @use_contract).
+decl @sink(%k: i32) : i32 {
+  pre %k > 0, "k positive";
+  post ret == %k, "echo";
+};
+
+fun @use_contract(%v: i32) : i32 {
+  let mut %r: i32 = 0;
+  let mut %t: i32 = 0;
+^entry:
+  %t = %v + 1;
+  br %t > 0, ^chk, ^pass;
+^chk:
+  %t = %t - 1;
+  br %t > -100, ^callsite, ^pass;
+^callsite:
+  // If caller passes %v <= -1 then %v is non-positive at this point;
+  // the contract pre %k > 0 fails -> UB rule 23 inside helper.
+  %r = call @sink(%v);
+  br %r != 99999, ^done, ^pass;
+^pass:
+  ret %v;
+^done:
+  ret %r;
+}
+
+fun @main() : i32 {
+  sym %?n: value i32 in [-50, 50];
+  let mut %r: i32 = 0;
+  let mut %sum: i32 = 0;
+  let mut %t: i32 = 0;
+  let mut %final: i32 = 0;
+  let %neg_one: i32 = -1;
+^entry:
+  // Force ?n <= -1 so the helper's contract call sees a non-positive arg.
+  require %?n <= %neg_one, "?n strictly negative";
+  br %?n < 0, ^stage1, ^skip;
+^stage1:
+  %t = %?n + 0;
+  br %t < 0, ^stage2, ^skip;
+^stage2:
+  // Indirectly invoke the contract with a negative arg -> rule 23 UB.
+  %r = call @use_contract(%?n);
+  %sum = %r + %t;
+  br %sum != -99999, ^stage3, ^skip;
+^stage3:
+  %final = %sum + 1;
+  require %final >= -1000000, "trivially true";
+  br ^exit;
+^skip:
+  ret 0;
+^exit:
+  ret %?n;
+}

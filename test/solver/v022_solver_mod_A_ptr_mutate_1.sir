@@ -1,0 +1,57 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^after,^check,^done,^exit
+// SKIP: SOLVER -- ptr i32 store inside fun callee not reflected in caller load (solver gap)
+// SPEC v0.2.2 §9.6.1 step 5 (caller Store coherence after ptr arg)
+// Intention: Scenario A4 -- same-module helper that mutates through a
+// pointer parameter. After the call returns the caller observes the
+// mutation. Also calls a second straight-line helper to feed the
+// require chain (multi-kind callees: §9.6.1 + §9.6.3 are stressed in
+// a single fun via mixing @abs intrinsic too).
+intrinsic @abs(%x: i32) : i32;
+
+fun @write_double(%p: ptr i32, %v: i32) : i32 {
+  let mut %doubled: i32 = 0;
+  let %two: i32 = 2;
+^entry:
+  %doubled = %v * %two;
+  store %p, %doubled;
+  ret %doubled;
+}
+
+fun @echo(%x: i32) : i32 {
+^entry:
+  ret %x;
+}
+
+fun @main() : i32 {
+  sym %?k: value i32 in [-50, 50];
+  let mut %cell: i32 = 0;
+  let mut %p: ptr i32 = null;
+  let mut %ret_val: i32 = 0;
+  let mut %now: i32 = 0;
+  let mut %mag: i32 = 0;
+  let mut %echoed: i32 = 0;
+  let %zero: i32 = 0;
+  let %target: i32 = 14;
+^entry:
+  %cell = %zero;
+  %p = addr %cell;
+  %ret_val = call @write_double(%p, %?k);
+  br %ret_val == %ret_val, ^after, ^after;
+^after:
+  // Caller Store coherence: rereading %cell after callee store must
+  // reflect the mutation, not the pre-call %cell = 0.
+  %now = load %p;
+  require %now == %ret_val, "pointee equals return value";
+  br ^check;
+^check:
+  %mag = call @abs(%now);
+  require %mag == %target, "|2*?k| equals target";
+  br ^done;
+^done:
+  %echoed = call @echo(%mag);
+  require %echoed == %target, "echo preserves value";
+  br ^exit;
+^exit:
+  ret %?k;
+}

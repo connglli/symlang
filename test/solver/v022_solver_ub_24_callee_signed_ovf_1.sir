@@ -1,0 +1,45 @@
+// EXPECT: FAIL:UndefinedBehavior
+// SOLVER_ARGS: --main @main --path ^entry,^use,^exit -I test/lib/std/scalar
+// SKIP: INTERPRETER — UB only on symbolic path
+// SKIP: COMPILER — UB only observable via solver
+// SPEC v0.2.2 §7.7 rule 24 (via rule 4 inside callee)
+// Intention: callee's INT_MAX + 1 produces a signed-overflow UB.
+intrinsic @abs(%x: i32) : i32;
+decl @gcd(%a: i32, %b: i32) : i32;
+
+fun @adder(%x: i32) : i32 {
+  let mut %t: i32 = 0;
+  let mut %u: i32 = 0;
+  let %imax: i32 = 2147483647;
+  let %one: i32 = 1;
+^entry:
+  %t = call @abs(%x);
+  %u = %t + %one;
+  br %u > 0, ^check, ^skip;
+^check:
+  %t = %t + %one;
+  %u = %t * %one;
+  br %t > 1000, ^big, ^skip;
+^big:
+  %t = %imax + %u;   // rule 4: signed overflow
+  ret %t;
+^skip:
+  ret %u;
+}
+
+fun @main() : i32 {
+  sym %?k: value i32 in [0, 10];
+  let mut %r: i32 = 0;
+  let %seed: i32 = 9999;
+^entry:
+  %r = call @gcd(%seed, 3);
+  br %r > 0, ^use, ^skip;
+^use:
+  require %?k > 5, "ensure big-branch in callee";
+  %r = call @adder(%seed);
+  br ^exit;
+^skip:
+  br ^exit;
+^exit:
+  ret %r;
+}

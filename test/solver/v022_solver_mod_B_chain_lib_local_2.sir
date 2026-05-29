@@ -1,0 +1,44 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^stage3,^exit -I test/lib/std/scalar
+// SPEC v0.2.2 §9.6.1 + §11.1
+// Intention: Scenario B4 (alt) -- a 3-call chain: stdlib @avg_safe ->
+// in-module @offset -> stdlib @avg_naive. All callees are straight-line
+// scalar to avoid sub-path sampling and ptr-to-fun gaps.
+decl @avg_naive(%a: i32, %b: i32) : i32;
+decl @avg_safe(%a: i32, %b: i32) : i32;
+
+fun @offset(%v: i32, %k: i32) : i32 {
+^entry:
+  ret %v + %k;
+}
+
+fun @main() : i32 {
+  sym %?a: value i32 in [0, 50];
+  sym %?b: value i32 in [0, 50];
+  let mut %avg: i32 = 0;
+  let mut %off: i32 = 0;
+  let mut %avg2: i32 = 0;
+  let mut %final: i32 = 0;
+  let %k: i32 = 5;
+  let %target_avg: i32 = 10;
+  let %partner: i32 = 7;
+^entry:
+  %avg = call @avg_safe(%?a, %?b);
+  require %avg == %target_avg, "avg_safe(?a, ?b) == 10";
+  br ^stage1;
+^stage1:
+  %off = call @offset(%avg, %k);
+  require %off == 15, "offset(10, 5) == 15";
+  br ^stage2;
+^stage2:
+  %avg2 = call @avg_naive(%off, %partner);
+  // avg_naive(15, 7) = 22 / 2 = 11.
+  require %avg2 == 11, "avg_naive(15, 7) == 11";
+  br ^stage3;
+^stage3:
+  %final = %?a + %?b;
+  require %final >= 20, "?a + ?b >= 20 (from avg_safe == 10)";
+  br ^exit;
+^exit:
+  ret %avg;
+}

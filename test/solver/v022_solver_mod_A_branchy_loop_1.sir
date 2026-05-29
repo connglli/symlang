@@ -1,0 +1,50 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^post,^check,^exit --seed 1
+// SKIP: COMPILER
+// SPEC v0.2.2 §9.6.1 + §13 (callee path sampling)
+// Intention: Scenario A3 -- mixed: branchy callee (@try_double) whose
+// sub-path is sampled per-call, plus a straight-line callee (@offset)
+// for deterministic composition. The branchy callee has only two
+// exits (yes or no), so any seed reaches a feasible decision and the
+// require pushes %?k into the satisfying region.
+fun @try_double(%x: i32) : i32 {
+  let mut %d: i32 = 0;
+  let %zero: i32 = 0;
+  let %two: i32 = 2;
+^entry:
+  %d = %two * %x;
+  br %d > %zero, ^pos, ^nonpos;
+^pos:
+  ret %d;
+^nonpos:
+  ret %zero;
+}
+
+fun @offset(%v: i32, %k: i32) : i32 {
+^entry:
+  ret %v + %k;
+}
+
+fun @main() : i32 {
+  sym %?k: value i32 in [-20, 20];
+  let mut %d: i32 = 0;
+  let mut %sum: i32 = 0;
+  let mut %final: i32 = 0;
+  let %ten: i32 = 10;
+  let %target: i32 = 20;
+^entry:
+  %d = call @try_double(%?k);
+  br %d == %d, ^post, ^post;
+^post:
+  // %d must be 20 (forcing the ^pos arm in callee), so ?k = 10.
+  require %d == %target, "2 * ?k == 20";
+  br ^check;
+^check:
+  %sum = call @offset(%d, %ten);
+  require %sum == 30, "offset(20, 10) == 30";
+  %final = %sum - %ten;
+  require %final == %target, "round-trip preserves target";
+  br ^exit;
+^exit:
+  ret %?k;
+}

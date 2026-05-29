@@ -1,0 +1,39 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^use,^exit -I test/lib/std/scalar
+// SKIP: INTERPRETER — solver synthesis; concretised program runs fine via interp
+// SKIP: COMPILER — solver-side synthesis
+// SPEC v0.2.2 §7.7 rule 25 (positive: popcount at i32 cannot overflow)
+// Intention: @popcount of an i32 sym never exceeds 32, comfortably
+// representable. Solver synthesises %?x with a specific bit count.
+intrinsic @popcount(%x: i32) : i32;
+decl @clamp(%x: i32, %lo: i32, %hi: i32) : i32;
+
+fun @stage(%v: i32) : i32 {
+  let mut %a: i32 = 0;
+  let %one: i32 = 1;
+^entry:
+  %a = %v + %one;
+  br %a >= 0, ^p, ^n;
+^p:
+  %a = %a + %one;
+  ret %a;
+^n:
+  ret %v;
+}
+
+fun @main() : i32 {
+  sym %?x: value i32 in [0, 1000];
+  let mut %r: i32 = 0;
+  let mut %t: i32 = 0;
+^entry:
+  %t = call @clamp(%?x, 0, 1000);
+  br %t >= 0, ^use, ^skip;
+^use:
+  %r = call @popcount(%?x);
+  require %r == 4, "synthesise %?x with exactly 4 set bits";
+  br ^exit;
+^skip:
+  br ^exit;
+^exit:
+  ret %?x;
+}

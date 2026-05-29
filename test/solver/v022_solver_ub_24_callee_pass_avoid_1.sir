@@ -1,0 +1,39 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^use,^exit -I test/lib/std/scalar
+// SKIP: INTERPRETER — solver-synthesised concrete program runs fine via interp
+// SKIP: COMPILER — UB-avoidance only meaningful in the symbolic solver
+// SPEC v0.2.2 §7.7 rule 24 (positive variant)
+// Intention: callee has unconditional div; caller constrains %?d to
+// be non-zero AND positive so neither rule 1 (div0) nor rule 4
+// (INT_MIN / -1) fires. Solver must find a model.
+// Callee is straight-line to avoid spec §13 random sub-path sampling.
+intrinsic @abs(%x: i32) : i32;
+decl @clamp(%x: i32, %lo: i32, %hi: i32) : i32;
+
+fun @divider(%v: i32, %d: i32) : i32 {
+  let mut %a: i32 = 0;
+  let mut %b: i32 = 0;
+  let %one: i32 = 1;
+^entry:
+  %a = %v + %one;
+  %b = call @abs(%a);
+  %a = %b / %d;
+  ret %a;
+}
+
+fun @main() : i32 {
+  sym %?d: value i32 in [-10, 10];
+  let mut %v: i32 = 12;
+  let mut %r: i32 = 0;
+^entry:
+  %v = call @clamp(%v, 1, 100);
+  br %v > 0, ^use, ^skip;
+^use:
+  require %?d >= 1, "force positive divisor (avoids div0 and INT_MIN/-1)";
+  %r = call @divider(%v, %?d);
+  br ^exit;
+^skip:
+  br ^exit;
+^exit:
+  ret %r;
+}

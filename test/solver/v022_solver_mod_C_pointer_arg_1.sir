@@ -1,0 +1,45 @@
+// EXPECT: PASS
+// SOLVER_ARGS: --main @main --path ^entry,^stage1,^stage2,^exit
+// SKIP: INTERPRETER
+// SKIP: COMPILER
+// SPEC v0.2.2 §9.6.2 (contract-form decl with pointer parameter)
+// Intention: Scenario C6 -- contract whose only argument is a
+// pointer. The `pre` requires non-null; the `post` ties the return
+// value to the post-call pointee. Validates havoc + pre + post on a
+// pointer arg.
+decl @load_and_check(%p: ptr i32) : i32 {
+  pre %p != null, "non-null pointer";
+  post ret == load %p, "return equals pointee";
+  post ret >= 0, "callee normalizes to non-negative";
+};
+
+fun @doubler(%v: i32) : i32 {
+^entry:
+  ret %v + %v;
+}
+
+fun @main() : i32 {
+  sym %?init: value i32 in [-50, 50];
+  let mut %cell: i32 = 0;
+  let mut %p: ptr i32 = null;
+  let mut %r: i32 = 0;
+  let mut %dbl: i32 = 0;
+  let mut %final: i32 = 0;
+  let %target: i32 = 5;
+^entry:
+  %cell = %?init;
+  %p = addr %cell;
+  %r = call @load_and_check(%p);
+  require %r == %target, "ret == 5";
+  br ^stage1;
+^stage1:
+  %dbl = call @doubler(%r);
+  require %dbl == 10, "doubled return";
+  br ^stage2;
+^stage2:
+  %final = %dbl - %target;
+  require %final == %target, "round trip";
+  br ^exit;
+^exit:
+  ret %?init;
+}
