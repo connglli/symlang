@@ -66,8 +66,11 @@ SOLVER_ALL_SRCS = $(SOLVER_MAIN_SRCS) $(SOLVER_SRCS)
 REIFY_SRCS = src/reify/cfg_gen.cpp src/reify/path_sampler.cpp \
              src/reify/type_gen.cpp src/reify/var_catalogue.cpp \
              src/reify/expr_gen.cpp src/reify/func_gen.cpp \
-             src/reify/func_desc.cpp
+             src/reify/func_desc.cpp \
+             src/reify/func_pool.cpp src/reify/cg_gen.cpp \
+             src/reify/rewrite.cpp
 RYSMITH_SRCS = src/rysmith.cpp src/solver/solver.cpp $(REIFY_SRCS)
+RYLINK_SRCS = src/rylink.cpp $(REIFY_SRCS)
 
 COMMON_OBJS = $(COMMON_SRCS:.cpp=.o)
 TEST_OBJS = $(TEST_SRCS:.cpp=.o)
@@ -75,11 +78,13 @@ INTERP_OBJS = $(INTERP_SRCS:.cpp=.o)
 COMPILER_OBJS = $(COMPILER_SRCS:.cpp=.o)
 SOLVER_OBJS = $(SOLVER_MAIN_SRCS:.cpp=.o) $(SOLVER_IMPL_OBJ)
 RYSMITH_OBJS = $(RYSMITH_SRCS:.cpp=.o) $(SOLVER_IMPL_OBJ)
+RYLINK_OBJS = $(RYLINK_SRCS:.cpp=.o)
 
 TARGET_INTERP = symiri
 TARGET_COMPILER = symirc
 TARGET_SOLVER = symirsolve
 TARGET_RYSMITH = rysmith
+TARGET_RYLINK = rylink
 
 BUILD_DIR = build
 BIN_DIR = $(BUILD_DIR)/bin
@@ -100,7 +105,7 @@ LIBRARY_OBJS = $(COMMON_OBJS) \
 
 .PHONY: all clean test test-unit build
 
-all: $(TARGET_INTERP) $(TARGET_COMPILER) $(TARGET_SOLVER) $(TARGET_RYSMITH)
+all: $(TARGET_INTERP) $(TARGET_COMPILER) $(TARGET_SOLVER) $(TARGET_RYSMITH) $(TARGET_RYLINK)
 
 $(TARGET_INTERP): $(COMMON_OBJS) $(INTERP_OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
@@ -114,12 +119,19 @@ $(TARGET_SOLVER): $(COMMON_OBJS) $(SOLVER_OBJS)
 $(TARGET_RYSMITH): $(COMMON_OBJS) $(RYSMITH_OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
+# [v0.2.2] rylink also depends on the solver objects: it doesn't call
+# the SMT solver itself, but the reify libs (and SIRPrinter) include
+# solver headers and reference its types, so the linker needs the
+# symbols. We don't link the Bitwuzla impl since rylink never solves.
+$(TARGET_RYLINK): $(COMMON_OBJS) $(RYLINK_OBJS) src/solver/solver.o
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 build: all $(LIB_DIR)/$(LIB_NAME)
 	mkdir -p $(BIN_DIR) $(INC_DIR)
-	cp $(TARGET_INTERP) $(TARGET_COMPILER) $(TARGET_SOLVER) $(TARGET_RYSMITH) $(BIN_DIR)/
+	cp $(TARGET_INTERP) $(TARGET_COMPILER) $(TARGET_SOLVER) $(TARGET_RYSMITH) $(TARGET_RYLINK) $(BIN_DIR)/
 	cp -r include/* $(INC_DIR)/
 
 $(LIB_DIR)/$(LIB_NAME): $(LIBRARY_OBJS)
@@ -127,7 +139,7 @@ $(LIB_DIR)/$(LIB_NAME): $(LIBRARY_OBJS)
 	$(AR) $(ARFLAGS) $@ $^
 
 clean:
-	rm -f $(COMMON_OBJS) $(TEST_OBJS) $(INTERP_OBJS) $(COMPILER_OBJS) $(SOLVER_OBJS) $(RYSMITH_OBJS) $(TARGET_INTERP) $(TARGET_COMPILER) $(TARGET_SOLVER) $(TARGET_RYSMITH)
+	rm -f $(COMMON_OBJS) $(TEST_OBJS) $(INTERP_OBJS) $(COMPILER_OBJS) $(SOLVER_OBJS) $(RYSMITH_OBJS) $(RYLINK_OBJS) $(TARGET_INTERP) $(TARGET_COMPILER) $(TARGET_SOLVER) $(TARGET_RYSMITH) $(TARGET_RYLINK)
 	rm -rf $(BUILD_DIR)
 	find . -name "*.gcno" -delete
 	find . -name "*.gcda" -delete

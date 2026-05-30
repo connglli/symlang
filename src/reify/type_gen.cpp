@@ -147,14 +147,14 @@ namespace symir::reify {
   bool isVecType(const TypePtr &t) { return t && std::holds_alternative<VecType>(t->v); }
 
   TypePtr genRandomType(std::mt19937 &rng, const TypeGenConfig &cfg, int depth) {
-    // Type-kind probability buckets — see hp::kPType*. Aggregates are zeroed
+    // Type-kind probability buckets — see rysmith::hp::kPType*. Aggregates are zeroed
     // past maxAggNesting and pointers past maxPtrDepth, then renormalized.
-    double pScalar = hp::kPTypeScalar;
-    double pArray = (depth >= cfg.maxAggNesting) ? 0.0 : hp::kPTypeArray;
-    double pStruct = (depth >= cfg.maxAggNesting) ? 0.0 : hp::kPTypeStruct;
-    double pPtr = (depth >= cfg.maxPtrDepth) ? 0.0 : hp::kPTypePtr;
+    double pScalar = rysmith::hp::kPTypeScalar;
+    double pArray = (depth >= cfg.maxAggNesting) ? 0.0 : rysmith::hp::kPTypeArray;
+    double pStruct = (depth >= cfg.maxAggNesting) ? 0.0 : rysmith::hp::kPTypeStruct;
+    double pPtr = (depth >= cfg.maxPtrDepth) ? 0.0 : rysmith::hp::kPTypePtr;
     // [v0.2.1] Vectors only at depth 0 (no nested vec, no vec in arrays/structs).
-    double pVec = (depth == 0 && cfg.enableVec) ? hp::kPTypeVec : 0.0;
+    double pVec = (depth == 0 && cfg.enableVec) ? rysmith::hp::kPTypeVec : 0.0;
 
     // Renormalize
     double total = pScalar + pArray + pStruct + pPtr + pVec;

@@ -55,9 +55,15 @@ namespace symir::reify {
     // (not .lets) and are usable as RValues throughout the body.
     int nParams = 0;
     // [v0.2.2] Unique 6-char hex generation ID, used to namespace
-    // struct names as `@struct_<id>_<j>` so multiple rysmith outputs
-    // can coexist without renaming.
+    // struct names as `@struct_<id>_<funcIdx>_<j>` so multiple rysmith
+    // outputs can coexist without renaming. `funcIdx` (the rysmith
+    // --n-funcs index of the current function) is included so two
+    // functions from the same rysmith run can't collide on struct
+    // names even though they share `genId`. Without it, rylink would
+    // see two distinct structs claiming the same name when bundling
+    // multiple sibling funcs into one program.
     std::string genId;
+    int funcIdx = 0;
     TypeGenConfig typeConfig;
   };
 

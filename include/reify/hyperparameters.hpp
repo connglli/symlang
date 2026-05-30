@@ -20,7 +20,7 @@
 //
 // Editing a value here changes behaviour for all rysmith runs without
 // touching any CLI default.
-namespace symir::reify::hp {
+namespace symir::reify::rysmith::hp {
 
   // ===========================================================================
   // Atom-kind slot tables for genIntAtomOnPath / OffPath and genFloatAtomOnPath.
@@ -181,4 +181,62 @@ namespace symir::reify::hp {
   inline constexpr std::size_t kFloatMulCoefPoolSize =
       sizeof(kFloatMulCoefPool) / sizeof(kFloatMulCoefPool[0]);
 
-} // namespace symir::reify::hp
+} // namespace symir::reify::rysmith::hp
+
+// Central place to manage rylink's *code-level* tunable hyperparameters.
+//
+// Scope:
+//   - Call-graph shape probabilities and out-degree caps.
+//   - Rewrite engine acceptance probabilities and per-edge attempt caps.
+//   - Fixed naming conventions for output artifacts (prog dir prefix,
+//     entry .sir filename).
+//
+// Not in scope (these live elsewhere as struct defaults or CLI-tunable flags):
+//   - n-progs, n-nodes, max-outdeg, RNG seed, generation id
+//   - --target / --validate / --keep-require / I-O paths
+//
+// Editing a value here changes behaviour for all rylink runs without
+// touching any CLI default.
+namespace symir::reify::rylink::hp {
+
+  // ===========================================================================
+  // Call-graph shape
+  //
+  // rylink builds a DAG over N nodes drawn from the pool. N comes from the
+  // CLI (--n-nodes) and is shrunk to fit when the pool is smaller. The DAG
+  // uses a fixed topological order: for every ordered pair (i, j) with
+  // i < j we add edge i → j with probability kPEdge, capped so no node ever
+  // exceeds kMaxOutDegree out-edges. The ordering guarantees acyclicity
+  // (no recursion); the cap keeps individual callers from sprouting
+  // unrealistically wide fan-outs.
+  // ===========================================================================
+  inline constexpr double kPEdge = 0.45;  // per-ordered-pair edge probability
+  inline constexpr int kMaxOutDegree = 3; // hard out-degree cap per node
+
+  // ===========================================================================
+  // Rewrite engine
+  //
+  // Per caller→callee edge, the engine enumerates rewrite *sites* in the
+  // caller AST (literal initializers in v1; unchanged-var uses next) and
+  // tries up to kMaxAttemptsPerEdge (site × callee-realization) pairs before
+  // giving up. kPRewrite gates each individual attempt so most literals
+  // stay literal — without this throttle a caller saturated with matching
+  // literals would degenerate into a long chain of calls and lose all
+  // resemblance to the original synthesised program.
+  // ===========================================================================
+  inline constexpr int kMaxAttemptsPerEdge = 32; // hard work budget per edge
+  inline constexpr double kPRewrite = 0.50;      // per-site accept probability
+
+  // ===========================================================================
+  // Output naming
+  //
+  // The per-program output directory is `<prog-prefix>_<id>_<i>` (e.g.
+  // `prog_ab12cd_0`). The bundled entry-program .sir inside that directory
+  // is always `kEntrySirName`. These are exposed as named constants so the
+  // rylink driver and any external test/inspection tool agree on the
+  // layout without re-deriving it from string literals.
+  // ===========================================================================
+  inline constexpr const char *kProgPrefix = "prog";
+  inline constexpr const char *kEntrySirName = "program.sir";
+
+} // namespace symir::reify::rylink::hp

@@ -116,10 +116,13 @@ namespace symir::reify {
     // Helper: create a struct declaration. Fields are independently drawn —
     // ~30% chance of an array field ([N] scalar) to produce struct-of-arrays.
     auto makeStructDecl = [&](const TypePtr &) -> std::string {
-      // [v0.2.2] Namespace struct names by the generation ID so multiple
-      // rysmith outputs can be linked without rename.
+      // [v0.2.2] Namespace struct names by `<id>_<funcIdx>_<j>`. The
+      // funcIdx slot is needed because sibling funcs in the same
+      // rysmith run share `cfg.genId`: without it two siblings each
+      // declare `@struct_<id>_0` with different contents and rylink's
+      // bundle stage trips on the collision when merging them.
       std::string sname = "@struct_" + (cfg.genId.empty() ? std::string("RY") : cfg.genId) + "_" +
-                          std::to_string(structIdx++);
+                          std::to_string(cfg.funcIdx) + "_" + std::to_string(structIdx++);
       std::uniform_int_distribution<int> nfd(1, std::max(1, tcfg.maxAggElems));
       int nf = nfd(rng);
       StructDecl sd;
@@ -127,8 +130,8 @@ namespace symir::reify {
       for (int fi = 0; fi < nf; fi++) {
         FieldDecl fd;
         fd.name = "f" + std::to_string(fi);
-        // Struct field is an array with probability hp::kPStructFieldIsArray
-        if (prob(rng) < hp::kPStructFieldIsArray && tcfg.maxAggElems >= 1) {
+        // Struct field is an array with probability rysmith::hp::kPStructFieldIsArray
+        if (prob(rng) < rysmith::hp::kPStructFieldIsArray && tcfg.maxAggElems >= 1) {
           std::uniform_int_distribution<int> szd(1, std::max(1, tcfg.maxAggElems));
           uint64_t sz = (uint64_t) szd(rng);
           ArrayType at;
@@ -144,9 +147,9 @@ namespace symir::reify {
       return sname;
     };
 
-    // Split cfg.nVars between phases — see hp::kFracNonPtrVars / kFracPtr1Vars.
-    int nNonPtr = std::max(1, (int) (cfg.nVars * hp::kFracNonPtrVars));
-    int nPtr1 = std::max(0, (int) (cfg.nVars * hp::kFracPtr1Vars));
+    // Split cfg.nVars between phases — see rysmith::hp::kFracNonPtrVars / kFracPtr1Vars.
+    int nNonPtr = std::max(1, (int) (cfg.nVars * rysmith::hp::kFracNonPtrVars));
+    int nPtr1 = std::max(0, (int) (cfg.nVars * rysmith::hp::kFracPtr1Vars));
     int nPtr2 = cfg.nVars - nNonPtr - nPtr1;
     if (nPtr2 < 0)
       nPtr2 = 0;
@@ -284,7 +287,7 @@ namespace symir::reify {
         else if (std::holds_alternative<StructType>(v.type->v))
           aggTargets.push_back({v.name, v.type});
       }
-      int nAggPtr = std::max(0, (int) (cfg.nVars * hp::kFracAggPtrVars));
+      int nAggPtr = std::max(0, (int) (cfg.nVars * rysmith::hp::kFracAggPtrVars));
       for (int i = 0; i < nAggPtr && !aggTargets.empty(); i++) {
         std::uniform_int_distribution<int> ad(0, (int) aggTargets.size() - 1);
         const auto &tgt = aggTargets[ad(rng)];

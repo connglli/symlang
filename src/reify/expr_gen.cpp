@@ -170,19 +170,19 @@ namespace symir::reify {
   // The type checker validates literal range, so we keep values small.
   static Atom genConcreteIntAtom(std::mt19937 &rng, const TypePtr &targetType) {
     uint32_t bits = intBitWidth(targetType);
-    int64_t lo = hp::kConcreteInt_Default_Lo, hi = hp::kConcreteInt_Default_Hi;
+    int64_t lo = rysmith::hp::kConcreteInt_Default_Lo, hi = rysmith::hp::kConcreteInt_Default_Hi;
     if (bits == 8) {
-      lo = hp::kConcreteInt_I8_Lo;
-      hi = hp::kConcreteInt_I8_Hi;
+      lo = rysmith::hp::kConcreteInt_I8_Lo;
+      hi = rysmith::hp::kConcreteInt_I8_Hi;
     } else if (bits == 16) {
-      lo = hp::kConcreteInt_I16_Lo;
-      hi = hp::kConcreteInt_I16_Hi;
+      lo = rysmith::hp::kConcreteInt_I16_Lo;
+      hi = rysmith::hp::kConcreteInt_I16_Hi;
     } else if (bits == 32) {
-      lo = hp::kConcreteInt_I32_Lo;
-      hi = hp::kConcreteInt_I32_Hi;
+      lo = rysmith::hp::kConcreteInt_I32_Lo;
+      hi = rysmith::hp::kConcreteInt_I32_Hi;
     } else if (bits == 64) {
-      lo = hp::kConcreteInt_I64_Lo;
-      hi = hp::kConcreteInt_I64_Hi;
+      lo = rysmith::hp::kConcreteInt_I64_Lo;
+      hi = rysmith::hp::kConcreteInt_I64_Hi;
     }
     std::uniform_int_distribution<int64_t> d(lo, hi);
     return coefAtom(intCoef(d(rng)));
@@ -190,8 +190,8 @@ namespace symir::reify {
 
   // Generate a concrete float atom
   static Atom genConcreteFloatAtom(std::mt19937 &rng) {
-    std::uniform_int_distribution<std::size_t> d(0, hp::kFloatLitPoolSize - 1);
-    return coefAtom(floatCoef(hp::kFloatLitPool[d(rng)]));
+    std::uniform_int_distribution<std::size_t> d(0, rysmith::hp::kFloatLitPoolSize - 1);
+    return coefAtom(floatCoef(rysmith::hp::kFloatLitPool[d(rng)]));
   }
 
   // Build a SelectVal of targetType: either a same-typed scalar local or a
@@ -283,21 +283,21 @@ namespace symir::reify {
       return localLV(v->name);
     };
 
-    if (s < hp::kIntOnPath_CoefBareEnd) {
+    if (s < rysmith::hp::kIntOnPath_CoefBareEnd) {
       // Standalone coef sym
       return coefAtom(symCoef(sym.nextCoef(targetType)));
     }
-    if (s < hp::kIntOnPath_MulEnd && hasRval) {
+    if (s < rysmith::hp::kIntOnPath_MulEnd && hasRval) {
       // Linear: sym * rval
       return opAtom(AtomOpKind::Mul, symCoef(sym.nextCoef(targetType)), pickRval());
     }
-    if (s < hp::kIntOnPath_BitwiseEnd && cfg.enableAllOps && hasRval) {
+    if (s < rysmith::hp::kIntOnPath_BitwiseEnd && cfg.enableAllOps && hasRval) {
       // Bitwise
       static const AtomOpKind bops[] = {AtomOpKind::And, AtomOpKind::Or, AtomOpKind::Xor};
       std::uniform_int_distribution<int> opPick(0, 2);
       return opAtom(bops[opPick(rng)], symCoef(sym.nextCoef(targetType)), pickRval());
     }
-    if (s < hp::kIntOnPath_ShiftEnd && cfg.enableAllOps && hasRval) {
+    if (s < rysmith::hp::kIntOnPath_ShiftEnd && cfg.enableAllOps && hasRval) {
       // Shift: index_sym << rval  (coef=index sym, rval=variable being shifted)
       // Per the existing pattern: index sym is the VALUE being shifted, rval is shift amount
       // But shift amount must be i32 — we need an i32 rval for the shift amount
@@ -332,11 +332,11 @@ namespace symir::reify {
       }
       return coefAtom(symCoef(sym.nextCoef(targetType)));
     }
-    if (s < hp::kIntOnPath_UnaryNotEnd && hasRval) {
+    if (s < rysmith::hp::kIntOnPath_UnaryNotEnd && hasRval) {
       // Unary NOT
       return unaryAtom(pickRval());
     }
-    if (s < hp::kIntOnPath_CastEnd && !otherIntScalars.empty()) {
+    if (s < rysmith::hp::kIntOnPath_CastEnd && !otherIntScalars.empty()) {
       // CastAtom from another int width
       auto *srcVar = pickOne(rng, otherIntScalars);
       CastAtom ca;
@@ -344,7 +344,7 @@ namespace symir::reify {
       ca.dstType = targetType;
       return Atom{std::move(ca), {}};
     }
-    if (s < hp::kIntOnPath_DivModEnd && cfg.enableDiv && hasRval) {
+    if (s < rysmith::hp::kIntOnPath_DivModEnd && cfg.enableDiv && hasRval) {
       // Div/Mod: OpAtom{Div/Mod, sym_coef, rval}  = sym / rval
       // We need a require(rval != 0) guard on-path
       std::uniform_int_distribution<int> dm(0, 1);
@@ -360,7 +360,7 @@ namespace symir::reify {
       extraRequires.push_back(Instr{std::move(req)});
       return opAtom(op, symCoef(symName), localLV(rv->name));
     }
-    if (s < hp::kIntOnPath_LoadEnd) {
+    if (s < rysmith::hp::kIntOnPath_LoadEnd) {
       // Load from a ptr T var if any exist
       auto ptrs = vars.ptrsOf(targetType);
       if (!ptrs.empty()) {
@@ -368,7 +368,7 @@ namespace symir::reify {
         return Atom{LoadAtom{localLV(pv->name), {}}, {}};
       }
     }
-    if (s < hp::kIntOnPath_SelectEnd && cfg.enableSelect) {
+    if (s < rysmith::hp::kIntOnPath_SelectEnd && cfg.enableSelect) {
       return genSelectAtom(rng, &sym, vars, targetType);
     }
     // Fallback: standalone sym
@@ -392,46 +392,50 @@ namespace symir::reify {
     std::uniform_int_distribution<int> slot(0, 99);
     int s = slot(rng);
 
-    if (s < hp::kIntOffPath_ConcreteEnd || !hasRval) {
+    if (s < rysmith::hp::kIntOffPath_ConcreteEnd || !hasRval) {
       return genConcreteIntAtom(rng, targetType);
     }
-    if (s < hp::kIntOffPath_MulEnd) {
+    if (s < rysmith::hp::kIntOffPath_MulEnd) {
       auto *v = pickOne(rng, scalarsOfT);
       uint32_t bits = intBitWidth(targetType);
-      int64_t lo = hp::kOffPathCoef_Lo, hi = hp::kOffPathCoef_Hi;
+      int64_t lo = rysmith::hp::kOffPathCoef_Lo, hi = rysmith::hp::kOffPathCoef_Hi;
       if (bits == 8) {
-        lo = hp::kOffPathCoefI8_Lo;
-        hi = hp::kOffPathCoefI8_Hi;
+        lo = rysmith::hp::kOffPathCoefI8_Lo;
+        hi = rysmith::hp::kOffPathCoefI8_Hi;
       }
       std::uniform_int_distribution<int64_t> cd(lo, hi);
       return opAtom(AtomOpKind::Mul, intCoef(cd(rng)), localLV(v->name));
     }
-    if (s < hp::kIntOffPath_BitwiseEnd && cfg.enableAllOps) {
+    if (s < rysmith::hp::kIntOffPath_BitwiseEnd && cfg.enableAllOps) {
       auto *v = pickOne(rng, scalarsOfT);
       static const AtomOpKind bops[] = {AtomOpKind::And, AtomOpKind::Or, AtomOpKind::Xor};
       std::uniform_int_distribution<int> op(0, 2);
-      std::uniform_int_distribution<int64_t> cv(hp::kOffPathCoef_Lo, hp::kOffPathCoef_Hi);
+      std::uniform_int_distribution<int64_t> cv(
+          rysmith::hp::kOffPathCoef_Lo, rysmith::hp::kOffPathCoef_Hi
+      );
       return opAtom(bops[op(rng)], intCoef(cv(rng)), localLV(v->name));
     }
-    if (s < hp::kIntOffPath_CastEnd && !otherIntScalars.empty()) {
+    if (s < rysmith::hp::kIntOffPath_CastEnd && !otherIntScalars.empty()) {
       auto *v = pickOne(rng, otherIntScalars);
       CastAtom ca;
       ca.src = LValue{LocalId{v->name, {}}, {}, {}};
       ca.dstType = targetType;
       return Atom{std::move(ca), {}};
     }
-    if (s < hp::kIntOffPath_DivModEnd && cfg.enableDiv && hasRval) {
+    if (s < rysmith::hp::kIntOffPath_DivModEnd && cfg.enableDiv && hasRval) {
       auto *v = pickOne(rng, scalarsOfT);
       std::uniform_int_distribution<int> dm(0, 1);
       AtomOpKind op = dm(rng) ? AtomOpKind::Mod : AtomOpKind::Div;
-      std::uniform_int_distribution<int64_t> cd(hp::kOffPathDivisor_Lo, hp::kOffPathDivisor_Hi);
+      std::uniform_int_distribution<int64_t> cd(
+          rysmith::hp::kOffPathDivisor_Lo, rysmith::hp::kOffPathDivisor_Hi
+      );
       return opAtom(op, intCoef(cd(rng)), localLV(v->name));
     }
-    if (s < hp::kIntOffPath_PlainRvalEnd) {
+    if (s < rysmith::hp::kIntOffPath_PlainRvalEnd) {
       auto *v = pickOne(rng, scalarsOfT);
       return rvalAtom(localLV(v->name));
     }
-    if (s < hp::kIntOffPath_LoadEnd) {
+    if (s < rysmith::hp::kIntOffPath_LoadEnd) {
       // Load from a ptr T var if available
       auto ptrs = vars.ptrsOf(targetType);
       if (!ptrs.empty()) {
@@ -439,7 +443,7 @@ namespace symir::reify {
         return Atom{LoadAtom{localLV(pv->name), {}}, {}};
       }
     }
-    if (s < hp::kIntOffPath_SelectEnd && cfg.enableSelect) {
+    if (s < rysmith::hp::kIntOffPath_SelectEnd && cfg.enableSelect) {
       return genSelectAtom(rng, /*sym=*/nullptr, vars, targetType);
     }
     return genConcreteIntAtom(rng, targetType);
@@ -456,7 +460,7 @@ namespace symir::reify {
     std::uniform_int_distribution<int> slot(0, 99);
     int s = slot(rng);
 
-    if (s < hp::kFloatOnPath_CastFromI32SymEnd) {
+    if (s < rysmith::hp::kFloatOnPath_CastFromI32SymEnd) {
       // Cast from i32 sym to float (keeps SMT in BV theory)
       auto symName = sym.nextValue();
       CastAtom ca;
@@ -464,13 +468,15 @@ namespace symir::reify {
       ca.dstType = targetType;
       return Atom{std::move(ca), {}};
     }
-    if (s < hp::kFloatOnPath_MulLitEnd && !fpVars.empty()) {
+    if (s < rysmith::hp::kFloatOnPath_MulLitEnd && !fpVars.empty()) {
       // Multiply by concrete float literal
       auto *v = pickOne(rng, fpVars);
-      std::uniform_int_distribution<std::size_t> ld(0, hp::kFloatMulCoefPoolSize - 1);
-      return opAtom(AtomOpKind::Mul, floatCoef(hp::kFloatMulCoefPool[ld(rng)]), localLV(v->name));
+      std::uniform_int_distribution<std::size_t> ld(0, rysmith::hp::kFloatMulCoefPoolSize - 1);
+      return opAtom(
+          AtomOpKind::Mul, floatCoef(rysmith::hp::kFloatMulCoefPool[ld(rng)]), localLV(v->name)
+      );
     }
-    if (s < hp::kFloatOnPath_CastFromVarEnd && !i32scalars.empty()) {
+    if (s < rysmith::hp::kFloatOnPath_CastFromVarEnd && !i32scalars.empty()) {
       // CastAtom from i32 var
       auto *v = pickOne(rng, i32scalars);
       CastAtom ca;
@@ -478,7 +484,7 @@ namespace symir::reify {
       ca.dstType = targetType;
       return Atom{std::move(ca), {}};
     }
-    if (s < hp::kFloatOnPath_SelectEnd && cfg.enableSelect) {
+    if (s < rysmith::hp::kFloatOnPath_SelectEnd && cfg.enableSelect) {
       return genSelectAtom(rng, &sym, vars, targetType);
     }
     // Concrete float literal
@@ -578,7 +584,9 @@ namespace symir::reify {
     std::vector<Atom> atoms;
 
     // Determine number of atoms in this expression
-    std::uniform_int_distribution<int> nAtomsDist(hp::kMinAtomsPerExpr, hp::kMaxAtomsPerExpr);
+    std::uniform_int_distribution<int> nAtomsDist(
+        rysmith::hp::kMinAtomsPerExpr, rysmith::hp::kMaxAtomsPerExpr
+    );
     int nAtoms = nAtomsDist(rng);
 
     // For ptr types, always single atom
@@ -621,13 +629,13 @@ namespace symir::reify {
           if (!vecs.empty()) {
             std::uniform_int_distribution<int> slot(0, 99);
             int s = slot(rng);
-            if (s < hp::kVecCopyEnd) {
+            if (s < rysmith::hp::kVecCopyEnd) {
               auto *v = pickOne(rng, vecs);
               a = rvalAtom(localLV(v->name));
-            } else if (s < hp::kVecSymMulEnd && onPath && sym) {
+            } else if (s < rysmith::hp::kVecSymMulEnd && onPath && sym) {
               auto *v = pickOne(rng, vecs);
               a = opAtom(AtomOpKind::Mul, symCoef(sym->nextCoef(vt.elem)), localLV(v->name));
-            } else if (s < hp::kVecConcMulEnd) {
+            } else if (s < rysmith::hp::kVecConcMulEnd) {
               auto *v = pickOne(rng, vecs);
               int64_t c = std::uniform_int_distribution<int64_t>(-4, 4)(rng);
               if (c == 0)
@@ -663,8 +671,8 @@ namespace symir::reify {
             // Broadcast scalar literal (valid in +/- tail position).
             CoefAtom ca;
             if (isFpType(vt.elem)) {
-              std::uniform_int_distribution<std::size_t> fd(0, hp::kFloatLitPoolSize - 1);
-              ca.coef = FloatLit{hp::kFloatLitPool[fd(rng)], {}};
+              std::uniform_int_distribution<std::size_t> fd(0, rysmith::hp::kFloatLitPoolSize - 1);
+              ca.coef = FloatLit{rysmith::hp::kFloatLitPool[fd(rng)], {}};
             } else {
               int64_t c = std::uniform_int_distribution<int64_t>(-8, 8)(rng);
               ca.coef = IntLit{c, {}};
@@ -772,7 +780,9 @@ namespace symir::reify {
     std::vector<Instr> reqs;
     std::vector<Atom> atoms;
 
-    std::uniform_int_distribution<int> nAtomsDist(hp::kMinAtomsPerExpr, hp::kMaxAtomsPerExpr);
+    std::uniform_int_distribution<int> nAtomsDist(
+        rysmith::hp::kMinAtomsPerExpr, rysmith::hp::kMaxAtomsPerExpr
+    );
     int nAtoms = nAtomsDist(rng);
 
     if (isPtrType(targetType))
@@ -1048,7 +1058,7 @@ namespace symir::reify {
         auto sameVecs = vars.vecsOf(lhsVar->type);
         bool canWholeVec = !sameVecs.empty();
         std::uniform_int_distribution<int> vslot(0, 99);
-        if (canWholeVec && vslot(rng) >= hp::kVecLaneWriteProb) {
+        if (canWholeVec && vslot(rng) >= rysmith::hp::kVecLaneWriteProb) {
           // Whole-vec assign (copy or broadcast-mul)
           lhs = localLV(lhsVar->name);
           assignType = lhsVar->type;

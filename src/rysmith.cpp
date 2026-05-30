@@ -623,9 +623,16 @@ int main(int argc, char **argv) {
 
     auto *state = new FuncState{std::mt19937(funcSeed), {}, false};
 
+    // [v0.2.2] Per-function copy so funcIdx makes it into struct names
+    // (`@struct_<id>_<funcIdx>_<j>`). Without this every sibling fun in
+    // the same rysmith run would emit `@struct_<id>_0` etc, breaking
+    // rylink's bundle merge on a name vs. content mismatch.
+    VarGenConfig fnVarCfg = varCfg;
+    fnVarCfg.funcIdx = i;
+
     std::thread t([&, state]() {
       state->result = generateLeaf(
-          nBbls, pBranch, pBackedge, maxLoopIter, minLoopIter, varCfg, funcName, nStmts,
+          nBbls, pBranch, pBackedge, maxLoopIter, minLoopIter, fnVarCfg, funcName, nStmts,
           safeOffPath, enableInterestCoefs, coefLo, coefHi, valueLo, valueHi, indexLo, indexHi,
           exprCfg, timeoutMs, maxRetries, nInits, outDir, keepSymbolic, verbose, state->rng,
           funcSeed, genId, emitDesc
