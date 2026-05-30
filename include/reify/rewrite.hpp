@@ -13,6 +13,8 @@
 #include <memory>
 #include <optional>
 #include <random>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "ast/ast.hpp"
@@ -82,6 +84,17 @@ namespace symir::reify {
     // merged into the bundle, otherwise the call would return a
     // different solved value than the rewrite expression assumes and
     // --validate would fail.
+    //
+    // Composition safety: each rule is individually UB-free (the call
+    // expression evaluates to the original literal under BV arithmetic),
+    // but *stacking* rewrites on the same site is not — consecutive
+    // sub-expressions evaluate left-to-right in SymIR, so e.g. composing
+    // `c → f1() + (c - r1)` with a later rewrite of the literal `(c - r1)`
+    // into `f2() + ((c - r1) - r2)` produces `f1() + f2() + …` and that
+    // left-prefix sum can wrap in unintended ways. The engine therefore
+    // marks each (caller, site) it successfully rewrites as consumed and
+    // skips it on subsequent edges; one splice per site for the lifetime
+    // of the engine.
     RewriteResult rewriteEdge(
         FunDecl &caller, const FuncDescriptor &callee, std::size_t fixedRealizationIdx,
         std::mt19937 &rng
@@ -89,6 +102,15 @@ namespace symir::reify {
 
   private:
     std::vector<std::unique_ptr<RewriteRule>> rules_;
+    // Identity = (caller FunDecl pointer, site letIdx). Caller pointers
+    // are stable across one rylink program (the bundle's funs vector is
+    // reserved upfront — see rylink.cpp generateOne).
+    std::unordered_set<std::uint64_t> consumed_;
+
+    static std::uint64_t consumedKey(const FunDecl *caller, int letIdx) {
+      return (reinterpret_cast<std::uint64_t>(caller) << 16) ^
+             static_cast<std::uint64_t>(static_cast<std::uint32_t>(letIdx));
+    }
   };
 
 } // namespace symir::reify

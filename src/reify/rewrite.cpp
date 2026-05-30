@@ -239,8 +239,16 @@ namespace symir::reify {
     std::vector<Candidate> cands;
     for (auto &rule: rules_) {
       auto sites = rule->findSites(caller);
-      for (auto &s: sites)
+      for (auto &s: sites) {
+        // Skip sites already consumed by an earlier rewriteEdge call —
+        // stacking calls on the same let-init produces left-to-right
+        // chains like `f1() + f2() + ...` whose prefix sums can wrap
+        // in unintended ways even though each individual rewrite is
+        // BV-sound. See RewriteEngine class header for the full note.
+        if (consumed_.count(consumedKey(&caller, s.letIdx)))
+          continue;
         cands.push_back({rule.get(), s});
+      }
     }
     res.sitesFound = static_cast<int>(cands.size());
     if (cands.empty())
@@ -258,6 +266,7 @@ namespace symir::reify {
       if (!c.rule->matchCallee(c.site, callee, fixedRealizationIdx))
         continue;
       if (c.rule->apply(caller, c.site, callee, fixedRealizationIdx)) {
+        consumed_.insert(consumedKey(&caller, c.site.letIdx));
         ++res.sitesRewritten;
         return res; // one splice per edge is enough for v1
       }
