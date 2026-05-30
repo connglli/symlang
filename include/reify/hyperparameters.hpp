@@ -227,6 +227,20 @@ namespace symir::reify::rylink::hp {
   inline constexpr int kMaxAttemptsPerEdge = 32; // hard work budget per edge
   inline constexpr double kPRewrite = 0.50;      // per-site accept probability
 
+  // Per call-argument choice between the two argument modes
+  // LiteralToCallRule supports:
+  //   - "literal":  emit the solver's paramValue as a CoefAtom
+  //   - "var+bias": pick an unchanged scalar caller-var of matching
+  //                 type, compute bias = expected - var.let_init, emit
+  //                 `%var + bias` (which evaluates to the same value
+  //                 at runtime because the splice runs before any
+  //                 user code that could mutate %var).
+  // kPVarBiasArg is the probability we attempt the var+bias path for a
+  // given call argument. The rule falls back to the literal path when
+  // no suitable var exists for that param's type or the bias would
+  // overflow the var's signed range.
+  inline constexpr double kPVarBiasArg = 0.50;
+
   // ===========================================================================
   // Per-program retry budget
   //

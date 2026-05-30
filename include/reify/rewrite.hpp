@@ -56,9 +56,12 @@ namespace symir::reify {
     ) = 0;
     // Splice the call in. Returns true on success; false if some
     // late-stage check fails (e.g. a param type the rule can't handle).
+    // `rng` is passed through so the rule can make randomised
+    // sub-decisions (e.g. per-arg choice of literal vs. var+bias) and
+    // still play nicely with the engine's shuffled-candidates order.
     virtual bool apply(
         FunDecl &caller, const RewriteSite &site, const FuncDescriptor &callee,
-        std::size_t realizationIdx
+        std::size_t realizationIdx, std::mt19937 &rng
     ) = 0;
   };
 

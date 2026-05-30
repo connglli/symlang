@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <limits>
 #include <sstream>
 #include <string>
 
@@ -81,6 +82,102 @@ namespace symir::reify {
   }
 
   // ---------------------------------------------------------------------------
+  // Var+bias call arg
+  //
+  // Build `%var + bias` for an integer call argument. `paramType` is the
+  // callee's i<N> param type as a SIR string; `expectedValStr` is the
+  // solved value the call should evaluate to. We scan the caller for
+  // int-typed mutable lets whose declared type matches and whose init
+  // is a literal we can read back, then pick uniformly. The chosen var's
+  // value is `var.let_init` at the splice site because the rewrite
+  // prepends to the head of the entry block — no user code has run yet.
+  //
+  // Returns nullopt when:
+  //   - parseI64(expectedValStr) fails (descriptor value malformed);
+  //   - no caller let matches the param type / has a literal init;
+  //   - the computed bias overflows the var's signed range (we use the
+  //     same conservative range check the call-site offset uses, so a
+  //     UBSan-clean C lowering is guaranteed).
+  // ---------------------------------------------------------------------------
+  static std::optional<Expr> tryMakeVarBiasArg(
+      const FunDecl &caller, const std::string &paramType, const std::string &expectedValStr,
+      std::mt19937 &rng
+  ) {
+    auto expectedOpt = parseI64(expectedValStr);
+    if (!expectedOpt)
+      return std::nullopt;
+    int paramBits = std::atoi(paramType.c_str() + 1);
+    if (paramBits <= 0)
+      return std::nullopt;
+
+    struct Cand {
+      const LetDecl *ld;
+      std::int64_t initVal;
+    };
+
+    std::vector<Cand> cands;
+    cands.reserve(caller.lets.size());
+    for (const auto &ld: caller.lets) {
+      if (!ld.isMutable)
+        continue;
+      if (!ld.init || ld.init->kind != InitVal::Kind::Int)
+        continue;
+      if (SIRPrinter::typeToString(ld.type) != paramType)
+        continue;
+      cands.push_back({&ld, std::get<IntLit>(ld.init->value).value});
+    }
+    if (cands.empty())
+      return std::nullopt;
+
+    std::uniform_int_distribution<size_t> pick(0, cands.size() - 1);
+    const Cand &c = cands[pick(rng)];
+
+    // bias = expected - var.let_init. Same overflow + range check the
+    // call-site offset uses — keeps the C lowering UBSan-clean and
+    // makes the wrap math observably identical to the literal path.
+    std::int64_t bias = 0;
+    if (__builtin_sub_overflow((std::int64_t) *expectedOpt, c.initVal, &bias))
+      return std::nullopt;
+    if (paramBits < 64) {
+      std::int64_t maxv = (std::int64_t{1} << (paramBits - 1)) - 1;
+      std::int64_t minv = -(std::int64_t{1} << (paramBits - 1));
+      if (bias < minv || bias > maxv)
+        return std::nullopt;
+    }
+
+    LValue lv;
+    lv.base = c.ld->name;
+    Atom varAtom;
+    varAtom.v = RValueAtom{lv, {}};
+    Expr e;
+    e.first = std::move(varAtom);
+    if (bias != 0) {
+      IntLit lit;
+      lit.value = bias;
+      Coef coef = lit;
+      CoefAtom ca;
+      ca.coef = coef;
+      Atom biasAtom;
+      biasAtom.v = std::move(ca);
+      Expr::Tail tail;
+      tail.op = (bias >= 0) ? AddOp::Plus : AddOp::Minus;
+      // For Minus we negate the literal so the tail reads `... - |bias|`.
+      // Negating INT64_MIN would overflow, so guard against it; the
+      // bias range check above already rejects values where -bias
+      // can't be represented in the param's signed range, but bias
+      // can still equal INT64_MIN for paramBits=64.
+      if (tail.op == AddOp::Minus) {
+        if (bias == std::numeric_limits<std::int64_t>::min())
+          return std::nullopt;
+        std::get<IntLit>(std::get<CoefAtom>(biasAtom.v).coef).value = -bias;
+      }
+      tail.atom = std::move(biasAtom);
+      e.rest.push_back(std::move(tail));
+    }
+    return e;
+  }
+
+  // ---------------------------------------------------------------------------
   // LiteralToCallRule
   // ---------------------------------------------------------------------------
 
@@ -146,7 +243,7 @@ namespace symir::reify {
 
       bool apply(
           FunDecl &caller, const RewriteSite &site, const FuncDescriptor &callee,
-          std::size_t realizationIdx
+          std::size_t realizationIdx, std::mt19937 &rng
       ) override {
         if (site.letIdx < 0 || (size_t) site.letIdx >= caller.lets.size())
           return false;
@@ -157,16 +254,31 @@ namespace symir::reify {
         if (!retVal)
           return false;
 
-        // Build the call atom.
+        // Build the call atom. Each arg is either a bare literal
+        // (matching the solver's paramValue) or `%var + bias` where
+        // %var is an unchanged-since-init caller scalar of the same
+        // type. The var+bias path is what makes the rewrite look
+        // lifelike: without it every call arg is a plain literal.
         CallAtom ca;
         GlobalId gid;
         gid.name = callee.name;
         ca.callee = gid;
+        std::uniform_real_distribution<double> uni(0.0, 1.0);
         for (size_t i = 0; i < callee.params.size(); ++i) {
-          auto maybeArg = makeScalarLitExpr(callee.params[i].type, rz.paramValues[i].second);
-          if (!maybeArg)
+          const auto &paramType = callee.params[i].type;
+          const auto &paramValStr = rz.paramValues[i].second;
+          // The var+bias path needs an int expected-value and an int
+          // var.let_init — restrict to integer scalar param types and
+          // gate on the per-arg probability.
+          std::optional<Expr> argExpr;
+          if (paramType.size() >= 2 && paramType[0] == 'i' && uni(rng) < rylink::hp::kPVarBiasArg) {
+            argExpr = tryMakeVarBiasArg(caller, paramType, paramValStr, rng);
+          }
+          if (!argExpr)
+            argExpr = makeScalarLitExpr(paramType, paramValStr);
+          if (!argExpr)
             return false; // unsupported arg type — bail without mutating
-          ca.args.push_back(std::make_shared<Expr>(std::move(*maybeArg)));
+          ca.args.push_back(std::make_shared<Expr>(std::move(*argExpr)));
         }
         Atom callAtom;
         callAtom.v = std::move(ca);
@@ -316,7 +428,7 @@ namespace symir::reify {
         continue;
       if (!c.rule->matchCallee(c.site, callee, fixedRealizationIdx))
         continue;
-      if (c.rule->apply(caller, c.site, callee, fixedRealizationIdx)) {
+      if (c.rule->apply(caller, c.site, callee, fixedRealizationIdx, rng)) {
         consumed_.insert(consumedKey(&caller, c.site.letIdx));
         ++res.sitesRewritten;
         return res; // one splice per edge is enough for v1
