@@ -485,10 +485,11 @@ def run(
         _print_test_summary(passed, mismatch, ubsan, cfail, sirfail, skipped)
       else:
         print(
-          f"  [batch #{batch_idx}: {done}/{n}] passed={passed} "
+          f"  [batch #{batch_idx} functions: {done}/{n}] passed={passed} "
           f"mismatch={len(mismatch)} ubsan={len(ubsan)} "
           f"cfail={len(cfail)} sirfail={len(sirfail)} "
           f"skipped={skipped}",
+          end="",
           flush=True,
         )
       print()
@@ -584,10 +585,11 @@ def run(
         _print_test_summary(passed, mismatch, ubsan, cfail, sirfail, skipped)
       else:
         print(
-          f"  [batch #{batch_idx}: {done}/{n}] passed={passed} "
+          f"  [batch #{batch_idx} programs: {done}/{n}] passed={passed} "
           f"mismatch={len(mismatch)} ubsan={len(ubsan)} "
           f"cfail={len(cfail)} sirfail={len(sirfail)} "
           f"skipped={skipped}",
+          end="",
           flush=True,
         )
       print()

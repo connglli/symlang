@@ -34,7 +34,7 @@
 #include "reify/cfg_gen.hpp"
 #include "reify/func_desc.hpp"
 #include "reify/func_gen.hpp"
-#include "reify/gen_id.hpp"
+#include "reify/id_gen.hpp"
 #include "reify/path_sampler.hpp"
 #include "reify/var_catalogue.hpp"
 #include "solver/solver.hpp"

@@ -50,8 +50,8 @@
 #include "reify/cg_gen.hpp"
 #include "reify/func_desc.hpp"
 #include "reify/func_pool.hpp"
-#include "reify/gen_id.hpp"
 #include "reify/hyperparameters.hpp"
+#include "reify/id_gen.hpp"
 #include "reify/rewrite.hpp"
 
 namespace fs = std::filesystem;
