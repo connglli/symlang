@@ -189,8 +189,8 @@ namespace symir {
     }
     consume(TokenKind::RBrace, "'}'");
 
-    return FunDecl{std::move(name), std::move(params), std::move(ret),          std::move(syms),
-                   std::move(lets), std::move(blocks), SourceSpan{b, prevEnd()}};
+    return FunDecl{std::move(name), std::move(params), std::move(ret),           std::move(syms),
+                   std::move(lets), std::move(blocks), SourceSpan{b, prevEnd()}, std::string{}};
   }
 
   ExtDecl Parser::parseExtDecl() {
