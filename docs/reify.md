@@ -278,7 +278,7 @@ The return value is the expected output $o$. After lowering to C with `symirc -t
 
 ## Tool: rylink
 
-`rylink` reads a rysmith function pool, builds whole programs over it, and (optionally) compiles and validates each one.
+`rylink` reads a rysmith function pool, builds whole programs over it, and (optionally) compiles and validates each one following W1-W5.
 
 ### Usage
 
@@ -327,6 +327,6 @@ rysmith -n 200 --emit-desc -o pool/
 # 2. Generate 10 whole programs of ~4 functions each, validate every one
 rylink -n 10 --n-nodes 4 --validate -i pool/ -o progs/
 
-# 3. WASM target with require checks kept
-rylink -n 5 --target wasm --keep-require -i pool/ -o progs/
+# 3. C target with require checks kept
+rylink -n 5 --target c --keep-require -i pool/ -o progs/
 ```

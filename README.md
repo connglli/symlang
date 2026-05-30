@@ -9,16 +9,16 @@ It provides a robust foundation for building tools that need to reason about pro
 
 ## Table of Contents
 
-- [Core Concepts](#core-concepts)
-- [Tools Overview](#tools-overview)
-- [Getting Started](#getting-started)
+- [Core Concepts](#💡-core-concepts)
+- [Tools Overview](#🛠️-tools-overview)
+- [Getting Started](#🚀-getting-started)
   - [Prerequisites](#prerequisites)
   - [Building](#building)
   - [Usage](#usage)
   - [Switching SMT Backends](#switching-smt-backends)
-- [SymLang Example](#symlang-example)
-- [Project Structure](#project-structure)
-- [Documentation](#documentation)
+- [SymLang Example](#📝-symlang-example)
+- [Project Structure](#📁-project-structure)
+- [Documentation](#📚-documentation)
 
 ## 💡 Core Concepts
 
@@ -35,7 +35,8 @@ It provides a robust foundation for building tools that need to reason about pro
 | `symiri` | **Interpreter**: Execute `.sir` programs directly with concrete values or symbol bindings. |
 | `symirc` | **Compiler**: Translate `.sir` programs into optimized C or WebAssembly (WASM). |
 | `symirsolve` | **Solver**: Concretize symbolic programs by solving path constraints via SMT. |
-| `rysmith` | **Semantic Reifier**: Generate random SymLang programs for compiler testing. |
+| `rysmith` | **Reifier**: Generate random SymLang leaf functions for compiler testing. |
+| `rylink` | **Reifier**: Generate random SymLang whole programs for compiler testing. |
 
 ## 🚀 Getting Started
 
@@ -99,6 +100,7 @@ Automatically find values for symbols that satisfy a specific execution path:
 #### Generate Random Programs
 ```bash
 ./rysmith -n 100
+./rylink -n 100
 ```
 
 ### Switching SMT Backends
@@ -374,10 +376,10 @@ Find more examples in [./examples](./examples/) and [./test/](./test/).
 - **[Language Specification (v0.2.0, archived)](./docs/SPEC_v0.2.0.md)** — the pointer baseline (`ptr T`, `addr`, `load`, `store`, `null`).
 - **[Language Specification (v0.1.0, archived)](./docs/SPEC_v0.1.0.md)** — the pre-pointer baseline, kept for reference.
 - **[Undefined Behaviour reference](./docs/UB.md)**
-- **[Semantic Reification / `rysmith` design notes](./docs/reify.md)**
 - **[symiri User Guide](./docs/symiri.md)**
 - **[symirc User Guide](./docs/symirc.md)**
 - **[symirsolve User Guide](./docs/symirsolve.md)**
+- **[rysmith/rylink User Guide](./docs/reify.md)**
 
 ## 📋 License
 
