@@ -223,6 +223,16 @@ def test_c_split_output(rylink, rysmith):
         len(cs) >= 1,
         str(cs),
       )
+      # rylink emits one .c per FunDecl::sourceStem (set in mergeInto)
+      # plus the primary "program.c". With a pool of ≥2 functions the
+      # bundle picks ≥2 nodes, so we expect ≥3 .c files. If this drops
+      # to 1 it means sourceStem stopped surviving into the backend
+      # (the bug B4 was meant to fix).
+      check(
+        "split-by-source emits one .c per FunDecl::sourceStem",
+        len(cs) >= 3,
+        f".c files = {sorted(cs)}",
+      )
 
 
 def test_validate(rylink, rysmith, symiri):

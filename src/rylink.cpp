@@ -33,10 +33,20 @@
 #include <unordered_set>
 #include <vector>
 
+#include "analysis/definite_init.hpp"
+#include "analysis/pass_manager.hpp"
+#include "analysis/reachability.hpp"
+#include "analysis/unused_name.hpp"
 #include "ast/sir_printer.hpp"
+#include "backend/c_backend.hpp"
+#include "backend/vec_lowering.hpp"
+#include "backend/wasm_backend.hpp"
 #include "cxxopts.hpp"
+#include "frontend/diagnostics.hpp"
 #include "frontend/lexer.hpp"
 #include "frontend/parser.hpp"
+#include "frontend/semchecker.hpp"
+#include "frontend/typechecker.hpp"
 #include "reify/cg_gen.hpp"
 #include "reify/func_desc.hpp"
 #include "reify/func_pool.hpp"
@@ -167,33 +177,89 @@ static void writeBundledSir(
 }
 
 // ---------------------------------------------------------------------------
-// External-tool driving (symirc, symiri)
+// In-process backend emission
+//
+// rylink keeps the bundled Program in memory and drives CBackend /
+// WasmBackend directly. Going through symirc-as-subprocess would
+// require writing the bundle to text and re-parsing it, which loses
+// FunDecl::sourceStem (the AST field isn't serialised by SIRPrinter)
+// — and that single fact is what makes --split-by-source useful for
+// rylink in the first place. Calling the backends here also drops
+// every cross-process boundary so symirc-side log lines (e.g. the
+// old `wrote …` per-file message) stop leaking into rylink's output.
 // ---------------------------------------------------------------------------
 
-static bool invokeSymircC(
-    const fs::path &symirc, const fs::path &programSir, const fs::path &outDir, bool keepRequire,
-    bool verbose
-) {
-  std::string cmd = "\"" + symirc.string() + "\" \"" + programSir.string() +
-                    "\" --target c --split-by-source -o \"" + outDir.string() + "\"";
-  if (!keepRequire)
-    cmd += " --no-require";
-  if (!verbose)
-    cmd += " > /dev/null 2>&1";
-  return std::system(cmd.c_str()) == 0;
+// Run the same analysis passes symirc runs before backend emission.
+// Returns true iff the program is well-formed; on failure the errors
+// are dropped (the caller treats a failed generateOne as a retry).
+static bool runAnalysisPasses(Program &prog, bool verbose) {
+  DiagBag diags;
+  PassManager pm(diags);
+  pm.addModulePass(std::make_unique<SemChecker>());
+  pm.addModulePass(std::make_unique<TypeChecker>());
+  pm.addFunctionPass(std::make_unique<ReachabilityAnalysis>());
+  pm.addFunctionPass(std::make_unique<DefiniteInitAnalysis>());
+  pm.addFunctionPass(std::make_unique<UnusedNameAnalysis>());
+  if (pm.run(prog) == PassResult::Error) {
+    if (verbose) {
+      std::cerr << "rylink: analysis passes failed:\n";
+      for (const auto &d: diags.diags)
+        if (d.level == DiagLevel::Error)
+          std::cerr << "  error: " << d.message << "\n";
+    }
+    return false;
+  }
+  return true;
 }
 
-static bool invokeSymircWasm(
-    const fs::path &symirc, const fs::path &programSir, const fs::path &outFile, bool keepRequire,
+// Emit the bundled program as one .c per distinct FunDecl::sourceStem
+// plus common.h, in `outDir`. `primaryStem` keys the .c file that
+// holds funs with empty sourceStem (none in rylink's case — every
+// merged fn carries the .sir stem it came from — but the parameter
+// is still required by CBackend::emitSplit).
+static bool emitCInProcess(
+    Program &prog, const fs::path &outDir, const std::string &primaryStem, bool keepRequire,
     bool verbose
 ) {
-  std::string cmd = "\"" + symirc.string() + "\" \"" + programSir.string() +
-                    "\" --target wasm -o \"" + outFile.string() + "\"";
-  if (!keepRequire)
-    cmd += " --no-require";
-  if (!verbose)
-    cmd += " > /dev/null 2>&1";
-  return std::system(cmd.c_str()) == 0;
+  if (!runAnalysisPasses(prog, verbose))
+    return false;
+  // Suppress stdout chatter inside the backend; CBackend writes to its
+  // own streams and any extra logging we add via `verbose` belongs to
+  // rylink, not the backend. The emit itself prints nothing.
+  std::ofstream sink;
+  CBackend cb(sink);
+  cb.setNoRequire(!keepRequire);
+  cb.setVecLowering(makeVecLowering("vecext"));
+  try {
+    cb.emitSplit(prog, outDir.string(), primaryStem);
+  } catch (const std::exception &e) {
+    if (verbose)
+      std::cerr << "rylink: CBackend failed: " << e.what() << "\n";
+    return false;
+  }
+  return true;
+}
+
+static bool
+emitWasmInProcess(Program &prog, const fs::path &outFile, bool keepRequire, bool verbose) {
+  if (!runAnalysisPasses(prog, verbose))
+    return false;
+  std::ofstream ofs(outFile);
+  if (!ofs) {
+    if (verbose)
+      std::cerr << "rylink: cannot open " << outFile << "\n";
+    return false;
+  }
+  WasmBackend wb(ofs);
+  wb.setNoRequire(!keepRequire);
+  try {
+    wb.emit(prog);
+  } catch (const std::exception &e) {
+    if (verbose)
+      std::cerr << "rylink: WasmBackend failed: " << e.what() << "\n";
+    return false;
+  }
+  return true;
 }
 
 // Run symiri on the bundled program with the given entry function and
@@ -248,7 +314,6 @@ struct PerProgConfig {
   bool keepRequire = false;
   bool validate = false;
   fs::path symiriPath;
-  fs::path symircPath;
   bool verbose = false;
 };
 
@@ -312,14 +377,19 @@ static bool generateOne(const FuncPool &pool, std::mt19937 &rng, const PerProgCo
   // `concrete: <path>` line.
   std::cout << "  bundled: " << programSir << "\n";
 
-  // Target backends. A symirc failure is fatal for this attempt — the
-  // caller will retry with a different rng fork. In non-verbose mode
-  // we stay silent so a successful retry produces clean output; the
-  // verbose path already streamed symirc's stderr.
+  // Target backends. Both code paths run the analysis pipeline on the
+  // in-memory bundle and call CBackend / WasmBackend directly so
+  // FunDecl::sourceStem (set during mergeInto) survives into emitSplit
+  // — going through symirc-as-subprocess would round-trip the bundle
+  // through text and collapse every sourceStem to "".
   if (cfg.target == "c") {
-    if (!invokeSymircC(cfg.symircPath, programSir, progDir, cfg.keepRequire, cfg.verbose)) {
+    // primaryStem = "program": the bundled entry program's "virtual"
+    // .sir file. No fn has empty sourceStem (every merge sets one),
+    // so the resulting "program.c" stays empty of bodies and the
+    // per-source .c files carry the funs.
+    if (!emitCInProcess(bundle, progDir, "program", cfg.keepRequire, cfg.verbose)) {
       if (cfg.verbose)
-        std::cerr << "  symirc FAIL (" << progDir.filename().string() << ")\n";
+        std::cerr << "  backend FAIL (" << progDir.filename().string() << ")\n";
       return false;
     }
     // Mirror rysmith's `compiled: <path>` per-emission line. We report
@@ -328,9 +398,9 @@ static bool generateOne(const FuncPool &pool, std::mt19937 &rng, const PerProgCo
     std::cout << "  compiled: " << progDir << "\n";
   } else if (cfg.target == "wasm") {
     fs::path wasmOut = progDir / "program.wasm";
-    if (!invokeSymircWasm(cfg.symircPath, programSir, wasmOut, cfg.keepRequire, cfg.verbose)) {
+    if (!emitWasmInProcess(bundle, wasmOut, cfg.keepRequire, cfg.verbose)) {
       if (cfg.verbose)
-        std::cerr << "  symirc FAIL (" << progDir.filename().string() << ")\n";
+        std::cerr << "  backend FAIL (" << progDir.filename().string() << ")\n";
       return false;
     }
     std::cout << "  compiled: " << wasmOut << "\n";
@@ -438,13 +508,9 @@ int main(int argc, char **argv) {
       pc.validate = false;
     }
   }
-  if (pc.target != "sir") {
-    pc.symircPath = fs::path(argv[0]).parent_path() / "symirc";
-    if (!fs::exists(pc.symircPath)) {
-      std::cerr << "rylink: symirc not found at " << pc.symircPath << " — disabling --target\n";
-      pc.target = "sir";
-    }
-  }
+  // [v0.2.2] No `--target` sibling-binary discovery any more: the C
+  // and WASM backends are linked directly into rylink, so all
+  // target=c / target=wasm runs work without symirc on disk.
 
   std::cout << "rylink: seed = " << seed << "\n";
   std::cout << "rylink: generation id = " << genId << "\n";

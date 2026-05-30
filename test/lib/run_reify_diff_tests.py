@@ -222,11 +222,16 @@ def _write_main_c(path, fname, ret_type, param_types, param_values):
 # ───────────────────────────────────────────────────────────────────────
 
 
-def _classify(label, sir_path, c_path, parsed, symiri, clang, main_c, exe, verbose):
+def _classify(label, sir_path, c_paths, parsed, symiri, clang, main_c, exe, verbose):
   """Returns (bucket, msg). ``label`` is the human-readable program name
   used in failure messages; the bucket vocabulary matches the rest of the
-  harness ("passed" / "skipped" / "mismatch" / "ubsan" / "cfail" / "sirfail")."""
-  if not os.path.exists(c_path):
+  harness ("passed" / "skipped" / "mismatch" / "ubsan" / "cfail" / "sirfail").
+
+  ``c_paths`` is a list of one or more .c source paths to feed clang.
+  Rylink's split-by-source output emits one .c per FunDecl::sourceStem
+  plus a (mostly empty) program.c, so the caller hands us all of them
+  and we link them together against the synthesised main.c."""
+  if not c_paths or not all(os.path.exists(p) for p in c_paths):
     return ("cfail", f"{label}: no .c emitted")
   if parsed is None:
     return ("sirfail", f"{label}: cannot parse program header")
@@ -263,7 +268,7 @@ def _classify(label, sir_path, c_path, parsed, symiri, clang, main_c, exe, verbo
     [
       clang,
       "-O0",
-      c_path,
+      *c_paths,
       main_c,
       "-o",
       exe,
@@ -456,7 +461,7 @@ def run(
       c_path = sir_path[:-4] + ".c"
       parsed = _parse_program(sir_path)
       bucket, msg = _classify(
-        sir_name, sir_path, c_path, parsed, symiri, clang, main_c, exe, verbose
+        sir_name, sir_path, [c_path], parsed, symiri, clang, main_c, exe, verbose
       )
       processed_total += 1
       if bucket == "passed":
@@ -546,10 +551,16 @@ def run(
       for prog_dir in ry_progs:
         prog_name = os.path.basename(prog_dir.rstrip("/"))
         sir_path = os.path.join(prog_dir, "program.sir")
-        c_path = os.path.join(prog_dir, "program.c")
+        # rylink --split-by-source emits one .c per FunDecl::sourceStem
+        # plus an (empty) program.c. Hand them all to clang together so
+        # cross-stem `call @callee(...)` references resolve at link
+        # time. Sorted only for determinism in failure messages.
+        c_paths = sorted(
+          os.path.join(prog_dir, f) for f in os.listdir(prog_dir) if f.endswith(".c")
+        )
         parsed = _parse_program(sir_path)
         bucket, msg = _classify(
-          prog_name, sir_path, c_path, parsed, symiri, clang, main_c, exe, verbose
+          prog_name, sir_path, c_paths, parsed, symiri, clang, main_c, exe, verbose
         )
         processed_total += 1
         if bucket == "passed":
