@@ -1,4 +1,4 @@
-// EXPECT: FAIL
+// EXPECT: PASS
 // Intention: SPEC v0.2.2 §3.1 - Float `3.14E+2` in `call` argument.
 decl @id(%x: f64) : f64 { post ret == %x; };
 fun @main() : f64 {

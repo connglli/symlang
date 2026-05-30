@@ -1293,6 +1293,13 @@ namespace symir {
             for (size_t k = 0; k < arg.args.size(); ++k) {
               const auto &paramT = ci.paramTypes[k];
               auto pbits = TypeUtils::getBitWidth(paramT);
+              // Float param bitwidth isn't covered by getBitWidth (it
+              // returns nullopt for non-int types) — feed it explicitly
+              // so FloatLit args don't fall back to the f32 default.
+              if (!pbits && paramT && std::holds_alternative<FloatType>(paramT->v)) {
+                auto &ft = std::get<FloatType>(paramT->v);
+                pbits = (ft.kind == FloatType::Kind::F32) ? 32u : 64u;
+              }
               Ty argTy = typeOfExpr(*arg.args[k], vars, syms, ann, diags, pbits, paramT);
               // Check exact type match.
               bool ok = false;
