@@ -30,7 +30,7 @@
 #include <random>
 #include <sstream>
 #include <string>
-#include <unordered_set>
+#include <unordered_map>
 #include <vector>
 
 #include "analysis/definite_init.hpp"
@@ -112,10 +112,32 @@ static std::vector<size_t> pickPoolIndices(std::mt19937 &rng, size_t k, size_t p
   return all;
 }
 
+// Same-name structs in two merged programs must be structurally
+// identical — otherwise a callee that returns a `@struct_X` would
+// access fields that mean something different in the caller. With the
+// `--id` flag gone, generation IDs are seed-derived 24-bit hex; two
+// runs with different seeds in a 16M-wide space *can* collide, and
+// rysmith's funcIdx-based suffix only protects siblings within the
+// same run. We compare by field name + SIR-surface type string so a
+// collision is detected up front instead of silently keeping the
+// first decl and miscompiling the second program.
+static bool structsEqual(const StructDecl &a, const StructDecl &b) {
+  if (a.fields.size() != b.fields.size())
+    return false;
+  for (size_t i = 0; i < a.fields.size(); ++i) {
+    if (a.fields[i].name != b.fields[i].name)
+      return false;
+    if (SIRPrinter::typeToString(a.fields[i].type) != SIRPrinter::typeToString(b.fields[i].type))
+      return false;
+  }
+  return true;
+}
+
 // Merge a per-fn Program into the bundle. Returns a pointer to the
 // just-moved FunDecl, or nullptr on failure. Struct decls are
-// deduplicated by name (rysmith already namespaces structs by genID so
-// same-name dups are guaranteed identical; the first wins).
+// deduplicated by name and *also* validated structurally — a same-name
+// struct whose fields differ from the one already in the bundle aborts
+// the merge.
 //
 // Pointer-stability precondition: `bundle.funs` MUST have been reserved
 // to its final size before the first call. The returned FunDecl* is
@@ -124,15 +146,26 @@ static std::vector<size_t> pickPoolIndices(std::mt19937 &rng, size_t k, size_t p
 // earlier pointer. Assert rather than silently corrupt.
 static FunDecl *mergeInto(
     Program &bundle, Program src, const std::string &sourceStem,
-    std::unordered_set<std::string> &haveStructs
+    std::unordered_map<std::string, std::size_t> &haveStructs
 ) {
   assert(
       bundle.funs.size() < bundle.funs.capacity() &&
       "rylink: bundle.funs must be reserved upfront — see generateOne"
   );
-  for (auto &s: src.structs)
-    if (haveStructs.insert(s.name.name).second)
+  // Index-keyed dedup: a pointer into `bundle.structs` would dangle
+  // on the next push_back's reallocation, but indices stay valid
+  // because we only ever push.
+  for (auto &s: src.structs) {
+    auto it = haveStructs.find(s.name.name);
+    if (it == haveStructs.end()) {
+      haveStructs.emplace(s.name.name, bundle.structs.size());
       bundle.structs.push_back(std::move(s));
+    } else if (!structsEqual(bundle.structs[it->second], s)) {
+      std::cerr << "rylink: struct " << s.name.name
+                << " conflicts across merged programs — bailing out of this bundle\n";
+      return nullptr;
+    }
+  }
   if (src.funs.size() != 1)
     return nullptr; // rysmith always emits exactly one fun per file
   bundle.funs.push_back(std::move(src.funs[0]));
@@ -332,7 +365,7 @@ static bool generateOne(const FuncPool &pool, std::mt19937 &rng, const PerProgCo
   // every earlier pointer and the rewrite phase reads freed memory.
   Program bundle;
   bundle.funs.reserve(k);
-  std::unordered_set<std::string> haveStructs;
+  std::unordered_map<std::string, std::size_t> haveStructs;
   std::vector<Node> nodes(k);
   for (int i = 0; i < k; ++i) {
     nodes[i].idx = i;

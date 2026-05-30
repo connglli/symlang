@@ -193,6 +193,13 @@ namespace symir::reify {
           const auto &ld = caller.lets[i];
           if (!ld.init)
             continue;
+          // Apply emits an AssignInstr to ld.name; only `let mut` is
+          // assignable per spec §3.5.2. rysmith currently emits every
+          // let as mutable so this filter is defensive, but it
+          // protects the rule against future generators that mix in
+          // immutable lets.
+          if (!ld.isMutable)
+            continue;
           // Skip the checksum accumulator — it is unconditionally
           // overwritten to `0` at the top of the exit block (see
           // func_gen::buildChecksum), so any splice into its let-init
@@ -408,7 +415,7 @@ namespace symir::reify {
         // chains like `f1() + f2() + ...` whose prefix sums can wrap
         // in unintended ways even though each individual rewrite is
         // BV-sound. See RewriteEngine class header for the full note.
-        if (consumed_.count(consumedKey(&caller, s.letIdx)))
+        if (consumed_.count({&caller, s.letIdx}))
           continue;
         cands.push_back({rule.get(), s});
       }
@@ -429,7 +436,7 @@ namespace symir::reify {
       if (!c.rule->matchCallee(c.site, callee, fixedRealizationIdx))
         continue;
       if (c.rule->apply(caller, c.site, callee, fixedRealizationIdx, rng)) {
-        consumed_.insert(consumedKey(&caller, c.site.letIdx));
+        consumed_.insert({&caller, c.site.letIdx});
         ++res.sitesRewritten;
         return res; // one splice per edge is enough for v1
       }

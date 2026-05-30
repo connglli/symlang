@@ -32,16 +32,17 @@ namespace symir::reify {
 
     std::vector<Param> params;
 
-    struct Sym {
-      std::string name; // `%?s0`
-      std::string kind; // "value" | "coef" | "index"
-      std::string type;
-    };
-
-    std::vector<Sym> syms;
+    // [v0.2.2] Top-level `syms` was dropped: rysmith re-generates the
+    // statement list (and therefore the sym set) per init, so any
+    // single value here would reflect only the last init and disagree
+    // with the other realizations' actual sym sets. Per-realization
+    // `symValues` carries the canonical, init-specific data; anyone
+    // who needs the kind/type metadata should reach for the .sir
+    // file's `sym` declarations directly.
 
     // Block-label path the solver concretized along (`["^entry", "^b1",
-    // "^exit"]`).
+    // "^exit"]`). Consistent across all realizations of one descriptor
+    // because rysmith samples the path once per attempt.
     std::vector<std::string> path;
 
     struct Struct {
@@ -69,10 +70,11 @@ namespace symir::reify {
       // Parameter values keyed by the parameter's local-id (e.g.
       // `%pa0`). Empty when the function takes no parameters.
       std::vector<std::pair<std::string, std::string>> paramValues;
-      // Sym values keyed by the sym's local-id (e.g. `%?s0`). Each
-      // sym in the function's `syms` list above gets one entry per
-      // realization. Different realizations correspond to different
-      // solver seeds, so the same sym may take different values.
+      // Sym values keyed by the sym's local-id (e.g. `%?s0`). One
+      // entry per sym declared in *this* realization's program. The
+      // sym set may differ across realizations because rysmith
+      // re-generates statements per init; consult the companion
+      // .sir file to recover sym kinds/types if you need them.
       std::vector<std::pair<std::string, std::string>> symValues;
       // Solved value of the `ret` expression on the chosen path.
       // Empty string when the path's terminator is not `ret <expr>;`.

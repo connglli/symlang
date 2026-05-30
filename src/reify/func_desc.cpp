@@ -46,16 +46,6 @@ namespace symir::reify {
     }
     ofs << "],\n";
 
-    ofs << "  \"syms\": [";
-    for (size_t i = 0; i < d.syms.size(); ++i) {
-      if (i)
-        ofs << ", ";
-      ofs << "{\"name\": \"" << d.syms[i].name << "\", "
-          << "\"kind\": \"" << d.syms[i].kind << "\", "
-          << "\"type\": \"" << jsonEscape(d.syms[i].type) << "\"}";
-    }
-    ofs << "],\n";
-
     ofs << "  \"path\": [";
     for (size_t i = 0; i < d.path.size(); ++i) {
       if (i)
@@ -126,21 +116,6 @@ namespace symir::reify {
     d.retType = SIRPrinter::typeToString(fn->retType);
     for (const auto &p: fn->params)
       d.params.push_back({p.name.name, SIRPrinter::typeToString(p.type)});
-    for (const auto &s: fn->syms) {
-      const char *kindStr = "value";
-      switch (s.kind) {
-        case symir::SymKind::Value:
-          kindStr = "value";
-          break;
-        case symir::SymKind::Coef:
-          kindStr = "coef";
-          break;
-        case symir::SymKind::Index:
-          kindStr = "index";
-          break;
-      }
-      d.syms.push_back({s.name.name, kindStr, SIRPrinter::typeToString(s.type)});
-    }
     d.path = pathLabels;
     for (const auto &s: prog.structs) {
       FuncDescriptor::Struct sd;
@@ -292,34 +267,6 @@ namespace symir::reify {
       return p.match('}');
     }
 
-    bool parseSymObject(P &p, FuncDescriptor::Sym &out) {
-      if (!p.match('{'))
-        return false;
-      bool needComma = false;
-      while (!p.peek('}')) {
-        if (needComma && !p.match(','))
-          return false;
-        std::string key;
-        if (!p.parseString(key) || !p.match(':'))
-          return false;
-        if (key == "name") {
-          if (!p.parseString(out.name))
-            return false;
-        } else if (key == "kind") {
-          if (!p.parseString(out.kind))
-            return false;
-        } else if (key == "type") {
-          if (!p.parseString(out.type))
-            return false;
-        } else {
-          if (!p.skipValue())
-            return false;
-        }
-        needComma = true;
-      }
-      return p.match('}');
-    }
-
     bool parseStructObject(P &p, FuncDescriptor::Struct &out) {
       if (!p.match('{'))
         return false;
@@ -396,21 +343,6 @@ namespace symir::reify {
           if (!parseFlatObject(p, pp))
             return std::nullopt;
           d.params.push_back(std::move(pp));
-          c = true;
-        }
-        if (!p.match(']'))
-          return std::nullopt;
-      } else if (key == "syms") {
-        if (!p.match('['))
-          return std::nullopt;
-        bool c = false;
-        while (!p.peek(']')) {
-          if (c && !p.match(','))
-            return std::nullopt;
-          FuncDescriptor::Sym ss;
-          if (!parseSymObject(p, ss))
-            return std::nullopt;
-          d.syms.push_back(std::move(ss));
           c = true;
         }
         if (!p.match(']'))

@@ -211,12 +211,15 @@ def test_descriptor_schema(rysmith):
       "name",
       "ret_type",
       "params",
-      "syms",
       "path",
       "structs",
       "realizations",
     ):
       check(f"descriptor field `{k}` present", k in desc, str(list(desc.keys())))
+    # Top-level `syms` was dropped (each realization has its own
+    # potentially-different sym set; the old top-level field reflected
+    # only the last init and was misleading).
+    check("descriptor.syms removed", "syms" not in desc, str(list(desc.keys())))
     check("descriptor.id matches stdout id", desc.get("id") == gid, desc.get("id"))
     check(
       f"name is @func_{gid}_0",

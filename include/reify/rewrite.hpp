@@ -13,7 +13,7 @@
 #include <memory>
 #include <optional>
 #include <random>
-#include <unordered_set>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -107,13 +107,13 @@ namespace symir::reify {
     std::vector<std::unique_ptr<RewriteRule>> rules_;
     // Identity = (caller FunDecl pointer, site letIdx). Caller pointers
     // are stable across one rylink program (the bundle's funs vector is
-    // reserved upfront — see rylink.cpp generateOne).
-    std::unordered_set<std::uint64_t> consumed_;
-
-    static std::uint64_t consumedKey(const FunDecl *caller, int letIdx) {
-      return (reinterpret_cast<std::uint64_t>(caller) << 16) ^
-             static_cast<std::uint64_t>(static_cast<std::uint32_t>(letIdx));
-    }
+    // reserved upfront — see rylink.cpp generateOne). Stored as a
+    // std::set of the bare pair so two different (caller, letIdx)
+    // combinations cannot collide on a hash — the previous version
+    // packed both into a uint64 via shift+xor, which loses the top
+    // bits of the pointer and could (very rarely) alias two distinct
+    // sites in the same rylink run.
+    std::set<std::pair<const FunDecl *, int>> consumed_;
   };
 
 } // namespace symir::reify
