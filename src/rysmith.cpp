@@ -401,8 +401,6 @@ int main(int argc, char **argv) {
     ("no-fp",             "Disable f32/f64 types entirely")
     ("no-vec",            "Disable <N> T vector type generation")
     ("no-agg-ptr",        "Disable ptr [N] T / ptr @S aggregate pointer generation")
-    ("vec-lowering",      "Vec-lowering strategy for C backend (random|vecext|scalars|array|structscalars|structarray)",
-                          cxxopts::value<std::string>()->default_value("random"))
     ("max-ptr-depth",     "Maximum pointer nesting depth (0 disables pointers)",
                           cxxopts::value<int>()->default_value("2"))
     ("max-agg-nest",      "Maximum aggregate nesting depth",
@@ -410,6 +408,8 @@ int main(int argc, char **argv) {
     ("max-agg-elems",     "Maximum array size and struct field count",
                           cxxopts::value<int>()->default_value("3"))
     // Generation
+    ("n-params",          "Number of scalar parameters per generated function (default: 3)",
+                          cxxopts::value<int>()->default_value("3"))
     ("n-vars",            "Variables per function",
                           cxxopts::value<int>()->default_value("10"))
     ("n-stmts",           "Statements per block on path",
@@ -428,14 +428,6 @@ int main(int argc, char **argv) {
     // Solver
     ("timeout",           "SMT solver timeout per attempt in ms",
                           cxxopts::value<uint32_t>()->default_value("2000"))
-    ("seed",              "Master RNG seed (default: random)",
-                          cxxopts::value<uint32_t>())
-    ("id",                "6-char hex generation ID (default: random). Prefixes function and struct names.",
-                          cxxopts::value<std::string>())
-    ("n-params",          "Number of scalar parameters per generated function (default: 0)",
-                          cxxopts::value<int>()->default_value("0"))
-    ("emit-desc",         "Emit per-function descriptor JSON (func_<id>_<i>.json) — needed by rylink")
-    // Domains
     ("coef-domain",       "Domain for coef symbols",
                           cxxopts::value<std::string>()->default_value("[-2147483647, 2147483647]"))
     ("value-domain",      "Domain for value/constant symbols",
@@ -452,13 +444,22 @@ int main(int argc, char **argv) {
     ("min-loop-iter",     "Require at least one loop in the EP to iterate this many times",
                           cxxopts::value<int>())
     // Output
+    ("id",                "6-char hex generation ID (default: random). Prefixes function and struct names.",
+                          cxxopts::value<std::string>())
     ("o,output-dir",      "Output directory",
                           cxxopts::value<std::string>()->default_value("rysmith_out"))
     ("target",            "Compile concrete .sir to target (sir, c, wasm); sir = no compilation",
                           cxxopts::value<std::string>()->default_value("sir"))
+    ("vec-lowering",      "Vec-lowering strategy for C backend (random|vecext|scalars|array|structscalars|structarray)",
+                          cxxopts::value<std::string>()->default_value("random"))
     ("keep-require",      "Include require checks in compiled output (default: omitted)")
     ("keep-symbolic",     "Write intermediate symbolic .sir files to disk")
+    ("emit-desc",         "Emit per-function descriptor JSON (func_<id>_<i>.json) — needed by rylink")
+    // Validation
     ("validate",          "Run symiri on each concrete .sir to validate")
+    // Misc
+    ("seed",              "Master RNG seed (default: random)",
+                          cxxopts::value<uint32_t>())
     ("v,verbose",         "Verbose output")
     ("h,help",            "Print usage");
   // clang-format on

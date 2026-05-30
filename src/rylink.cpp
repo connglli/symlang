@@ -160,7 +160,6 @@ static void writeBundledSir(
     const std::vector<Node> &nodes, const FuncDescriptor::Realization &entryRz
 ) {
   std::ofstream ofs(outPath);
-  ofs << "// rylink-generated whole program\n";
   ofs << "// ENTRY: " << nodes[cg.entry()].funcName << "\n";
   ofs << "// CG:\n";
   for (int i = 0; i < cg.nNodes; ++i) {
@@ -178,7 +177,7 @@ static void writeBundledSir(
   for (const auto &pv: entryRz.paramValues)
     ofs << " " << pv.first << "=" << pv.second;
   ofs << "\n";
-  ofs << "// RET: " << (entryRz.retValue.empty() ? "(none)" : entryRz.retValue) << "\n\n";
+  ofs << "// RETURN: " << (entryRz.retValue.empty() ? "(none)" : entryRz.retValue) << "\n\n";
   SIRPrinter sp(ofs);
   sp.print(bundle);
 }
@@ -361,26 +360,30 @@ int main(int argc, char **argv) {
   cxxopts::Options opts("rylink", "rylink — whole-program generator for SymIR");
   // clang-format off
   opts.add_options()
+    ("n,n-progs", "Number of whole programs to generate",
+        cxxopts::value<int>()->default_value("1"))
+    // CG
+    ("n-nodes", "Target number of call-graph nodes per program",
+        cxxopts::value<int>()->default_value("8"))
+    ("max-outdeg", "Maximum out-degree per CG node",
+        cxxopts::value<int>()->default_value(std::to_string(rylink::hp::kMaxOutDegree)))
+    // Input and output
+    ("id", "6-hex-char generation ID (random if omitted)",
+        cxxopts::value<std::string>())
     ("i,input-dir", "Directory of rysmith-emitted (.sir + .json) pairs",
         cxxopts::value<std::string>()->default_value("rysmith_out"))
     ("o,output-dir", "Root output directory; each program lands in <root>/prog_<id>_<i>/",
         cxxopts::value<std::string>()->default_value("rylink_out"))
-    ("n,n-progs", "Number of whole programs to generate",
-        cxxopts::value<int>()->default_value("1"))
-    ("id", "6-hex-char generation ID (random if omitted)",
-        cxxopts::value<std::string>())
-    ("seed", "RNG seed (random if omitted)",
-        cxxopts::value<uint32_t>())
-    ("n-nodes", "Target number of call-graph nodes per program",
-        cxxopts::value<int>()->default_value("4"))
-    ("max-outdeg", "Maximum out-degree per CG node",
-        cxxopts::value<int>()->default_value(std::to_string(rylink::hp::kMaxOutDegree)))
-    ("target", "sir | c | wasm (default: c, split-by-source)",
-        cxxopts::value<std::string>()->default_value("c"))
+    ("target", "sir | c | wasm (default: sir)",
+        cxxopts::value<std::string>()->default_value("sir"))
     ("keep-require", "Keep `require` checks in C/WASM output",
         cxxopts::value<bool>()->default_value("false"))
+    // Validate
     ("validate", "Run symiri on each emitted program and check semantics",
         cxxopts::value<bool>()->default_value("false"))
+    // Misc
+    ("seed", "RNG seed (random if omitted)",
+        cxxopts::value<uint32_t>())
     ("v,verbose", "Verbose output", cxxopts::value<bool>()->default_value("false"))
     ("h,help", "Print help");
   // clang-format on
