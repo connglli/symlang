@@ -449,13 +449,11 @@ static bool generateOne(const FuncPool &pool, std::mt19937 &rng, const PerProgCo
     auto got = runSymiri(cfg.symiriPath, programSir, nodes[cg.entry()].funcName, args);
     bool ok = got && (*got == entryRz.retValue);
     if (ok) {
-      if (cfg.verbose)
-        std::cout << "  validated: OK (" << progDir.filename().string() << ")\n";
+      std::cout << "  validated: OK (" << progDir.filename().string() << ")\n";
     } else {
-      if (cfg.verbose)
-        std::cerr << "  validated: FAIL (" << progDir.filename().string()
-                  << ") expected=" << entryRz.retValue
-                  << " got=" << (got ? *got : std::string("<no Result>")) << "\n";
+      std::cerr << "  validated: FAIL (" << progDir.filename().string()
+                << ") expected=" << entryRz.retValue
+                << " got=" << (got ? *got : std::string("<no Result>")) << "\n";
       return false;
     }
   }
