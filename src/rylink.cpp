@@ -390,7 +390,8 @@ static bool generateOne(const FuncPool &pool, std::mt19937 &rng, const PerProgCo
   for (int i = 0; i < cg.nNodes; ++i) {
     for (int j: cg.outEdges[i]) {
       engine.rewriteEdge(
-          *nodes[i].fn, pool.entries[nodes[j].poolIdx].desc, nodes[j].realizationIdx, rng
+          *nodes[i].fn, pool.entries[nodes[i].poolIdx].desc, *nodes[j].fn,
+          pool.entries[nodes[j].poolIdx].desc, nodes[j].realizationIdx, rng
       );
     }
   }
@@ -482,7 +483,7 @@ int main(int argc, char **argv) {
         cxxopts::value<std::string>()->default_value("rysmith_out"))
     ("o,output-dir", "Root output directory; each program lands in <root>/prog_<id>_<i>/",
         cxxopts::value<std::string>()->default_value("rylink_out"))
-    ("target", "sir | c | wasm (default: sir)",
+    ("target", "sir | c | wasm",
         cxxopts::value<std::string>()->default_value("sir"))
     ("keep-require", "Keep `require` checks in C/WASM output",
         cxxopts::value<bool>()->default_value("false"))

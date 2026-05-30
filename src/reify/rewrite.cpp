@@ -7,7 +7,9 @@
 #include <limits>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 
+#include "analysis/type_utils.hpp"
 #include "ast/sir_printer.hpp"
 #include "reify/hyperparameters.hpp"
 
@@ -99,9 +101,160 @@ namespace symir::reify {
   //     same conservative range check the call-site offset uses, so a
   //     UBSan-clean C lowering is guaranteed).
   // ---------------------------------------------------------------------------
+  struct AddrChecker {
+    const std::string &varName;
+    bool addressTaken = false;
+
+    AddrChecker(const std::string &vn) : varName(vn) {}
+
+    void check(const Atom &atom) {
+      if (addressTaken)
+        return;
+      if (auto addr = std::get_if<AddrAtom>(&atom.v)) {
+        if (addr->lv.base.name == varName) {
+          addressTaken = true;
+          return;
+        }
+      }
+      if (auto select = std::get_if<SelectAtom>(&atom.v)) {
+        if (select->cond)
+          check(*select->cond);
+        if (select->maskExpr)
+          check(*select->maskExpr);
+      } else if (auto call = std::get_if<CallAtom>(&atom.v)) {
+        for (auto &arg: call->args) {
+          if (arg)
+            check(*arg);
+        }
+      }
+    }
+
+    void check(const Expr &expr) {
+      if (addressTaken)
+        return;
+      check(expr.first);
+      for (auto &tail: expr.rest) {
+        check(tail.atom);
+      }
+    }
+
+    void check(const Cond &cond) {
+      if (addressTaken)
+        return;
+      check(cond.lhs);
+      check(cond.rhs);
+    }
+
+    void check(const Instr &instr) {
+      if (addressTaken)
+        return;
+      std::visit(
+          [this](auto &arg) {
+            using T = std::decay_t<decltype(arg)>;
+            if constexpr (std::is_same_v<T, AssignInstr>) {
+              check(arg.rhs);
+            } else if constexpr (std::is_same_v<T, AssumeInstr> ||
+                                 std::is_same_v<T, RequireInstr>) {
+              check(arg.cond);
+            } else if constexpr (std::is_same_v<T, StoreInstr>) {
+              check(arg.ptr);
+              check(arg.val);
+            }
+          },
+          instr
+      );
+    }
+
+    void check(const Terminator &term) {
+      if (addressTaken)
+        return;
+      std::visit(
+          [this](auto &arg) {
+            using T = std::decay_t<decltype(arg)>;
+            if constexpr (std::is_same_v<T, BrTerm>) {
+              if (arg.cond)
+                check(*arg.cond);
+            } else if constexpr (std::is_same_v<T, RetTerm>) {
+              if (arg.value)
+                check(*arg.value);
+            }
+          },
+          term
+      );
+    }
+  };
+
+  static bool isVarConstantBeforeBlock(
+      const FunDecl &caller, const FuncDescriptor &callerDesc, const std::string &varName,
+      const std::string &targetBlockLabel
+  ) {
+    AddrChecker checker(varName);
+    for (const auto &block: caller.blocks) {
+      for (const auto &instr: block.instrs) {
+        checker.check(instr);
+      }
+      checker.check(block.term);
+    }
+    if (checker.addressTaken) {
+      return false;
+    }
+
+    auto it = std::find(callerDesc.path.begin(), callerDesc.path.end(), targetBlockLabel);
+    if (it == callerDesc.path.end()) {
+      return true;
+    }
+
+    std::unordered_set<std::string> checkedBlocks;
+    for (auto pathIt = callerDesc.path.begin(); pathIt != it; ++pathIt) {
+      const std::string &blockLabel = *pathIt;
+      if (checkedBlocks.count(blockLabel)) {
+        continue;
+      }
+      checkedBlocks.insert(blockLabel);
+
+      const Block *blockPtr = nullptr;
+      for (const auto &b: caller.blocks) {
+        if (b.label.name == blockLabel) {
+          blockPtr = &b;
+          break;
+        }
+      }
+      if (!blockPtr) {
+        continue;
+      }
+
+      for (const auto &instr: blockPtr->instrs) {
+        if (auto assign = std::get_if<AssignInstr>(&instr)) {
+          if (assign->lhs.base.name == varName) {
+            return false;
+          }
+        }
+      }
+    }
+
+    return true;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Var+bias call arg
+  //
+  // Build `%var + bias` for an integer call argument. `paramType` is the
+  // callee's i<N> param type as a SIR string; `expectedValStr` is the
+  // solved value the call should evaluate to. We scan the caller for
+  // int-typed mutable lets whose declared type matches and whose init
+  // is a literal we can read back, then pick uniformly. The chosen var's
+  // value must be unchanged along the execution path prior to targetBlockLabel.
+  //
+  // Returns nullopt when:
+  //   - parseI64(expectedValStr) fails (descriptor value malformed);
+  //   - no caller let matches the param type / has a literal init;
+  //   - the computed bias overflows the var's signed range (we use the
+  //     same conservative range check the call-site offset uses, so a
+  //     UBSan-clean C lowering is guaranteed).
+  // ---------------------------------------------------------------------------
   static std::optional<Expr> tryMakeVarBiasArg(
-      const FunDecl &caller, const std::string &paramType, const std::string &expectedValStr,
-      std::mt19937 &rng
+      const FunDecl &caller, const FuncDescriptor &callerDesc, const std::string &targetBlockLabel,
+      const std::string &paramType, const std::string &expectedValStr, std::mt19937 &rng
   ) {
     auto expectedOpt = parseI64(expectedValStr);
     if (!expectedOpt)
@@ -123,6 +276,8 @@ namespace symir::reify {
       if (!ld.init || ld.init->kind != InitVal::Kind::Int)
         continue;
       if (SIRPrinter::typeToString(ld.type) != paramType)
+        continue;
+      if (!isVarConstantBeforeBlock(caller, callerDesc, ld.name.name, targetBlockLabel))
         continue;
       cands.push_back({&ld, std::get<IntLit>(ld.init->value).value});
     }
@@ -249,8 +404,8 @@ namespace symir::reify {
       }
 
       bool apply(
-          FunDecl &caller, const RewriteSite &site, const FuncDescriptor &callee,
-          std::size_t realizationIdx, std::mt19937 &rng
+          FunDecl &caller, const FuncDescriptor &callerDesc, const RewriteSite &site,
+          const FuncDescriptor &callee, std::size_t realizationIdx, std::mt19937 &rng
       ) override {
         if (site.letIdx < 0 || (size_t) site.letIdx >= caller.lets.size())
           return false;
@@ -261,11 +416,118 @@ namespace symir::reify {
         if (!retVal)
           return false;
 
+        // Check if the variable is mutated (written to) or has its address taken.
+        bool isMutatedOrAddressTaken = false;
+        const std::string &varName = caller.lets[site.letIdx].name.name;
+        for (const auto &block: caller.blocks) {
+          for (const auto &instr: block.instrs) {
+            if (auto assign = std::get_if<AssignInstr>(&instr)) {
+              if (assign->lhs.base.name == varName) {
+                isMutatedOrAddressTaken = true;
+                break;
+              }
+            }
+          }
+          if (isMutatedOrAddressTaken)
+            break;
+        }
+
+
+        if (!isMutatedOrAddressTaken) {
+          AddrChecker checker(varName);
+          for (const auto &block: caller.blocks) {
+            for (const auto &instr: block.instrs) {
+              checker.check(instr);
+            }
+            checker.check(block.term);
+          }
+          if (checker.addressTaken) {
+            isMutatedOrAddressTaken = true;
+          }
+        }
+
+        // Select a random executed block of the caller that is not part of a loop.
+        // Selecting a random executed block allows us to distribute call realizations
+        // across different blocks of the caller execution path.
+        std::vector<std::size_t> executedIndices;
+        std::unordered_set<std::string> pathSet(callerDesc.path.begin(), callerDesc.path.end());
+        for (std::size_t i = 0; i < caller.blocks.size(); ++i) {
+          if (pathSet.find(caller.blocks[i].label.name) != pathSet.end()) {
+            executedIndices.push_back(i);
+          }
+        }
+
+        if (isMutatedOrAddressTaken) {
+          // If mutated or address-taken, we MUST insert at the entry block (index 0)
+          // to ensure it runs before any reads/mutations.
+          executedIndices = {0};
+        } else {
+          std::shuffle(executedIndices.begin(), executedIndices.end(), rng);
+        }
+
+        auto getSuccessors = [&](std::size_t bi) -> std::vector<std::size_t> {
+          std::vector<std::size_t> succs;
+          const auto &term = caller.blocks[bi].term;
+          auto addLabel = [&](const std::string &labelName) {
+            for (std::size_t idx = 0; idx < caller.blocks.size(); ++idx) {
+              if (caller.blocks[idx].label.name == labelName) {
+                succs.push_back(idx);
+                break;
+              }
+            }
+          };
+          if (auto br = std::get_if<BrTerm>(&term)) {
+            if (br->isConditional) {
+              addLabel(br->thenLabel.name);
+              addLabel(br->elseLabel.name);
+            } else {
+              addLabel(br->dest.name);
+            }
+          }
+          return succs;
+        };
+
+        auto isPartOfLoop = [&](std::size_t startIdx) -> bool {
+          std::vector<bool> visited(caller.blocks.size(), false);
+          std::vector<std::size_t> stack;
+          for (std::size_t s: getSuccessors(startIdx)) {
+            stack.push_back(s);
+          }
+          while (!stack.empty()) {
+            std::size_t curr = stack.back();
+            stack.pop_back();
+            if (curr == startIdx)
+              return true;
+            if (!visited[curr]) {
+              visited[curr] = true;
+              for (std::size_t s: getSuccessors(curr)) {
+                stack.push_back(s);
+              }
+            }
+          }
+          return false;
+        };
+
+        std::optional<std::size_t> targetBlockIdx;
+        for (std::size_t blockIdx: executedIndices) {
+          // Loop guard: if the block is part of a loop, prepending into it
+          // re-fires the call on every back-edge traversal — resetting the let
+          // to its original literal value every iteration.
+          if (isPartOfLoop(blockIdx)) {
+            continue;
+          }
+          targetBlockIdx = blockIdx;
+          break;
+        }
+
+        if (!targetBlockIdx) {
+          return false;
+        }
+
         // Build the call atom. Each arg is either a bare literal
         // (matching the solver's paramValue) or `%var + bias` where
-        // %var is an unchanged-since-init caller scalar of the same
-        // type. The var+bias path is what makes the rewrite look
-        // lifelike: without it every call arg is a plain literal.
+        // %var is a caller scalar of the same type that is constant
+        // along the execution path prior to targetBlockIdx.
         CallAtom ca;
         GlobalId gid;
         gid.name = callee.name;
@@ -274,12 +536,12 @@ namespace symir::reify {
         for (size_t i = 0; i < callee.params.size(); ++i) {
           const auto &paramType = callee.params[i].type;
           const auto &paramValStr = rz.paramValues[i].second;
-          // The var+bias path needs an int expected-value and an int
-          // var.let_init — restrict to integer scalar param types and
-          // gate on the per-arg probability.
           std::optional<Expr> argExpr;
           if (paramType.size() >= 2 && paramType[0] == 'i' && uni(rng) < rylink::hp::kPVarBiasArg) {
-            argExpr = tryMakeVarBiasArg(caller, paramType, paramValStr, rng);
+            argExpr = tryMakeVarBiasArg(
+                caller, callerDesc, caller.blocks[*targetBlockIdx].label.name, paramType,
+                paramValStr, rng
+            );
           }
           if (!argExpr)
             argExpr = makeScalarLitExpr(paramType, paramValStr);
@@ -324,7 +586,7 @@ namespace symir::reify {
         offsetLit.value = offsetVal;
 
         // Build `call (+ offset)?` as the RHS of an AssignInstr that
-        // we prepend to the entry block: `%x = call @callee(args) (+
+        // we prepend to the target block: `%x = call @callee(args) (+
         // offset)?;`. The original literal init stays in place — it
         // runs before any block, then the prepended assign overwrites
         // %x with the semantically-equivalent call expression. We
@@ -349,36 +611,8 @@ namespace symir::reify {
         ai.lhs.base = caller.lets[site.letIdx].name;
         ai.rhs = std::move(rhs);
 
-        // Caller must have at least one block (rysmith always emits
-        // an `^entry`). Prepend the assignment so it runs before any
-        // user code that reads the let.
-        if (caller.blocks.empty())
-          return false;
-
-        // Loop guard: if any block branches back to the entry,
-        // prepending into the entry block re-fires the call on every
-        // back-edge traversal — resetting the let to its original
-        // literal value every iteration, which can flip back-edge
-        // conditions into infinite loops. The original let-init runs
-        // once before any block, so the leaf doesn't have this
-        // problem; only the spliced AssignInstr does. Decline if the
-        // entry has any predecessor — including a self-loop from the
-        // entry's own terminator (start at bi=0 so we don't miss it).
-        const std::string &entryLabel = caller.blocks.front().label.name;
-        for (size_t bi = 0; bi < caller.blocks.size(); ++bi) {
-          const auto &term = caller.blocks[bi].term;
-          if (auto br = std::get_if<BrTerm>(&term)) {
-            if (br->isConditional) {
-              if (br->thenLabel.name == entryLabel || br->elseLabel.name == entryLabel)
-                return false;
-            } else if (br->dest.name == entryLabel) {
-              return false;
-            }
-          }
-        }
-
-        caller.blocks.front().instrs.insert(
-            caller.blocks.front().instrs.begin(), Instr{std::move(ai)}
+        caller.blocks[*targetBlockIdx].instrs.insert(
+            caller.blocks[*targetBlockIdx].instrs.begin(), Instr{std::move(ai)}
         );
         return true;
       }
@@ -394,9 +628,389 @@ namespace symir::reify {
   // Engine
   // ---------------------------------------------------------------------------
 
+  static std::optional<std::string>
+  getVarTypeString(const std::string &name, const FunDecl &caller) {
+    for (const auto &p: caller.params) {
+      if (p.name.name == name) {
+        return SIRPrinter::typeToString(p.type);
+      }
+    }
+    for (const auto &l: caller.lets) {
+      if (l.name.name == name) {
+        return SIRPrinter::typeToString(l.type);
+      }
+    }
+    for (const auto &s: caller.syms) {
+      if (s.name.name == name) {
+        return SIRPrinter::typeToString(s.type);
+      }
+    }
+    return std::nullopt;
+  }
+
+  static std::optional<std::string> inferExprType(const Expr &expr, const FunDecl &caller) {
+    auto getAtomType = [&](const Atom &atom) -> std::optional<std::string> {
+      if (auto coef = std::get_if<CoefAtom>(&atom.v)) {
+        if (auto varId = std::get_if<LocalOrSymId>(&coef->coef)) {
+          std::string varName;
+          if (auto loc = std::get_if<LocalId>(varId))
+            varName = loc->name;
+          else if (auto sym = std::get_if<SymId>(varId))
+            varName = sym->name;
+          return getVarTypeString(varName, caller);
+        }
+      } else if (auto rval = std::get_if<RValueAtom>(&atom.v)) {
+        if (rval->rval.accesses.empty()) {
+          return getVarTypeString(rval->rval.base.name, caller);
+        }
+      }
+      return std::nullopt;
+    };
+
+    if (auto t = getAtomType(expr.first))
+      return t;
+    for (const auto &tail: expr.rest) {
+      if (auto t = getAtomType(tail.atom))
+        return t;
+    }
+    return std::nullopt;
+  }
+
+  static std::optional<std::string> getExpectedTypeForExpr(
+      const Expr &expr, const FunDecl &caller, const std::optional<std::string> &contextType
+  ) {
+    if (auto inferred = inferExprType(expr, caller)) {
+      return inferred;
+    }
+    return contextType;
+  }
+
+  // ---------------------------------------------------------------------------
+  // CallReplacer
+  //
+  // An AST mutator that walks expression trees, conditions, instructions,
+  // and terminators in search of variables or literals that match the callee's
+  // return type. It collects pointers to all matching atoms as candidates.
+  //
+  // Expected types of literals are inferred from their context (e.g. assignment
+  // LHS, condition partner, or store target) to guarantee type checker safety.
+  // ---------------------------------------------------------------------------
+  struct CallReplacer {
+    const TypePtr &expectedType;
+    const FunDecl &caller;
+    std::string expectedTypeStr;
+    std::vector<Atom *> candidates;
+
+    CallReplacer(const TypePtr &et, const FunDecl &c) : expectedType(et), caller(c) {
+      if (expectedType) {
+        expectedTypeStr = SIRPrinter::typeToString(expectedType);
+      }
+    }
+
+    void collect(Atom &atom, const std::optional<std::string> &contextType) {
+      if (expectedTypeStr.empty())
+        return;
+
+      if (auto coefAtom = std::get_if<CoefAtom>(&atom.v)) {
+        bool match = false;
+        if (std::holds_alternative<IntLit>(coefAtom->coef)) {
+          if (contextType && *contextType == expectedTypeStr && expectedTypeStr[0] == 'i') {
+            match = true;
+          }
+        } else if (std::holds_alternative<FloatLit>(coefAtom->coef)) {
+          if (contextType && *contextType == expectedTypeStr &&
+              (expectedTypeStr == "f32" || expectedTypeStr == "f64")) {
+            match = true;
+          }
+        } else if (std::holds_alternative<NullLit>(coefAtom->coef)) {
+          if (contextType && *contextType == expectedTypeStr &&
+              expectedTypeStr.rfind("ptr", 0) == 0) {
+            match = true;
+          }
+        } else if (auto varId = std::get_if<LocalOrSymId>(&coefAtom->coef)) {
+          std::string varName = std::holds_alternative<LocalId>(*varId)
+                                    ? std::get<LocalId>(*varId).name
+                                    : std::get<SymId>(*varId).name;
+          if (auto tStr = getVarTypeString(varName, caller)) {
+            if (*tStr == expectedTypeStr)
+              match = true;
+          }
+        }
+        if (match) {
+          candidates.push_back(&atom);
+        }
+      } else if (auto rvalAtom = std::get_if<RValueAtom>(&atom.v)) {
+        if (rvalAtom->rval.accesses.empty()) {
+          if (auto tStr = getVarTypeString(rvalAtom->rval.base.name, caller)) {
+            if (*tStr == expectedTypeStr) {
+              candidates.push_back(&atom);
+            }
+          }
+        }
+      }
+
+      // Traverse nested
+      if (auto select = std::get_if<SelectAtom>(&atom.v)) {
+        if (select->cond)
+          collect(*select->cond);
+        if (select->maskExpr)
+          collect(*select->maskExpr, std::nullopt);
+      } else if (auto call = std::get_if<CallAtom>(&atom.v)) {
+        for (auto &arg: call->args) {
+          if (arg)
+            collect(*arg, std::nullopt);
+        }
+      }
+    }
+
+    void collect(Expr &expr, const std::optional<std::string> &contextType) {
+      auto effType = getExpectedTypeForExpr(expr, caller, contextType);
+      collect(expr.first, effType);
+      for (auto &tail: expr.rest) {
+        collect(tail.atom, effType);
+      }
+    }
+
+    void collect(Cond &cond) {
+      auto lhsType = inferExprType(cond.lhs, caller);
+      auto rhsType = inferExprType(cond.rhs, caller);
+      collect(cond.lhs, rhsType);
+      collect(cond.rhs, lhsType);
+    }
+
+    void collect(Instr &instr) {
+      std::visit(
+          [this](auto &arg) {
+            using T = std::decay_t<decltype(arg)>;
+            if constexpr (std::is_same_v<T, AssignInstr>) {
+              std::optional<std::string> lhsType;
+              if (arg.lhs.accesses.empty()) {
+                lhsType = getVarTypeString(arg.lhs.base.name, caller);
+              }
+              collect(arg.rhs, lhsType);
+            } else if constexpr (std::is_same_v<T, AssumeInstr> ||
+                                 std::is_same_v<T, RequireInstr>) {
+              collect(arg.cond);
+            } else if constexpr (std::is_same_v<T, StoreInstr>) {
+              std::optional<std::string> valType;
+              if (auto ptrType = inferExprType(arg.ptr, caller)) {
+                if (ptrType->rfind("ptr ", 0) == 0) {
+                  valType = ptrType->substr(4);
+                }
+              }
+              collect(arg.ptr, std::nullopt);
+              collect(arg.val, valType);
+            }
+          },
+          instr
+      );
+    }
+
+    void collect(Terminator &term) {
+      std::visit(
+          [this](auto &arg) {
+            using T = std::decay_t<decltype(arg)>;
+            if constexpr (std::is_same_v<T, BrTerm>) {
+              if (arg.cond)
+                collect(*arg.cond);
+            } else if constexpr (std::is_same_v<T, RetTerm>) {
+              if (arg.value) {
+                std::optional<std::string> retTypeStr = SIRPrinter::typeToString(caller.retType);
+                collect(*arg.value, retTypeStr);
+              }
+            }
+          },
+          term
+      );
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Build arguments for call realization.
+  //
+  // - If `randomize` is true (for unexecuted blocks), we synthesize random
+  //   arguments or pick matching variables since they are never executed and cannot trigger UB.
+  // - If `randomize` is false (for the executed path fallback call), we MUST
+  //   use only exact literal constants representing the callee's solved param
+  //   values. We avoid tryMakeVarBiasArg here because if the caller's entry block
+  //   is re-entered via a back-edge loop, local variables used in bias math
+  //   will have been mutated, leading to incorrect arguments and runtime UB.
+  // ---------------------------------------------------------------------------
+  static std::optional<std::vector<std::shared_ptr<Expr>>> makeCallArgs(
+      const FunDecl &caller, const FunDecl &calleeFn, const FuncDescriptor &callee,
+      const FuncDescriptor::Realization &rz, std::mt19937 &rng, bool randomize
+  ) {
+    std::vector<std::shared_ptr<Expr>> args;
+    std::uniform_real_distribution<double> uni(0.0, 1.0);
+    std::uniform_int_distribution<int> randInt(0, 100);
+    std::uniform_real_distribution<double> randFloat(0.0, 100.0);
+
+    for (size_t i = 0; i < callee.params.size(); ++i) {
+      const auto &paramType = callee.params[i].type;
+      const auto &paramValStr = rz.paramValues[i].second;
+      std::optional<Expr> argExpr;
+
+      if (randomize) {
+        std::vector<std::string> matchingVars;
+        for (const auto &p: caller.params) {
+          if (SIRPrinter::typeToString(p.type) == paramType) {
+            matchingVars.push_back(p.name.name);
+          }
+        }
+        for (const auto &l: caller.lets) {
+          if (SIRPrinter::typeToString(l.type) == paramType) {
+            matchingVars.push_back(l.name.name);
+          }
+        }
+        for (const auto &s: caller.syms) {
+          if (SIRPrinter::typeToString(s.type) == paramType) {
+            matchingVars.push_back(s.name.name);
+          }
+        }
+
+        bool chooseVar = false;
+        if (!matchingVars.empty()) {
+          std::uniform_int_distribution<int> coin(0, 1);
+          if (coin(rng) == 0) {
+            chooseVar = true;
+          }
+        }
+
+        if (chooseVar) {
+          std::uniform_int_distribution<size_t> pick(0, matchingVars.size() - 1);
+          std::string chosenVar = matchingVars[pick(rng)];
+          if (chosenVar.size() >= 2 && chosenVar[1] == '?') {
+            SymId sid;
+            sid.name = chosenVar;
+            sid.span = calleeFn.name.span;
+            CoefAtom ca;
+            ca.coef = LocalOrSymId{sid};
+            ca.span = calleeFn.name.span;
+            Atom a;
+            a.v = ca;
+            a.span = calleeFn.name.span;
+            Expr e;
+            e.first = std::move(a);
+            e.span = calleeFn.name.span;
+            argExpr = std::move(e);
+          } else {
+            LocalId lid;
+            lid.name = chosenVar;
+            lid.span = calleeFn.name.span;
+            LValue lv;
+            lv.base = lid;
+            lv.span = calleeFn.name.span;
+            RValueAtom rva;
+            rva.rval = lv;
+            rva.span = calleeFn.name.span;
+            Atom a;
+            a.v = rva;
+            a.span = calleeFn.name.span;
+            Expr e;
+            e.first = std::move(a);
+            e.span = calleeFn.name.span;
+            argExpr = std::move(e);
+          }
+        } else {
+          if (paramType.size() >= 2 && paramType[0] == 'i') {
+            int bits = std::atoi(paramType.c_str() + 1);
+            if (bits <= 0)
+              bits = 32;
+
+            IntLit lit;
+            lit.value = randInt(rng) % (1LL << std::min(bits, 30));
+            Coef coef = lit;
+            CoefAtom ca;
+            ca.coef = coef;
+            Atom a;
+            a.v = ca;
+            Expr e;
+            e.first = std::move(a);
+            argExpr = std::move(e);
+          } else if (paramType == "f32" || paramType == "f64") {
+            FloatLit lit;
+            lit.value = randFloat(rng);
+            Coef coef = lit;
+            CoefAtom ca;
+            ca.coef = coef;
+            Atom a;
+            a.v = ca;
+            Expr e;
+            e.first = std::move(a);
+            argExpr = std::move(e);
+          } else if (paramType.rfind("ptr", 0) == 0) {
+            NullLit lit;
+            Coef coef = lit;
+            CoefAtom ca;
+            ca.coef = coef;
+            Atom a;
+            a.v = ca;
+            Expr e;
+            e.first = std::move(a);
+            argExpr = std::move(e);
+          }
+        }
+      }
+
+      if (!argExpr) {
+        argExpr = makeScalarLitExpr(paramType, paramValStr);
+      }
+      if (!argExpr) {
+        return std::nullopt;
+      }
+      args.push_back(std::make_shared<Expr>(std::move(*argExpr)));
+    }
+    return args;
+  }
+
+  // ---------------------------------------------------------------------------
+  // insertCallInUnexecBlock
+  //
+  // Attempts to realize a call edge in a block of the caller.
+  // Rather than prepending dummy let-assignments, this method uses CallReplacer
+  // to substitute an existing variable or type-safe literal inside the block
+  // with the call. Returns true on successful replacement; false if no match.
+  // ---------------------------------------------------------------------------
+  static bool insertCallInUnexecBlock(
+      FunDecl &caller, const FunDecl &calleeFn, const FuncDescriptor &callee,
+      const FuncDescriptor::Realization &rz, std::mt19937 &rng, std::size_t blockIdx, bool randomize
+  ) {
+    if (blockIdx >= caller.blocks.size())
+      return false;
+
+    auto argsOpt = makeCallArgs(caller, calleeFn, callee, rz, rng, randomize);
+    if (!argsOpt)
+      return false;
+
+    CallAtom ca;
+    GlobalId gid;
+    gid.name = callee.name;
+    ca.callee = gid;
+    ca.args = std::move(*argsOpt);
+    ca.span = calleeFn.name.span;
+
+    CallReplacer replacer(calleeFn.retType, caller);
+
+    // Collect all matching candidates in the block
+    for (auto &instr: caller.blocks[blockIdx].instrs) {
+      replacer.collect(instr);
+    }
+    replacer.collect(caller.blocks[blockIdx].term);
+
+    // If we have candidates, pick one at random and replace it
+    if (!replacer.candidates.empty()) {
+      std::uniform_int_distribution<size_t> pick(0, replacer.candidates.size() - 1);
+      Atom *chosen = replacer.candidates[pick(rng)];
+      chosen->v = std::move(ca);
+      return true;
+    }
+
+    return false;
+  }
+
   RewriteResult RewriteEngine::rewriteEdge(
-      FunDecl &caller, const FuncDescriptor &callee, std::size_t fixedRealizationIdx,
-      std::mt19937 &rng
+      FunDecl &caller, const FuncDescriptor &callerDesc, const FunDecl &calleeFn,
+      const FuncDescriptor &callee, std::size_t fixedRealizationIdx, std::mt19937 &rng
   ) {
     RewriteResult res;
 
@@ -421,26 +1035,50 @@ namespace symir::reify {
       }
     }
     res.sitesFound = static_cast<int>(cands.size());
-    if (cands.empty())
-      return res;
 
-    std::shuffle(cands.begin(), cands.end(), rng);
-    std::uniform_real_distribution<double> uni(0.0, 1.0);
+    if (!cands.empty()) {
+      std::shuffle(cands.begin(), cands.end(), rng);
+      std::uniform_real_distribution<double> uni(0.0, 1.0);
 
-    int attempts = 0;
-    for (auto &c: cands) {
-      if (attempts++ >= rylink::hp::kMaxAttemptsPerEdge)
-        break;
-      if (uni(rng) >= rylink::hp::kPRewrite)
-        continue;
-      if (!c.rule->matchCallee(c.site, callee, fixedRealizationIdx))
-        continue;
-      if (c.rule->apply(caller, c.site, callee, fixedRealizationIdx, rng)) {
-        consumed_.insert({&caller, c.site.letIdx});
-        ++res.sitesRewritten;
-        return res; // one splice per edge is enough for v1
+      int attempts = 0;
+      for (auto &c: cands) {
+        if (attempts++ >= rylink::hp::kMaxAttemptsPerEdge)
+          break;
+        if (uni(rng) >= rylink::hp::kPRewrite)
+          continue;
+        if (!c.rule->matchCallee(c.site, callee, fixedRealizationIdx))
+          continue;
+        if (c.rule->apply(caller, callerDesc, c.site, callee, fixedRealizationIdx, rng)) {
+          consumed_.insert({&caller, c.site.letIdx});
+          ++res.sitesRewritten;
+          break;
+        }
       }
     }
+
+    const auto &rz = callee.realizations[fixedRealizationIdx];
+
+    // [v0.2.2] Target unexecuted blocks safely. The execution path (block labels)
+    // is recorded in callerDesc.path. Any block in the caller not found in this
+    // path is unexecuted under the solved model, making it safe to populate with
+    // additional calls using randomized arguments. We collect all unexecuted blocks,
+    // shuffle them, and attempt to realize the call edge in one at random.
+    std::vector<std::size_t> unexecutedIndices;
+    std::unordered_set<std::string> pathSet(callerDesc.path.begin(), callerDesc.path.end());
+    for (std::size_t i = 0; i < caller.blocks.size(); ++i) {
+      if (pathSet.find(caller.blocks[i].label.name) == pathSet.end()) {
+        unexecutedIndices.push_back(i);
+      }
+    }
+
+    std::shuffle(unexecutedIndices.begin(), unexecutedIndices.end(), rng);
+    for (std::size_t i: unexecutedIndices) {
+      if (insertCallInUnexecBlock(caller, calleeFn, callee, rz, rng, i, true)) {
+        ++res.sitesRewritten;
+        break;
+      }
+    }
+
     return res;
   }
 

@@ -60,8 +60,8 @@ namespace symir::reify {
     // sub-decisions (e.g. per-arg choice of literal vs. var+bias) and
     // still play nicely with the engine's shuffled-candidates order.
     virtual bool apply(
-        FunDecl &caller, const RewriteSite &site, const FuncDescriptor &callee,
-        std::size_t realizationIdx, std::mt19937 &rng
+        FunDecl &caller, const FuncDescriptor &callerDesc, const RewriteSite &site,
+        const FuncDescriptor &callee, std::size_t realizationIdx, std::mt19937 &rng
     ) = 0;
   };
 
@@ -98,9 +98,12 @@ namespace symir::reify {
     // marks each (caller, site) it successfully rewrites as consumed and
     // skips it on subsequent edges; one splice per site for the lifetime
     // of the engine.
+    // [v0.2.2] rewriteEdge performs whole-program call realization.
+    // `callerDesc` supplies the metadata of the caller function (including
+    // the concretized execution path to target unexecuted blocks safely).
     RewriteResult rewriteEdge(
-        FunDecl &caller, const FuncDescriptor &callee, std::size_t fixedRealizationIdx,
-        std::mt19937 &rng
+        FunDecl &caller, const FuncDescriptor &callerDesc, const FunDecl &calleeFn,
+        const FuncDescriptor &callee, std::size_t fixedRealizationIdx, std::mt19937 &rng
     );
 
   private:
