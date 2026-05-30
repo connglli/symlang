@@ -4,7 +4,7 @@ clang and run under UBSan. Catches bugs in any of reify / interp /
 C-backend / solver / linker by cross-checking outputs.
 
 Each batch runs four phases:
-  (1) rysmith generation     — leaf functions (with --n-params 3 --emit-desc)
+  (1) rysmith generation     — leaf functions generated randomly
   (2) rysmith test           — symiri vs C-binary cross-validation
   (3) rylink generation      — whole programs from the same pool
   (4) rylink test            — symiri vs C-binary on the bundled program
@@ -366,6 +366,7 @@ def _print_test_summary(passed, mismatch, ubsan, cfail, sirfail, skipped):
 
 def run(
   rysmith,
+  rylink,
   symiri,
   symirc,
   n,
@@ -374,9 +375,6 @@ def run(
   clang,
   verbose,
   fail_early=False,
-  rylink=None,
-  rylink_n_per_batch=0,
-  rylink_n_nodes=4,
 ):
   os.makedirs(out_dir, exist_ok=True)
   # Wipe stale artefacts from a previous run, including a prior bugs/ tree.
@@ -407,8 +405,6 @@ def run(
   rylink_gen_failed_total = 0
   processed_total = 0
 
-  rylink_active = bool(rylink) and rylink_n_per_batch > 0
-
   stopped_early = False
   done = 0
   batch_idx = 0
@@ -428,12 +424,6 @@ def run(
       str(batch_seed),
       "-o",
       out_dir,
-      # --n-params 3 matches the realistic shape of rysmith's leaf
-      # output and gives rylink real call-graph edges to splice. The
-      # leaf-test phase below reads the SOLVED header for positional
-      # args, so multi-param leaves are still cross-validatable.
-      "--n-params",
-      "3",
       # --emit-desc is required by rylink (it consumes the per-fn
       # descriptor JSON sidecar). Cheap when rylink is off, so always on.
       "--emit-desc",
@@ -456,7 +446,7 @@ def run(
 
     done += batch_n
 
-    # ── (2) leaf test ────────────────────────────────────────────────
+    # ── (2) rysmith test ────────────────────────────────────────────────
     if verbose:
       print(bold(f"batch #{batch_idx + 1} rysmith test ({done}/{n} programs):"))
       print("  running: symiri vs clang+exe")
@@ -485,16 +475,27 @@ def run(
           stopped_early = True
           break
 
+    if not stopped_early:
+      if verbose:
+        _print_test_summary(passed, mismatch, ubsan, cfail, sirfail, skipped)
+      else:
+        print(
+          f"  [batch #{batch_idx}: {done}/{n}] passed={passed} "
+          f"mismatch={len(mismatch)} ubsan={len(ubsan)} "
+          f"cfail={len(cfail)} sirfail={len(sirfail)} "
+          f"skipped={skipped}",
+          flush=True,
+        )
+      print()
+
     # ── (3) rylink generation ────────────────────────────────────────
     ry_progs = []
-    if rylink_active and not stopped_early:
+    if not stopped_early:
       ry_dir = os.path.join(out_dir, "rylink")
       ry_cmd = [
         rylink,
         "-n",
-        str(rylink_n_per_batch),
-        "--n-nodes",
-        str(rylink_n_nodes),
+        str(BATCH_SIZE),
         "--target",
         "c",
         "--seed",
@@ -524,9 +525,9 @@ def run(
           if d.startswith("prog_") and os.path.isdir(os.path.join(ry_dir, d))
         )
       rylink_generated_total += len(ry_progs)
-      ry_failed = rylink_n_per_batch - len(ry_progs)
+      ry_failed = BATCH_SIZE - len(ry_progs)
       if ry is None:
-        ry_failed = rylink_n_per_batch
+        ry_failed = BATCH_SIZE
       rylink_gen_failed_total += max(0, ry_failed)
       if verbose:
         print(f"  {green('succeeded')}:     {len(ry_progs)}")
@@ -534,7 +535,7 @@ def run(
         print(f"  generated:     {len(ry_progs)}")
 
     # ── (4) rylink test ──────────────────────────────────────────────
-    if rylink_active and not stopped_early:
+    if not stopped_early:
       if verbose:
         print(bold(f"batch #{batch_idx + 1} rylink test ({done}/{n} programs):"))
         print("  running: symiri vs clang+exe")
@@ -563,8 +564,6 @@ def run(
             stopped_early = True
             break
 
-    batch_idx += 1
-
     if not stopped_early:
       if verbose:
         _print_test_summary(passed, mismatch, ubsan, cfail, sirfail, skipped)
@@ -578,6 +577,8 @@ def run(
         )
       print()
 
+    batch_idx += 1
+
   # End-of-run report.
   print()
   hdr = f"reify differential test (n={processed_total}, seed={seed}"
@@ -588,9 +589,8 @@ def run(
   if verbose:
     print(f"  rysmith generated:     {leaf_generated_total}")
     print(f"  {red('rysmith gen failed')}:    {leaf_gen_failed_total}")
-    if rylink_active:
-      print(f"  rylink generated:      {rylink_generated_total}")
-      print(f"  {red('rylink gen failed')}:     {rylink_gen_failed_total}")
+    print(f"  rylink generated:      {rylink_generated_total}")
+    print(f"  {red('rylink gen failed')}:     {rylink_gen_failed_total}")
     print("  ---")
   _print_test_summary(passed, mismatch, ubsan, cfail, sirfail, skipped)
 
@@ -612,14 +612,13 @@ def run(
 def main():
   ap = argparse.ArgumentParser()
   ap.add_argument("--rysmith", default="./rysmith")
+  ap.add_argument("--rylink", default="./rylink")
   ap.add_argument("--symiri", default="./symiri")
-  ap.add_argument(
-    "--symirc",
-    default="./symirc",
-    help="(implicitly invoked by rysmith --target c)",
-  )
+  ap.add_argument("--symirc", default="./symirc")
   ap.add_argument("--clang", default="clang")
-  ap.add_argument("--n", type=int, default=100)
+  ap.add_argument(
+    "--n", type=int, default=100, help="Total number of programs to generate and test"
+  )
   ap.add_argument(
     "--seed",
     type=int,
@@ -632,23 +631,6 @@ def main():
     "--fail-early",
     action="store_true",
     help="Stop at the first mismatch/ubsan/cfail/sirfail instead of finishing the batch",
-  )
-  ap.add_argument(
-    "--rylink",
-    default=None,
-    help="Path to rylink binary; enables a whole-program diff-test phase after each rysmith batch",
-  )
-  ap.add_argument(
-    "--rylink-n-per-batch",
-    type=int,
-    default=10,
-    help="Number of whole programs to link+test per rysmith batch (0 disables the phase)",
-  )
-  ap.add_argument(
-    "--rylink-n-nodes",
-    type=int,
-    default=4,
-    help="Target call-graph nodes per linked program (passed to rylink --n-nodes)",
   )
   args = ap.parse_args()
 
@@ -669,6 +651,7 @@ def main():
 
   ok = run(
     args.rysmith,
+    args.rylink,
     args.symiri,
     args.symirc,
     args.n,
@@ -677,9 +660,6 @@ def main():
     args.clang,
     args.verbose,
     fail_early=args.fail_early,
-    rylink=args.rylink,
-    rylink_n_per_batch=args.rylink_n_per_batch,
-    rylink_n_nodes=args.rylink_n_nodes,
   )
   sys.exit(0 if ok else 1)
 
