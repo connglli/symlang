@@ -1,0 +1,30 @@
+// EXPECT: PASS
+// SPEC v0.2.2 §9.6 interprocedural — addrMap_ entries from a callee
+// do not leak into the caller's subsequent `addr` operations.
+// Intention: the callee runs first and `addr`-promotes its local `%x`
+// with type i32. Only *after* the call does the caller perform
+// `addr %x` on a same-named i64 local. Without per-frame scoping, the
+// caller would reuse the callee's i32 base + ObjectInfo, and the
+// load below would trip rule 15b on the type mismatch.
+fun @callee() : i32 {
+  let mut %x: i32 = 17;
+  let mut %p: ptr i32 = undef;
+^entry:
+  %p = addr %x;
+  ret 0;
+}
+fun @main() : i32 {
+  let mut %x: i64 = 8888888888;
+  let mut %p: ptr i64 = undef;
+  let mut %loaded: i64 = 0;
+  let mut %rc: i32 = 0;
+^entry:
+  %rc = call @callee();        // populate callee-side addrMap first
+  %p = addr %x;                // caller's own i64 cell — fresh base required
+  %loaded = load %p;
+  br %loaded == 8888888888, ^ok, ^bad;
+^ok:
+  ret 0;
+^bad:
+  ret 1;
+}

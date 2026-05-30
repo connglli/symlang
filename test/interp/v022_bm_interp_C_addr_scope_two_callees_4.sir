@@ -1,0 +1,53 @@
+// EXPECT: PASS
+// SPEC v0.2.2 §9.6 interprocedural — consecutive callees, each with
+// its own redeclaration of `%v` at a different type. Each callee's
+// own load through `addr %v` must read *its* declared value (not the
+// caller's leaked i32). Without per-frame scoping, every callee would
+// land on the caller's i32 cell and tripped rule 15b on first load.
+fun @callee_a() : i32 {
+  let mut %v: i8 = 3;
+  let mut %p: ptr i8 = undef;
+  let mut %t: i8 = 0;
+^entry:
+  %p = addr %v;
+  %t = load %p;
+  ret %t as i32;            // 3
+}
+fun @callee_b() : i32 {
+  let mut %v: i16 = 257;
+  let mut %p: ptr i16 = undef;
+  let mut %t: i16 = 0;
+^entry:
+  %p = addr %v;
+  %t = load %p;
+  ret %t as i32;            // 257
+}
+fun @callee_c() : i32 {
+  let mut %v: i64 = 5;
+  let mut %p: ptr i64 = undef;
+  let mut %t: i64 = 0;
+^entry:
+  %p = addr %v;
+  %t = load %p;
+  ret %t as i32;            // 5
+}
+fun @main() : i32 {
+  let mut %v: i32 = 9999;
+  let mut %p: ptr i32 = undef;
+  let mut %loaded: i32 = 0;
+  let mut %sum: i32 = 0;
+  let mut %t: i32 = 0;
+^entry:
+  %p = addr %v;
+  %t = call @callee_a();   %sum = %sum + %t;
+  %t = call @callee_b();   %sum = %sum + %t;
+  %t = call @callee_c();   %sum = %sum + %t;
+  %loaded = load %p;       // caller's i32 cell, unchanged
+  br %sum == 265, ^chk2, ^bad;   // 3 + 257 + 5
+^chk2:
+  br %loaded == 9999, ^ok, ^bad;
+^ok:
+  ret 0;
+^bad:
+  ret 1;
+}

@@ -905,6 +905,17 @@ namespace symir {
           typeMap_.erase(it->first);
       }
     };
+    // addrMap_ resolves `addr %x` to a heap base for the *current*
+    // frame's local %x. Without scoping, callee's `addr %x` aliases
+    // the caller's %x (same name, possibly different type), and
+    // callee's entries also leak into the caller after return —
+    // corrupting any subsequent caller `addr %y` whose name happens
+    // to match a callee local. Snapshot/restore the whole map at the
+    // call boundary; pointer arguments don't go through addrMap_
+    // (they carry a provId that resolves via objects_/heap_), so this
+    // doesn't break the cross-frame pointer-validity guarantee.
+    auto savedAddrMap = addrMap_;
+    addrMap_.clear();
 
     // Bind parameters.
     if (args.size() != f.params.size())
@@ -968,9 +979,11 @@ namespace symir {
       runBlocks(f, store, &ret);
     } catch (...) {
       restoreTypes();
+      addrMap_ = std::move(savedAddrMap);
       throw;
     }
     restoreTypes();
+    addrMap_ = std::move(savedAddrMap);
     return ret;
   }
 

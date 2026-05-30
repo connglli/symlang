@@ -1,0 +1,34 @@
+// EXPECT: PASS
+// SPEC v0.2.2 §9.6 interprocedural — addrMap_ is per-frame
+// Intention: caller and callee both declare `%v` but with different
+// scalar types. Without per-frame addrMap scoping, the callee's
+// `addr %v` (i8) would alias the caller's existing i16 allocation,
+// and the next typed load from a caller-side ptr would trip rule 15b.
+fun @callee() : i32 {
+  let mut %v: i8 = 7;
+  let mut %p: ptr i8 = undef;
+  let mut %tmp: i8 = 0;
+  let mut %r: i32 = 0;
+^entry:
+  %p = addr %v;
+  %tmp = load %p;
+  %r = %tmp as i32;
+  ret %r;
+}
+fun @main() : i32 {
+  let mut %v: i16 = 11;
+  let mut %p: ptr i16 = undef;
+  let mut %r: i32 = 0;
+  let mut %loaded: i16 = 0;
+^entry:
+  %p = addr %v;
+  %r = call @callee();              // 7
+  %loaded = load %p;                // 11 — caller's i16 cell, no rule 15b
+  br %r == 7, ^chk2, ^bad;
+^chk2:
+  br %loaded == 11, ^ok, ^bad;
+^ok:
+  ret 0;
+^bad:
+  ret 1;
+}

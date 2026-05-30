@@ -1,0 +1,35 @@
+// EXPECT: PASS
+// SPEC v0.2.2 §9.6 interprocedural — addrMap_ is per-frame
+// Intention: the *caller* has `addr`-promoted `%v` (i16) before the
+// call. The callee redeclares `%v` as f32 and loads through its own
+// `addr %v`. Without per-frame scoping, the callee's `addr %v` would
+// return the caller's i16-typed cell; the subsequent f32 load would
+// trip rule 15b inside the callee.
+fun @callee() : i32 {
+  let mut %v: f32 = 2.5;
+  let mut %p: ptr f32 = undef;
+  let mut %loaded: f32 = 0.0;
+  let mut %i: i32 = 0;
+^entry:
+  %p = addr %v;
+  %loaded = load %p;             // must read 2.5 from callee's own cell
+  %i = %loaded as i32;
+  ret %i;                        // 2
+}
+fun @main() : i32 {
+  let mut %v: i16 = 41;
+  let mut %p: ptr i16 = undef;
+  let mut %loaded: i16 = 0;
+  let mut %rc: i32 = 0;
+^entry:
+  %p = addr %v;                  // populate caller's addrMap for %v first
+  %rc = call @callee();          // expects 2
+  %loaded = load %p;             // and caller's i16 cell is intact
+  br %rc == 2, ^chk2, ^bad;
+^chk2:
+  br %loaded == 41, ^ok, ^bad;
+^ok:
+  ret 0;
+^bad:
+  ret 1;
+}

@@ -1,0 +1,39 @@
+// EXPECT: PASS
+// SPEC v0.2.2 §9.6 interprocedural — per-frame addrMap_ scoping must
+// preserve pointer-argument semantics: caller passes `addr %x` (i32)
+// to a callee that redeclares `%x` as f64 and locally `addr`-promotes
+// its own f64 %x. The callee then writes via the i32 pointer arg,
+// and the caller must observe the update on its own cell — proving
+// the two `%x` allocations don't alias and the pointer arg survived
+// the per-frame addrMap reset.
+fun @bump(%pi: ptr i32) : i32 {
+  let mut %x: f64 = 7.0;        // same name as caller's local
+  let mut %pf: ptr f64 = undef;
+  let mut %old: i32 = 0;
+  let mut %loadedf: f64 = 0.0;
+  let mut %fi: i32 = 0;
+^entry:
+  %pf = addr %x;                // must not alias caller's i32 %x
+  %loadedf = load %pf;          // 7.0 — own cell
+  %old = load %pi;              // 42 — caller's cell (separate, via pointer arg)
+  store %pi, %old + 100;        // write back through pointer arg
+  %fi = %loadedf as i32;
+  ret %old + %fi;               // 49 (42 + 7)
+}
+fun @main() : i32 {
+  let mut %x: i32 = 42;
+  let mut %p: ptr i32 = undef;
+  let mut %ret: i32 = 0;
+  let mut %loaded: i32 = 0;
+^entry:
+  %p = addr %x;
+  %ret = call @bump(%p);        // expects 49
+  %loaded = load %p;            // caller's cell mutated to 142
+  br %ret == 49, ^chk2, ^bad;
+^chk2:
+  br %loaded == 142, ^ok, ^bad;
+^ok:
+  ret 0;
+^bad:
+  ret 1;
+}
