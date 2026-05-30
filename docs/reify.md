@@ -155,7 +155,18 @@ Differential testing across compiler versions or optimization levels is also sup
 
 The leaf generation pipeline (S1–S6) produces independent functions. To build a complete program, Reify generates a random call graph (CG) and applies *semantics-preserving peephole rewriting*: a constant `c` in a caller is replaced with `f(i) + (c − o)`, where `f(i) = o`. This establishes an inter-procedural call while preserving the constant's value at runtime.
 
-Whole-program generation is planned as a future step (`rylink`); the current `rysmith` tool covers S1–S5 for leaf functions.
+Whole-program generation is implemented by `rylink`, described below. The pipeline:
+
+```
+W1. Pool ingest        — load a directory of rysmith-emitted (.sir + .json) pairs
+W2. CG generation      — pick K functions and build a DAG call graph over them
+W3. Bundle merge       — parse each .sir, union into one Program (dedup structs by name)
+W4. Peephole rewrite   — for each (caller, callee) edge, splice `call @callee(args) + (c − o)`
+W5. Lowering           — emit program.sir + optional symirc --split-by-source C/WASM
+W6. Validation         — symiri runs the bundled entry with its solved params; check return
+```
+
+Each chosen leaf function brings its own solved realization (one of the `--n-inits` rysmith concretizations) so the rewrite expression `call + (c − o)` is semantically equivalent to the original literal at runtime. The rewrite engine consumes each rewrite site at most once across the entire program; composing two rewrites on the same literal would produce a left-to-right call chain (`f1() + f2() + …`) whose prefix sums can wrap in unintended ways even though each individual rewrite is BV-sound.
 
 
 ## Tool: rysmith
@@ -263,3 +274,59 @@ fun @func0() : i32 {
 ```
 
 The return value is the expected output $o$. After lowering to C with `symirc -t c`, executing the function should always return this value regardless of compiler version or optimization level.
+
+
+## Tool: rylink
+
+`rylink` reads a rysmith function pool, builds whole programs over it, and (optionally) compiles and validates each one.
+
+### Usage
+
+```
+rylink [OPTIONS]
+```
+
+### Options
+
+| Flag | Default | Description |
+|---|---|---|
+| `-i, --input-dir PATH` | `rysmith_out` | Directory of rysmith-emitted `(.sir + .json)` pairs (`rysmith --emit-desc`) |
+| `-o, --output-dir PATH` | `rylink_out` | Root; each program lands in `<root>/prog_<id>_<i>/` |
+| `-n, --n-progs N` | 1 | Number of whole programs to generate |
+| `--id HEX6` | random | 6-hex-char generation ID prefix |
+| `--seed N` | random | RNG seed |
+| `--n-nodes N` | 4 | Target number of call-graph nodes per program |
+| `--max-outdeg N` | 3 | Maximum out-degree per CG node |
+| `--target sir\|c\|wasm` | `c` | `c` uses `symirc --split-by-source`; `sir` skips lowering |
+| `--keep-require` | off | Keep `require` checks in C/WASM output |
+| `--validate` | off | Run `symiri` on each emitted program and assert the entry returns its descriptor's solved value |
+| `-v, --verbose` | off | Per-init log lines (`validated: OK`, `symirc FAIL`, etc.) |
+
+### Output layout
+
+Each program lives in its own subdirectory:
+
+```
+rylink_out/
+  prog_<id>_0/
+    program.sir        # bundled SymIR (header comments: ENTRY, CG, PARAMS, RETURN)
+    common.h           # symirc --split-by-source artefacts (when --target c)
+    program.c
+  prog_<id>_1/
+    ...
+```
+
+The bundled `.sir` is the source of truth for every downstream consumer. Header comments record the entry function, the call graph, the solved parameter values for the entry, and the expected return value — making each bundle reproducible without consulting the descriptor JSON.
+
+### Example
+
+```sh
+# 1. Build a pool of 200 leaf functions with descriptors
+rysmith -n 200 --emit-desc -o pool/
+
+# 2. Generate 10 whole programs of ~4 functions each, validate every one
+rylink -n 10 --n-nodes 4 --validate -i pool/ -o progs/
+
+# 3. WASM target with require checks kept
+rylink -n 5 --target wasm --keep-require -i pool/ -o progs/
+```
