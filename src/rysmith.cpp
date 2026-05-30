@@ -64,6 +64,20 @@ static std::pair<int64_t, int64_t> parseDomain(const std::string &s) {
   return {std::stoll(loStr), std::stoll(hiStr)};
 }
 
+// Format a solved model value as the canonical descriptor / SOLVED-
+// header string. Ints round-trip via decimal; floats use 17-digit
+// precision so std::stod recovers the exact bit pattern.
+static std::string fmtModelVal(const SymbolicExecutor::Result::ModelVal &v) {
+  std::ostringstream os;
+  if (std::holds_alternative<int64_t>(v))
+    os << std::get<int64_t>(v);
+  else {
+    os.precision(17);
+    os << std::get<double>(v);
+  }
+  return os.str();
+}
+
 static auto makeSolverFactory() {
   return [](const SymbolicExecutor::Config &cfg) -> std::unique_ptr<smt::ISolver> {
 #if defined(USE_BITWUZLA)
@@ -107,8 +121,11 @@ static bool compileWithSymirc(
     cmd += " --no-require";
   if (!vecLowering.empty())
     cmd += " --vec-lowering " + vecLowering;
+  // Match validateWithSymiri's policy: silence both streams when not
+  // verbose. Previously this swallowed only stderr, leaving symirc's
+  // stdout in test output even on success.
   if (!verbose)
-    cmd += " 2>/dev/null";
+    cmd += " > /dev/null 2>&1";
   int status = std::system(cmd.c_str());
   return status == 0;
 }
@@ -200,6 +217,16 @@ static GenerateResult generateLeaf(
     if (verbose)
       std::cout << "[sampler] attempt=" << attempt << " EP len=" << path.size() << "\n";
 
+    // PATH comment header shared by every init of this attempt — the
+    // path itself is fixed for the whole attempt, only the per-init
+    // sym/param solutions differ.
+    auto writePathHeader = [&](std::ostream &os) {
+      os << "// PATH:";
+      for (std::size_t k = 0; k < path.size(); k++)
+        os << (k == 0 ? " " : " -> ") << path[k];
+      os << "\n\n";
+    };
+
     // Generate nInits independently-seeded programs
     std::vector<ConcreteFile> produced;
     for (int initIdx = 0; initIdx < nInits; initIdx++) {
@@ -219,13 +246,6 @@ static GenerateResult generateLeaf(
       fcfg.indexHi = indexHi;
 
       auto [prog, pathLabels] = genFunction(cfg, path, vars, fcfg);
-
-      auto writePathHeader = [&](std::ostream &os) {
-        os << "// PATH:";
-        for (std::size_t k = 0; k < path.size(); k++)
-          os << (k == 0 ? " " : " -> ") << path[k];
-        os << "\n\n";
-      };
 
       // Optionally dump symbolic program
       if (keepSymbolic) {
@@ -293,25 +313,15 @@ static GenerateResult generateLeaf(
           // [v0.2.2] SOLVED header (same format as symirsolve --output).
           // Records the synthesised param + ret values so symiri can
           // re-run via `--main @f <file> -- <p0> <p1>` deterministically.
-          auto fmtVal = [](const SymbolicExecutor::Result::ModelVal &v) {
-            std::ostringstream os;
-            if (std::holds_alternative<int64_t>(v))
-              os << std::get<int64_t>(v);
-            else {
-              os.precision(17);
-              os << std::get<double>(v);
-            }
-            return os.str();
-          };
           if (!res.paramModel.empty() || res.retModel.has_value()) {
             ofs << "// SOLVED:";
             bool first = true;
             for (const auto &[name, val]: res.paramModel) {
-              ofs << (first ? " " : ", ") << name << "=" << fmtVal(val);
+              ofs << (first ? " " : ", ") << name << "=" << fmtModelVal(val);
               first = false;
             }
             if (res.retModel.has_value()) {
-              ofs << (first ? " " : ", ") << "ret=" << fmtVal(*res.retModel);
+              ofs << (first ? " " : ", ") << "ret=" << fmtModelVal(*res.retModel);
             }
             ofs << "\n";
           }
@@ -325,16 +335,6 @@ static GenerateResult generateLeaf(
         // res.retModel — same source the SOLVED header serialises
         // from. Downstream consumers (--validate, --emit-desc) use
         // them directly without re-parsing the .sir.
-        auto fmtVal = [](const SymbolicExecutor::Result::ModelVal &v) {
-          std::ostringstream os;
-          if (std::holds_alternative<int64_t>(v))
-            os << std::get<int64_t>(v);
-          else {
-            os.precision(17);
-            os << std::get<double>(v);
-          }
-          return os.str();
-        };
         ConcreteFile cf;
         cf.path = concretePath;
         cf.rz.file = concretePath.filename().string();
@@ -350,7 +350,7 @@ static GenerateResult generateLeaf(
           for (const auto &p: entry->params) {
             auto it = res.paramModel.find(p.name.name);
             if (it != res.paramModel.end())
-              cf.rz.paramValues.emplace_back(p.name.name, fmtVal(it->second));
+              cf.rz.paramValues.emplace_back(p.name.name, fmtModelVal(it->second));
           }
           // Syms in declaration order so the descriptor's
           // top-level `syms` list and the per-realization
@@ -358,11 +358,11 @@ static GenerateResult generateLeaf(
           for (const auto &s: entry->syms) {
             auto it = res.model.find(s.name.name);
             if (it != res.model.end())
-              cf.rz.symValues.emplace_back(s.name.name, fmtVal(it->second));
+              cf.rz.symValues.emplace_back(s.name.name, fmtModelVal(it->second));
           }
         }
         if (res.retModel.has_value())
-          cf.rz.retValue = fmtVal(*res.retModel);
+          cf.rz.retValue = fmtModelVal(*res.retModel);
         produced.push_back(std::move(cf));
         if (emitDesc) {
           std::vector<FuncDescriptor::Realization> realizations;

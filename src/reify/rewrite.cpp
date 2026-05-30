@@ -13,21 +13,6 @@
 namespace symir::reify {
 
   // ---------------------------------------------------------------------------
-  // Type-string helper
-  // ---------------------------------------------------------------------------
-  //
-  // The descriptor stores ret/param types as the canonical SIR surface
-  // syntax (e.g. "i32", "f64", "ptr i32"). We need the same encoding for
-  // a TypePtr coming out of the parser so we can equality-compare. The
-  // SIRPrinter is the canonical printer so we just route through it.
-  static std::string typeToSir(const TypePtr &t) {
-    std::ostringstream os;
-    SIRPrinter sp(os);
-    sp.printType(t);
-    return os.str();
-  }
-
-  // ---------------------------------------------------------------------------
   // Descriptor-value parsing
   //
   // Descriptors stringify scalars via std::to_string (ints) or a printf
@@ -120,14 +105,14 @@ namespace symir::reify {
             s.kind = RewriteSite::Kind::LetInitIntLit;
             s.letIdx = static_cast<int>(i);
             s.intVal = std::get<IntLit>(ld.init->value).value;
-            s.sirType = typeToSir(ld.type);
+            s.sirType = SIRPrinter::typeToString(ld.type);
             sites.push_back(s);
           } else if (ld.init->kind == InitVal::Kind::Float) {
             RewriteSite s;
             s.kind = RewriteSite::Kind::LetInitFloatLit;
             s.letIdx = static_cast<int>(i);
             s.floatVal = std::get<FloatLit>(ld.init->value).value;
-            s.sirType = typeToSir(ld.type);
+            s.sirType = SIRPrinter::typeToString(ld.type);
             sites.push_back(s);
           }
         }

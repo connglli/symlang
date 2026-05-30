@@ -1,6 +1,15 @@
 #include "ast/sir_printer.hpp"
 
+#include <sstream>
+
 namespace symir {
+
+  std::string SIRPrinter::typeToString(const TypePtr &t) {
+    std::ostringstream os;
+    SIRPrinter sp(os);
+    sp.printType(t);
+    return os.str();
+  }
 
   void SIRPrinter::indent() {
     for (int i = 0; i < indent_level_; ++i)

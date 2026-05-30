@@ -46,8 +46,6 @@ namespace symir::reify {
       }
       e.desc.realizations = std::move(keptRzs);
 
-      size_t idx = pool.entries.size();
-      pool.byRetType[e.desc.retType].push_back(idx);
       pool.entries.push_back(std::move(e));
     }
 

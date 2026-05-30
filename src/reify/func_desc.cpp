@@ -12,13 +12,6 @@ namespace symir::reify {
   // Helpers
   // ---------------------------------------------------------------------------
 
-  static std::string typeToSir(const TypePtr &t) {
-    std::ostringstream os;
-    symir::SIRPrinter sp(os);
-    sp.printType(t);
-    return os.str();
-  }
-
   static std::string jsonEscape(const std::string &s) {
     std::string out;
     out.reserve(s.size() + 2);
@@ -130,9 +123,9 @@ namespace symir::reify {
     FuncDescriptor d;
     d.id = genId;
     d.name = fn->name.name;
-    d.retType = typeToSir(fn->retType);
+    d.retType = SIRPrinter::typeToString(fn->retType);
     for (const auto &p: fn->params)
-      d.params.push_back({p.name.name, typeToSir(p.type)});
+      d.params.push_back({p.name.name, SIRPrinter::typeToString(p.type)});
     for (const auto &s: fn->syms) {
       const char *kindStr = "value";
       switch (s.kind) {
@@ -146,14 +139,14 @@ namespace symir::reify {
           kindStr = "index";
           break;
       }
-      d.syms.push_back({s.name.name, kindStr, typeToSir(s.type)});
+      d.syms.push_back({s.name.name, kindStr, SIRPrinter::typeToString(s.type)});
     }
     d.path = pathLabels;
     for (const auto &s: prog.structs) {
       FuncDescriptor::Struct sd;
       sd.name = s.name.name;
       for (const auto &f: s.fields)
-        sd.fields.push_back({f.name, typeToSir(f.type)});
+        sd.fields.push_back({f.name, SIRPrinter::typeToString(f.type)});
       d.structs.push_back(std::move(sd));
     }
     d.realizations = realizations;

@@ -31,6 +31,10 @@ namespace symir {
     // canonical SIR surface syntax without rolling a private printer.
     void printType(const TypePtr &t);
 
+    // Convenience: render a TypePtr to its canonical SIR surface
+    // string without spinning up an SIRPrinter at the call site.
+    static std::string typeToString(const TypePtr &t);
+
   private:
     std::ostream &out_;
     std::unordered_map<std::string, SymbolicExecutor::Result::ModelVal> model_;

@@ -20,6 +20,7 @@
  */
 
 #include <algorithm>
+#include <cassert>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -121,12 +122,22 @@ static std::vector<size_t> pickPoolIndices(std::mt19937 &rng, size_t k, size_t p
 // just-moved FunDecl, or nullptr on failure. Struct decls are
 // deduplicated by name (rysmith already namespaces structs by genID so
 // same-name dups are guaranteed identical; the first wins).
-static FunDecl *mergeInto(Program &bundle, Program src, const std::string &sourceStem) {
-  std::unordered_set<std::string> haveStructs;
-  for (const auto &s: bundle.structs)
-    haveStructs.insert(s.name.name);
+//
+// Pointer-stability precondition: `bundle.funs` MUST have been reserved
+// to its final size before the first call. The returned FunDecl* is
+// held by the per-program Node table across subsequent merges; without
+// the reserve a later push_back would reallocate and invalidate every
+// earlier pointer. Assert rather than silently corrupt.
+static FunDecl *mergeInto(
+    Program &bundle, Program src, const std::string &sourceStem,
+    std::unordered_set<std::string> &haveStructs
+) {
+  assert(
+      bundle.funs.size() < bundle.funs.capacity() &&
+      "rylink: bundle.funs must be reserved upfront — see generateOne"
+  );
   for (auto &s: src.structs)
-    if (!haveStructs.count(s.name.name))
+    if (haveStructs.insert(s.name.name).second)
       bundle.structs.push_back(std::move(s));
   if (src.funs.size() != 1)
     return nullptr; // rysmith always emits exactly one fun per file
@@ -146,10 +157,8 @@ static FunDecl *mergeInto(Program &bundle, Program src, const std::string &sourc
 // ignore them — but make the file self-describing for inspection.
 static void writeBundledSir(
     const fs::path &outPath, const Program &bundle, const CallGraph &cg,
-    const std::vector<Node> &nodes,
-    const std::vector<std::pair<std::string, std::string>> &entryParams, const std::string &entryRet
+    const std::vector<Node> &nodes, const FuncDescriptor::Realization &entryRz
 ) {
-  (void) bundle; // printed below via SIRPrinter
   std::ofstream ofs(outPath);
   ofs << "// rylink-generated whole program\n";
   ofs << "// ENTRY: " << nodes[cg.entry()].funcName << "\n";
@@ -164,12 +173,12 @@ static void writeBundledSir(
     ofs << "\n";
   }
   ofs << "// PARAMS:";
-  if (entryParams.empty())
+  if (entryRz.paramValues.empty())
     ofs << " (none)";
-  for (const auto &pv: entryParams)
+  for (const auto &pv: entryRz.paramValues)
     ofs << " " << pv.first << "=" << pv.second;
   ofs << "\n";
-  ofs << "// RET: " << (entryRet.empty() ? "(none)" : entryRet) << "\n\n";
+  ofs << "// RET: " << (entryRz.retValue.empty() ? "(none)" : entryRz.retValue) << "\n\n";
   SIRPrinter sp(ofs);
   sp.print(bundle);
 }
@@ -272,6 +281,7 @@ static bool generateOne(const FuncPool &pool, std::mt19937 &rng, const PerProgCo
   // every earlier pointer and the rewrite phase reads freed memory.
   Program bundle;
   bundle.funs.reserve(k);
+  std::unordered_set<std::string> haveStructs;
   std::vector<Node> nodes(k);
   for (int i = 0; i < k; ++i) {
     nodes[i].idx = i;
@@ -285,7 +295,7 @@ static bool generateOne(const FuncPool &pool, std::mt19937 &rng, const PerProgCo
     auto prog = parseSir(sirPath);
     if (!prog)
       return false;
-    nodes[i].fn = mergeInto(bundle, std::move(*prog), nodes[i].stem);
+    nodes[i].fn = mergeInto(bundle, std::move(*prog), nodes[i].stem, haveStructs);
     if (!nodes[i].fn)
       return false;
   }
@@ -310,7 +320,7 @@ static bool generateOne(const FuncPool &pool, std::mt19937 &rng, const PerProgCo
   // Pull entry's solved param/ret values from its descriptor for header.
   const auto &entryEntry = pool.entries[nodes[cg.entry()].poolIdx];
   const auto &entryRz = entryEntry.desc.realizations[nodes[cg.entry()].realizationIdx];
-  writeBundledSir(programSir, bundle, cg, nodes, entryRz.paramValues, entryRz.retValue);
+  writeBundledSir(programSir, bundle, cg, nodes, entryRz);
 
   // Target backends.
   if (cfg.target == "c") {

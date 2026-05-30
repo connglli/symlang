@@ -12,7 +12,6 @@
 #include <filesystem>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "reify/func_desc.hpp"
@@ -35,10 +34,6 @@ namespace symir::reify {
 
   struct FuncPool {
     std::vector<PoolEntry> entries;
-    // Reverse index: SIR-surface ret-type string → entry indices that
-    // return that type. The rewrite engine queries by type to find a
-    // callee whose ret matches a caller-site literal's type.
-    std::unordered_map<std::string, std::vector<size_t>> byRetType;
   };
 
   // Scan `dir` for *.json descriptors and the matching .sir files. Returns
